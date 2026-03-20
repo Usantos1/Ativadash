@@ -115,13 +115,33 @@ async function graphGetAllPages<T>(
 
 type ActionEntry = { action_type?: string; value?: string };
 
-/** Tipos de ação Meta que contamos como lead */
+const MSG_CONV_STARTED_7D = "onsite_conversion.messaging_conversation_started_7d";
+const MSG_CONV_STARTED_28D = "onsite_conversion.messaging_conversation_started_28d";
+
+/** Tipos de ação Meta que contamos como lead / captação (próximo ao Gerenciador: leads, conversas, contatos) */
 const LEAD_ACTION_TYPES = new Set([
   "lead",
   "onsite_conversion.lead_grouped",
   "offsite_conversion.lead",
   "offsite_conversion.fb_pixel_lead",
+  "onsite_conversion.lead",
+  "onsite_conversion.messaging_first_reply",
+  "onsite_conversion.messaging_conversation_replied_7d",
+  "onsite_conversion.messaging_conversation_replied_28d",
+  "onsite_conversion.messaging_user_subscribed",
+  "onsite_conversion.messaging_welcome_message_view",
+  "onsite_conversion.messaging_conversation_replied_1d",
+  "onsite_conversion.contact_website",
+  "onsite_conversion.contact_total",
 ]);
+
+function isLeadActionType(t: string): boolean {
+  if (t === MSG_CONV_STARTED_7D || t === MSG_CONV_STARTED_28D) return false;
+  if (LEAD_ACTION_TYPES.has(t)) return true;
+  if (t.includes("messaging_first_reply")) return true;
+  if (t.includes("messaging_conversation_replied")) return true;
+  return false;
+}
 
 /** Tipos de ação Meta que contamos como venda/compra */
 const PURCHASE_ACTION_TYPES = new Set([
@@ -145,12 +165,26 @@ function parseFloatSafe(v: string | undefined): number {
 function aggregateActions(actions?: ActionEntry[]): { leads: number; purchases: number } {
   let leads = 0;
   let purchases = 0;
+  let msgStarted7d = 0;
+  let msgStarted28d = 0;
   for (const a of actions ?? []) {
     const t = a.action_type ?? "";
     const val = parseIntSafe(a.value);
-    if (LEAD_ACTION_TYPES.has(t)) leads += val;
-    if (PURCHASE_ACTION_TYPES.has(t)) purchases += val;
+    if (t === MSG_CONV_STARTED_7D) {
+      msgStarted7d += val;
+      continue;
+    }
+    if (t === MSG_CONV_STARTED_28D) {
+      msgStarted28d += val;
+      continue;
+    }
+    if (PURCHASE_ACTION_TYPES.has(t)) {
+      purchases += val;
+      continue;
+    }
+    if (isLeadActionType(t)) leads += val;
   }
+  leads += msgStarted7d > 0 ? msgStarted7d : msgStarted28d;
   return { leads, purchases };
 }
 
