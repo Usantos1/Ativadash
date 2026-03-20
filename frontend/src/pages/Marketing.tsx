@@ -290,7 +290,6 @@ export function Marketing() {
                 const googleSpend = metrics?.ok ? metrics.summary.costMicros / 1_000_000 : 0;
                 const metaSpend = metaMetrics?.ok ? metaMetrics.summary.spend : 0;
                 const totalSpend = googleSpend + metaSpend;
-                const totalConversions = metrics?.ok ? metrics.summary.conversions : 0;
                 const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
                 return (
                   <>
@@ -388,10 +387,9 @@ export function Marketing() {
               </TabsList>
 
               {/* Google Ads */}
-          {hasIntegrations && (
-            <TabsContent value="google-ads" className="mt-4">
-            <>
-              {metricsLoading && !metrics ? (
+              {hasIntegrations && (
+                <TabsContent value="google-ads" className="mt-4">
+                  {metricsLoading && !metrics ? (
                 <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-border/80 bg-card">
                   <p className="text-muted-foreground">Carregando métricas do Google Ads...</p>
                 </div>
@@ -479,12 +477,12 @@ export function Marketing() {
                   )}
                 </div>
               ) : null}
-            </TabsContent>
-          )}
+                </TabsContent>
+              )}
 
               {/* Meta Ads */}
-          {hasMeta && (
-            <TabsContent value="meta-ads" className="mt-4">
+              {hasMeta && (
+                <TabsContent value="meta-ads" className="mt-4">
               {metaMetricsLoading && !metaMetrics ? (
                 <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-border/80 bg-card">
                   <p className="text-muted-foreground">Carregando métricas do Meta Ads...</p>
@@ -627,8 +625,8 @@ export function Marketing() {
                   )}
                 </div>
               ) : null}
-            </TabsContent>
-          )}
+                </TabsContent>
+              )}
             </Tabs>
           </div>
 
