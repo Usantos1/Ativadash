@@ -96,14 +96,14 @@ cd ativadash
 
 (Se o repo for privado, configure SSH key ou token antes.)
 
-Se **não** usar Git: no seu PC, empacote o projeto (ex.: `zip -r ativadash.zip .` na pasta do projeto) e envie para a VPS com `scp`; na VPS, descompacte em `/var/www/ativadash`.
+Se **não** usar Git: no seu PC, empacote o projeto (ex.: `zip -r ativadash.zip .` na pasta do projeto) e envie para a VPS com `scp`; na VPS, descompacte em `/ativadash`.
 
 ---
 
 ## 7. Configurar e subir o backend
 
 ```bash
-cd /var/www/ativadash/backend
+cd /ativadash/backend
 ```
 
 Criar o arquivo `.env` (substitua os valores pelos seus):
@@ -192,7 +192,7 @@ Cole:
 server {
     listen 80;
     server_name app.ativadash.com;
-    root /var/www/ativadash/frontend/dist;
+    root /ativadash/frontend/dist;
     index index.html;
     location / {
         try_files $uri $uri/ /index.html;
@@ -240,7 +240,7 @@ Cole (ajuste o caminho se o projeto estiver em outro lugar):
 server {
     listen 80;
     server_name ativadash.com www.ativadash.com;
-    root /var/www/ativadash/landing;
+    root /ativadash/landing;
     index index.html;
     location / {
         try_files $uri $uri/ /index.html;
@@ -256,7 +256,7 @@ nginx -t && systemctl reload nginx
 certbot --nginx -d ativadash.com -d www.ativadash.com
 ```
 
-A pasta `landing` fica no repositório; após `git pull` em `/var/www/ativadash`, o Nginx já servirá o `index.html` da landing.
+A pasta `landing` fica no repositório; após `git pull` em `/ativadash`, o Nginx já servirá o `index.html` da landing.
 
 ---
 
@@ -275,19 +275,19 @@ Isso gera a pasta `frontend/dist`. Enviar só essa pasta para a VPS:
 **Opção A — usando rsync (no PC):**
 
 ```bash
-rsync -avz --delete ./dist/ root@76.13.175.233:/var/www/ativadash/frontend/dist/
+rsync -avz --delete ./dist/ root@76.13.175.233:/ativadash/frontend/dist/
 ```
 
 **Opção B — usando scp (no PC):**
 
 ```bash
-scp -r ./dist root@76.13.175.233:/var/www/ativadash/frontend/
+scp -r ./dist root@76.13.175.233:/ativadash/frontend/
 ```
 
 Na VPS, conferir:
 
 ```bash
-ls /var/www/ativadash/frontend/dist
+ls /ativadash/frontend/dist
 ```
 
 Deve ter `index.html` e pasta `assets/`.
@@ -299,8 +299,8 @@ Deve ter `index.html` e pasta `assets/`.
 Se o Nginx reclamar de permissão ao servir os arquivos:
 
 ```bash
-chown -R www-data:www-data /var/www/ativadash/frontend/dist
-chmod -R 755 /var/www/ativadash/frontend/dist
+chown -R www-data:www-data /ativadash/frontend/dist
+chmod -R 755 /ativadash/frontend/dist
 ```
 
 ---
@@ -330,13 +330,13 @@ chmod -R 755 /var/www/ativadash/frontend/dist
 | VPS    | `apt update && apt upgrade -y` |
 | VPS    | Instalar Node 20, PostgreSQL, PM2, Nginx, Git |
 | VPS    | Criar usuário e banco Postgres `ativa_dash` |
-| VPS    | Clonar repo em `/var/www/ativadash` |
+| VPS    | Clonar repo em `/ativadash` |
 | VPS    | `backend/.env` com DATABASE_URL, JWT_*, FRONTEND_URL, API_BASE_URL, Google Ads |
 | VPS    | `cd backend && npm ci && npx prisma migrate deploy && npm run build && pm2 start dist/index.js --name ativadash-api` |
 | VPS    | Nginx: sites para `api.ativadash.com` (proxy 3000) e `app.ativadash.com` (root frontend/dist) |
 | VPS    | `certbot --nginx -d api.ativadash.com -d app.ativadash.com` |
 | PC     | `cd frontend && VITE_API_URL=https://api.ativadash.com npm run build` |
-| PC     | Enviar `frontend/dist` para `/var/www/ativadash/frontend/dist` (rsync ou scp) |
+| PC     | Enviar `frontend/dist` para `/ativadash/frontend/dist` (rsync ou scp) |
 | Google | Callback: `https://api.ativadash.com/api/integrations/google-ads/callback` |
 | Meta Ads | Callback: `https://api.ativadash.com/api/integrations/meta-ads/callback` (configurar em developers.facebook.com no app) |
 
@@ -348,28 +348,26 @@ chmod -R 755 /var/www/ativadash/frontend/dist
 O `schema.prisma` no servidor estava com `sqlite`. Atualize o repo e use Postgres:
 
 ```bash
-cd /var/www/ativadash
+cd /ativadash
 git pull origin main
 ```
 
 Confira se `backend/prisma/schema.prisma` tem `provider = "postgresql"`. Depois:
 
 ```bash
-cd /var/www/ativadash/backend
+cd /ativadash/backend
 npx prisma generate
 npx prisma migrate deploy
 npm run build
 ```
 
 **PM2: “Script not found dist/index.js”**  
-O build pode gerar `dist/index.js` ou `dist/src/index.js`. Na VPS use o que existir:
+O build gera `dist/index.js` (e `dist/routes/`). Use esse entry point:
 
 ```bash
-cd /var/www/ativadash/backend
+cd /ativadash/backend
 npm run build
-# Se existir dist/index.js: pm2 start dist/index.js --name ativadash-api
-# Senão: pm2 start dist/src/index.js --name ativadash-api
-pm2 delete ativadash-api 2>/dev/null; pm2 start dist/src/index.js --name ativadash-api
+pm2 delete ativadash-api 2>/dev/null; pm2 start dist/index.js --name ativadash-api
 pm2 save
 curl http://127.0.0.1:3000/api/health
 ```
@@ -378,28 +376,28 @@ curl http://127.0.0.1:3000/api/health
 O build do frontend é feito **no seu PC**, não na VPS. Na VPS a pasta pode ser `../frontend` em relação ao backend:
 
 ```bash
-ls /var/www/ativadash/frontend   # existe?
+ls /ativadash/frontend   # existe?
 ```
 
 Se não existir, crie e envie o build do PC:
 
 ```bash
 # Na VPS:
-mkdir -p /var/www/ativadash/frontend/dist
+mkdir -p /ativadash/frontend/dist
 
 # No seu PC (na pasta do projeto):
 cd frontend
 npm ci
 VITE_API_URL=https://api.ativadash.com npm run build
-scp -r ./dist/* root@76.13.175.233:/var/www/ativadash/frontend/dist/
-# Ou: rsync -avz --delete ./dist/ root@76.13.175.233:/var/www/ativadash/frontend/dist/
+scp -r ./dist/* root@76.13.175.233:/ativadash/frontend/dist/
+# Ou: rsync -avz --delete ./dist/ root@76.13.175.233:/ativadash/frontend/dist/
 ```
 
 Na VPS, ajuste permissões:
 
 ```bash
-chown -R www-data:www-data /var/www/ativadash/frontend/dist
-chmod -R 755 /var/www/ativadash/frontend/dist
+chown -R www-data:www-data /ativadash/frontend/dist
+chmod -R 755 /ativadash/frontend/dist
 ```
 
 **rsync do PC para a VPS**  
@@ -408,7 +406,7 @@ Só funciona **do seu PC** para o servidor. No PC (primeira vez pode pedir `yes`
 ```bash
 cd /caminho/para/Ativadash/frontend
 VITE_API_URL=https://api.ativadash.com npm run build
-rsync -avz --delete ./dist/ root@76.13.175.233:/var/www/ativadash/frontend/dist/
+rsync -avz --delete ./dist/ root@76.13.175.233:/ativadash/frontend/dist/
 ```
 
 ---
@@ -420,7 +418,7 @@ No PC, após mudanças no frontend:
 ```bash
 cd frontend
 VITE_API_URL=https://api.ativadash.com npm run build
-rsync -avz --delete ./dist/ root@76.13.175.233:/var/www/ativadash/frontend/dist/
+rsync -avz --delete ./dist/ root@76.13.175.233:/ativadash/frontend/dist/
 ```
 
 ## Atualizar o backend depois (API)
@@ -428,7 +426,7 @@ rsync -avz --delete ./dist/ root@76.13.175.233:/var/www/ativadash/frontend/dist/
 Na VPS:
 
 ```bash
-cd /var/www/ativadash
+cd /ativadash
 git pull   # se usar Git
 cd backend
 npm ci
@@ -437,11 +435,11 @@ npm run build
 pm2 restart ativadash-api
 ```
 
-**Se aparecer** `Process or Namespace ativa-dash-api not found`: o nome correto é `ativadash-api` (sem "iva-"). Liste os processos com `pm2 list`. Se o backend não estiver rodando, suba assim (a partir de `/var/www/ativadash/backend`):
+**Se aparecer** `Process or Namespace ativa-dash-api not found`: o nome correto é `ativadash-api` (sem "iva-"). Liste os processos com `pm2 list`. Se o backend não estiver rodando, suba assim (a partir de `/ativadash/backend`):
 
 ```bash
-cd /var/www/ativadash/backend
-pm2 start dist/src/index.js --name ativadash-api
+cd /ativadash/backend
+pm2 start dist/index.js --name ativadash-api
 pm2 save
 ```
 
