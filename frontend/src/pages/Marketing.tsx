@@ -1,6 +1,16 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, RefreshCw, Share2, Clock, Eye, MousePointer, DollarSign, Target } from "lucide-react";
+import { BarChart3, RefreshCw, Share2, Clock, Eye, MousePointer, DollarSign, Target, Filter } from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+import { createColumnHelper } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -10,13 +20,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AnalyticTable } from "@/components/marketing/AnalyticTable";
 import {
   fetchIntegrations,
   fetchGoogleAdsMetrics,
   fetchMetaAdsMetrics,
   type GoogleAdsMetricsResponse,
   type MetaAdsMetricsResponse,
+  type MetaAdsCampaignRow,
 } from "@/lib/integrations-api";
 
 const periods = [
@@ -46,6 +58,44 @@ function formatSpend(value: number): string {
 function formatNumber(n: number): string {
   return new Intl.NumberFormat("pt-BR").format(n);
 }
+
+const columnHelper = createColumnHelper<MetaAdsCampaignRow>();
+const metaAdsCampaignColumns = [
+  columnHelper.accessor("campaignName", {
+    header: "Campanha",
+    cell: (ctx) => <span className="font-medium">{ctx.getValue() || "—"}</span>,
+  }),
+  columnHelper.accessor("impressions", {
+    header: "Impressões",
+    cell: (ctx) => formatNumber(ctx.getValue()),
+  }),
+  columnHelper.accessor("clicks", {
+    header: "Cliques",
+    cell: (ctx) => formatNumber(ctx.getValue()),
+  }),
+  columnHelper.accessor("spend", {
+    header: "Gasto",
+    cell: (ctx) => formatSpend(ctx.getValue()),
+  }),
+  columnHelper.display({
+    id: "ctr",
+    header: "CTR",
+    cell: (ctx) => {
+      const imp = ctx.row.original.impressions;
+      const clk = ctx.row.original.clicks;
+      return imp > 0 ? `${((clk / imp) * 100).toFixed(2)}%` : "—";
+    },
+  }),
+  columnHelper.display({
+    id: "cpc",
+    header: "CPC",
+    cell: (ctx) => {
+      const clk = ctx.row.original.clicks;
+      const sp = ctx.row.original.spend;
+      return clk > 0 ? formatSpend(sp / clk) : "—";
+    },
+  }),
+];
 
 export function Marketing() {
   const navigate = useNavigate();
@@ -327,8 +377,10 @@ export function Marketing() {
                   </Button>
                 </div>
               ) : metaMetrics?.ok ? (
-                <div className="space-y-4">
+                <div className="space-y-6">
                   <h2 className="text-lg font-semibold">Meta Ads</h2>
+
+                  {/* KPIs */}
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     <Card className="rounded-xl">
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -358,36 +410,99 @@ export function Marketing() {
                       </CardContent>
                     </Card>
                   </div>
-                  {metaMetrics.campaigns.length > 0 && (
+
+                  {/* Funil Impressões → Cliques */}
+                  {metaMetrics.summary.impressions > 0 && (
                     <Card className="rounded-xl">
                       <CardHeader>
-                        <CardTitle>Por campanha (Meta Ads)</CardTitle>
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <Filter className="h-4 w-4" />
+                          Funil · Impressões → Cliques
+                        </CardTitle>
+                        <CardDescription className="text-sm text-muted-foreground">
+                          Taxa de cliques:{" "}
+                          {metaMetrics.summary.impressions > 0
+                            ? ((metaMetrics.summary.clicks / metaMetrics.summary.impressions) * 100).toFixed(2)
+                            : "0"}%
+                        </CardDescription>
                       </CardHeader>
                       <CardContent>
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="border-b text-left text-muted-foreground">
-                                <th className="pb-2 font-medium">Campanha</th>
-                                <th className="pb-2 font-medium text-right">Impressões</th>
-                                <th className="pb-2 font-medium text-right">Cliques</th>
-                                <th className="pb-2 font-medium text-right">Gasto</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {metaMetrics.campaigns.map((row, i) => (
-                                <tr key={i} className="border-b border-border/50 last:border-0">
-                                  <td className="py-2 font-medium">{row.campaignName || "—"}</td>
-                                  <td className="py-2 text-right">{formatNumber(row.impressions)}</td>
-                                  <td className="py-2 text-right">{formatNumber(row.clicks)}</td>
-                                  <td className="py-2 text-right">{formatSpend(row.spend)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                        <div className="space-y-3">
+                          <div>
+                            <div className="mb-1 flex justify-between text-xs text-muted-foreground">
+                              <span>Impressões</span>
+                              <span>{formatNumber(metaMetrics.summary.impressions)}</span>
+                            </div>
+                            <div className="h-8 w-full overflow-hidden rounded-lg bg-muted">
+                              <div
+                                className="h-full rounded-lg bg-primary/80"
+                                style={{ width: "100%" }}
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <div className="mb-1 flex justify-between text-xs text-muted-foreground">
+                              <span>Cliques</span>
+                              <span>{formatNumber(metaMetrics.summary.clicks)}</span>
+                            </div>
+                            <div className="h-8 w-full overflow-hidden rounded-lg bg-muted">
+                              <div
+                                className="h-full rounded-lg bg-primary"
+                                style={{
+                                  width: `${metaMetrics.summary.impressions > 0 ? (metaMetrics.summary.clicks / metaMetrics.summary.impressions) * 100 : 0}%`,
+                                  minWidth: metaMetrics.summary.clicks > 0 ? "4px" : "0",
+                                }}
+                              />
+                            </div>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
+                  )}
+
+                  {/* Gráfico Gasto por campanha */}
+                  {metaMetrics.campaigns.length > 0 && (
+                    <Card className="rounded-xl">
+                      <CardHeader>
+                        <CardTitle className="text-base">Gasto por campanha</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="h-[280px] w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart
+                              data={metaMetrics.campaigns
+                                .map((c) => ({
+                                  name: c.campaignName.length > 28 ? c.campaignName.slice(0, 26) + "…" : c.campaignName,
+                                  gasto: c.spend,
+                                  fullName: c.campaignName,
+                                }))
+                                .sort((a, b) => b.gasto - a.gasto)
+                                .slice(0, 12)}
+                              margin={{ top: 8, right: 8, left: 0, bottom: 60 }}
+                              layout="vertical"
+                            >
+                              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" horizontal={false} />
+                              <XAxis type="number" tickFormatter={(v) => formatSpend(v)} tick={{ fontSize: 11 }} />
+                              <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 10 }} />
+                              <Tooltip
+                                formatter={(value: number) => [formatSpend(value), "Gasto"]}
+                                labelFormatter={(_, payload) => payload[0]?.payload?.fullName ?? ""}
+                              />
+                              <Bar dataKey="gasto" name="Gasto" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Tabela por campanha com CTR e CPC */}
+                  {metaMetrics.campaigns.length > 0 && (
+                    <AnalyticTable
+                      title="Por campanha (Meta Ads)"
+                      columns={metaAdsCampaignColumns}
+                      data={metaMetrics.campaigns}
+                    />
                   )}
                 </div>
               ) : null}

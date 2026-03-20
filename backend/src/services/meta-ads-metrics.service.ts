@@ -69,6 +69,41 @@ async function graphGet<T>(path: string, accessToken: string, appSecret: string)
   return JSON.parse(text) as T;
 }
 
+interface PagedResponse<T> {
+  data: T[];
+  paging?: { next?: string; cursors?: { after?: string } };
+}
+
+/** Busca todos os itens paginados da Graph API (segue paging.next). */
+async function graphGetAllPages<T>(
+  path: string,
+  accessToken: string,
+  appSecret: string
+): Promise<T[]> {
+  const all: T[] = [];
+  let nextUrl: string | null = null;
+  let first = true;
+
+  while (first || nextUrl) {
+    let res: PagedResponse<T>;
+    if (first) {
+      res = await graphGet<PagedResponse<T>>(path, accessToken, appSecret);
+    } else {
+      const proof = appSecretProof(accessToken, appSecret);
+      const url = `${nextUrl!}${nextUrl!.includes("?") ? "&" : "?"}appsecret_proof=${encodeURIComponent(proof)}`;
+      const r = await fetch(url);
+      const text = await r.text();
+      if (!r.ok) throw new Error(`Graph API ${r.status}: ${text.slice(0, 200)}`);
+      res = JSON.parse(text) as PagedResponse<T>;
+    }
+    first = false;
+    const list = res.data ?? [];
+    all.push(...list);
+    nextUrl = res.paging?.next ?? null;
+  }
+  return all;
+}
+
 function dateRange(days: number): { since: string; until: string } {
   const until = new Date();
   const since = new Date();
@@ -129,11 +164,13 @@ export async function fetchMetaAdsMetrics(
         totalSpend += sp;
       }
 
-      const campaignPath = `/act_${accountId}/insights?fields=campaign_name,impressions,clicks,spend&time_range=${encodeURIComponent(timeRange)}&level=campaign`;
-      const campaignInsights = await graphGet<{
-        data: { campaign_name?: string; impressions?: string; clicks?: string; spend?: string }[];
+      const campaignPath = `/act_${accountId}/insights?fields=campaign_name,impressions,clicks,spend&time_range=${encodeURIComponent(timeRange)}&level=campaign&limit=500`;
+      const campaigns = await graphGetAllPages<{
+        campaign_name?: string;
+        impressions?: string;
+        clicks?: string;
+        spend?: string;
       }>(campaignPath, config.access_token, appSecret);
-      const campaigns = campaignInsights.data ?? [];
       for (const c of campaigns) {
         const name = c.campaign_name ?? "—";
         const existing = campaignMap.get(name);
