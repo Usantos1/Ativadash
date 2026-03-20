@@ -9,7 +9,12 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
 } from "recharts";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createColumnHelper } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import {
@@ -108,6 +113,7 @@ export function Marketing() {
   const [metaMetricsLoading, setMetaMetricsLoading] = useState(false);
   const [metricsError, setMetricsError] = useState<string | null>(null);
   const [metaMetricsError, setMetaMetricsError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,6 +145,7 @@ export function Marketing() {
       } else {
         setMetrics(data);
         setMetricsError(null);
+        setLastUpdated(new Date());
       }
     } catch {
       setMetrics(null);
@@ -163,6 +170,7 @@ export function Marketing() {
       } else {
         setMetaMetrics(data);
         setMetaMetricsError(null);
+        setLastUpdated(new Date());
       }
     } catch {
       setMetaMetrics(null);
@@ -215,6 +223,11 @@ export function Marketing() {
           </Select>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {lastUpdated && (
+            <span className="text-xs text-muted-foreground">
+              Última atualização: {lastUpdated.toLocaleDateString("pt-BR")} às {lastUpdated.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          )}
           {hasIntegrations || hasMeta ? (
             <>
               {hasIntegrations && (
@@ -267,8 +280,116 @@ export function Marketing() {
         />
       ) : (
         <div className="space-y-8">
-          {/* Google Ads */}
+          {/* Desempenho geral da captação */}
+          {(metrics?.ok || metaMetrics?.ok) && (
+            <div className="space-y-4">
+              <h2 className="text-lg font-semibold">Desempenho geral da captação</h2>
+              {(() => {
+                const totalImpressions = (metrics?.ok ? metrics.summary.impressions : 0) + (metaMetrics?.ok ? metaMetrics.summary.impressions : 0);
+                const totalClicks = (metrics?.ok ? metrics.summary.clicks : 0) + (metaMetrics?.ok ? metaMetrics.summary.clicks : 0);
+                const googleSpend = metrics?.ok ? metrics.summary.costMicros / 1_000_000 : 0;
+                const metaSpend = metaMetrics?.ok ? metaMetrics.summary.spend : 0;
+                const totalSpend = googleSpend + metaSpend;
+                const totalConversions = metrics?.ok ? metrics.summary.conversions : 0;
+                const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+                return (
+                  <>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <Card className="rounded-xl">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                          <CardTitle className="text-sm font-medium text-muted-foreground">Impressões totais</CardTitle>
+                          <Eye className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                          <span className="text-2xl font-semibold">{formatNumber(totalImpressions)}</span>
+                        </CardContent>
+                      </Card>
+                      <Card className="rounded-xl">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                          <CardTitle className="text-sm font-medium text-muted-foreground">Cliques totais</CardTitle>
+                          <MousePointer className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                          <span className="text-2xl font-semibold">{formatNumber(totalClicks)}</span>
+                        </CardContent>
+                      </Card>
+                      <Card className="rounded-xl">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                          <CardTitle className="text-sm font-medium text-muted-foreground">Valor investido</CardTitle>
+                          <DollarSign className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                          <span className="text-2xl font-semibold">{formatSpend(totalSpend)}</span>
+                        </CardContent>
+                      </Card>
+                      <Card className="rounded-xl">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                          <CardTitle className="text-sm font-medium text-muted-foreground">CPC médio</CardTitle>
+                          <Target className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                          <span className="text-2xl font-semibold">{totalClicks > 0 ? formatSpend(cpc) : "—"}</span>
+                        </CardContent>
+                      </Card>
+                    </div>
+                    {hasIntegrations && hasMeta && (googleSpend > 0 || metaSpend > 0) && (
+                      <Card className="rounded-xl">
+                        <CardHeader>
+                          <CardTitle className="text-base">Gasto por plataforma</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="h-[220px] w-full max-w-[320px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie
+                                  data={[
+                                    { name: "Meta Ads", value: metaSpend, fill: "hsl(var(--primary))" },
+                                    { name: "Google Ads", value: googleSpend, fill: "hsl(217 91% 60%)" },
+                                  ].filter((d) => d.value > 0)}
+                                  cx="50%"
+                                  cy="50%"
+                                  innerRadius={50}
+                                  outerRadius={75}
+                                  paddingAngle={2}
+                                  dataKey="value"
+                                  nameKey="name"
+                                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                >
+                                  {[
+                                    { name: "Meta Ads", value: metaSpend, fill: "hsl(var(--primary))" },
+                                    { name: "Google Ads", value: googleSpend, fill: "hsl(217 91% 60%)" },
+                                  ]
+                                    .filter((d) => d.value > 0)
+                                    .map((entry, i) => (
+                                      <Cell key={i} fill={entry.fill} />
+                                    ))}
+                                </Pie>
+                                <Tooltip formatter={(v: number) => [formatSpend(v), "Gasto"]} />
+                                <Legend wrapperStyle={{ fontSize: 11 }} />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* Desempenho por plataformas (abas) */}
+          <div className="space-y-4">
+            <h2 className="text-lg font-semibold">Desempenho por plataformas</h2>
+            <Tabs defaultValue={hasMeta ? "meta-ads" : "google-ads"} className="w-full">
+              <TabsList className="rounded-lg">
+                {hasMeta && <TabsTrigger value="meta-ads">Meta Ads</TabsTrigger>}
+                {hasIntegrations && <TabsTrigger value="google-ads">Google Ads</TabsTrigger>}
+              </TabsList>
+
+              {/* Google Ads */}
           {hasIntegrations && (
+            <TabsContent value="google-ads" className="mt-4">
             <>
               {metricsLoading && !metrics ? (
                 <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-border/80 bg-card">
@@ -358,12 +479,12 @@ export function Marketing() {
                   )}
                 </div>
               ) : null}
-            </>
+            </TabsContent>
           )}
 
-          {/* Meta Ads */}
+              {/* Meta Ads */}
           {hasMeta && (
-            <>
+            <TabsContent value="meta-ads" className="mt-4">
               {metaMetricsLoading && !metaMetrics ? (
                 <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-border/80 bg-card">
                   <p className="text-muted-foreground">Carregando métricas do Meta Ads...</p>
@@ -506,8 +627,10 @@ export function Marketing() {
                   )}
                 </div>
               ) : null}
-            </>
+            </TabsContent>
           )}
+            </Tabs>
+          </div>
 
           {hasIntegrations && !metrics?.ok && !metricsError && !metricsLoading && hasMeta && !metaMetrics?.ok && !metaMetricsError && !metaMetricsLoading && (
             <div className="rounded-xl border border-border/80 bg-card p-6">
