@@ -1,0 +1,14 @@
+name = "ativadash-api"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# Associação D1: no dashboard adicione o binding com o mesmo nome (DB)
+# ou crie o banco: npx wrangler d1 create ativadash-db
+[[d1_databases]]
+binding = "DB"
+database_name = "ativadash-db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+# Variáveis (secrets no dashboard: npx wrangler secret put JWT_SECRET)
+[vars]
+FRONTEND_URL = "http://localhost:5173"

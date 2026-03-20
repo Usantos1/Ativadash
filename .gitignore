@@ -13,3 +13,7 @@ backend/dist
 # SQLite local
 backend/prisma/dev.db
 backend/prisma/dev.db-journal
+
+# Worker (Wrangler)
+worker/.wrangler
+worker/node_modules

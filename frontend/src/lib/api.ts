@@ -1,4 +1,4 @@
-const API_BASE = "/api";
+const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
 async function getAccessToken(): Promise<string | null> {
   const state = (await import("@/stores/auth-store")).useAuthStore.getState();
