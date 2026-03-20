@@ -1,4 +1,5 @@
-import { NavLink, useLocation } from "react-router-dom";
+import type React from "react";
+import { NavLink } from "react-router-dom";
 import { useUIStore } from "@/stores/ui-store";
 import {
   LayoutDashboard,
@@ -11,7 +12,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
-  BarChart3,
   Target,
   TrendingUp,
   DollarSign,
@@ -23,22 +23,22 @@ import { Button } from "@/components/ui/button";
 const SIDEBAR_WIDTH = 220;
 const SIDEBAR_COLLAPSED = 56;
 
-const mainNav = [
+type NavItem = {
+  to: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  /** Só destaca em rota exata (ex.: /marketing sem filhas) */
+  end?: boolean;
+};
+
+const mainNav: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  {
-    to: "/marketing",
-    label: "Marketing",
-    icon: Megaphone,
-    alwaysExpanded: true,
-    children: [
-      { to: "/marketing", label: "Dash", icon: BarChart3 },
-      { to: "/marketing/captacao", label: "Captação", icon: Target },
-      { to: "/marketing/conversao", label: "Conversão", icon: TrendingUp },
-      { to: "/marketing/receita", label: "Receita", icon: DollarSign },
-      { to: "/marketing/integracoes", label: "Integrações", icon: Plug },
-      { to: "/marketing/configuracoes", label: "Config. Marketing", icon: Wrench },
-    ],
-  },
+  { to: "/marketing", label: "Marketing", icon: Megaphone, end: true },
+  { to: "/marketing/captacao", label: "Captação", icon: Target },
+  { to: "/marketing/conversao", label: "Conversão", icon: TrendingUp },
+  { to: "/marketing/receita", label: "Receita", icon: DollarSign },
+  { to: "/marketing/integracoes", label: "Integrações", icon: Plug },
+  { to: "/marketing/configuracoes", label: "Config. Marketing", icon: Wrench },
   { to: "/clientes", label: "Clientes", icon: Users },
   { to: "/projetos", label: "Projetos", icon: FolderKanban },
   { to: "/lancamentos", label: "Lançamentos", icon: Rocket },
@@ -53,12 +53,6 @@ interface SidebarProps {
 export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const collapsed = useUIStore((s) => s.sidebarCollapsed);
   const toggleCollapsed = useUIStore((s) => s.toggleSidebarCollapsed);
-  const location = useLocation();
-
-  const isMarketingActive = location.pathname.startsWith("/marketing");
-  const isActive = (to: string) =>
-    location.pathname === to || (to !== "/marketing" && location.pathname.startsWith(to + "/"));
-
   const iconClass = "h-5 w-5 shrink-0";
   const navItemClass = (active: boolean) =>
     cn(
@@ -105,54 +99,18 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
         </div>
       )}
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2 scrollbar-thin">
-        {mainNav.map((item) => {
-          if (item.children) {
-            const expanded = !collapsed && (item.alwaysExpanded ?? false);
-            return (
-              <div key={item.to}>
-                <NavLink
-                  to={item.to}
-                  onClick={onMobileClose}
-                  className={cn("w-full", navItemClass(isMarketingActive))}
-                >
-                  <item.icon className={iconClass} />
-                  {!collapsed && <span className="flex-1 text-left">{item.label}</span>}
-                </NavLink>
-                {expanded && (
-                  <div className="ml-2 mt-0.5 space-y-0.5 border-l border-border/60 pl-2">
-                    {item.children.map((child) => (
-                      <NavLink
-                        key={child.to}
-                        to={child.to}
-                        onClick={onMobileClose}
-                        className={cn(
-                          "flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors",
-                          isActive(child.to)
-                            ? "bg-primary/10 font-medium text-primary"
-                            : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
-                        )}
-                      >
-                        <child.icon className="h-4 w-4 shrink-0" />
-                        {child.label}
-                      </NavLink>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          }
-          return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              onClick={onMobileClose}
-              className={({ isActive: active }) => cn(navItemClass(active))}
-            >
-              <item.icon className={iconClass} />
-              {!collapsed && <span>{item.label}</span>}
-            </NavLink>
-          );
-        })}
+        {mainNav.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            onClick={onMobileClose}
+            className={({ isActive: active }) => cn(navItemClass(active))}
+          >
+            <item.icon className={iconClass} />
+            {!collapsed && <span>{item.label}</span>}
+          </NavLink>
+        ))}
       </nav>
     </>
   );

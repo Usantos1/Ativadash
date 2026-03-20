@@ -34,6 +34,7 @@ export interface GoogleAdsMetricsSummary {
   clicks: number;
   costMicros: number;
   conversions: number;
+  conversionsValue: number;
 }
 
 export interface GoogleAdsCampaignRow {
@@ -42,6 +43,7 @@ export interface GoogleAdsCampaignRow {
   clicks: number;
   costMicros: number;
   conversions: number;
+  conversionsValue: number;
 }
 
 export interface GoogleAdsMetricsResponse {
@@ -68,6 +70,9 @@ export interface MetaAdsMetricsSummary {
   impressions: number;
   clicks: number;
   spend: number;
+  leads: number;
+  purchases: number;
+  purchaseValue?: number;
   conversions?: number;
 }
 
@@ -77,6 +82,9 @@ export interface MetaAdsCampaignRow {
   impressions: number;
   clicks: number;
   spend: number;
+  leads: number;
+  purchases: number;
+  purchaseValue?: number;
   conversions?: number;
 }
 

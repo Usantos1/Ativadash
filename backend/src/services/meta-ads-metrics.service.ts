@@ -15,6 +15,12 @@ export interface MetaAdsMetricsSummary {
   impressions: number;
   clicks: number;
   spend: number;
+  /** Leads (Meta: formulário, lead ads, etc.) */
+  leads: number;
+  /** Compras / conversões de compra rastreadas pelo pixel */
+  purchases: number;
+  /** Valor atribuído a compras (moeda da conta), quando disponível */
+  purchaseValue?: number;
   conversions?: number;
 }
 
@@ -24,6 +30,9 @@ export interface MetaAdsCampaignRow {
   impressions: number;
   clicks: number;
   spend: number;
+  leads: number;
+  purchases: number;
+  purchaseValue?: number;
   conversions?: number;
 }
 
@@ -104,6 +113,56 @@ async function graphGetAllPages<T>(
   return all;
 }
 
+type ActionEntry = { action_type?: string; value?: string };
+
+/** Tipos de ação Meta que contamos como lead */
+const LEAD_ACTION_TYPES = new Set([
+  "lead",
+  "onsite_conversion.lead_grouped",
+  "offsite_conversion.lead",
+  "offsite_conversion.fb_pixel_lead",
+]);
+
+/** Tipos de ação Meta que contamos como venda/compra */
+const PURCHASE_ACTION_TYPES = new Set([
+  "offsite_conversion.fb_pixel_purchase",
+  "omni_purchase",
+  "purchase",
+  "onsite_conversion.purchase",
+  "offsite_conversion.purchase",
+]);
+
+function parseIntSafe(v: string | undefined): number {
+  const n = parseInt(v ?? "0", 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parseFloatSafe(v: string | undefined): number {
+  const n = parseFloat(v ?? "0");
+  return Number.isFinite(n) ? n : 0;
+}
+
+function aggregateActions(actions?: ActionEntry[]): { leads: number; purchases: number } {
+  let leads = 0;
+  let purchases = 0;
+  for (const a of actions ?? []) {
+    const t = a.action_type ?? "";
+    const val = parseIntSafe(a.value);
+    if (LEAD_ACTION_TYPES.has(t)) leads += val;
+    if (PURCHASE_ACTION_TYPES.has(t)) purchases += val;
+  }
+  return { leads, purchases };
+}
+
+function aggregatePurchaseValue(actionValues?: ActionEntry[]): number {
+  let total = 0;
+  for (const a of actionValues ?? []) {
+    const t = a.action_type ?? "";
+    if (PURCHASE_ACTION_TYPES.has(t)) total += parseFloatSafe(a.value);
+  }
+  return total;
+}
+
 function dateRange(days: number): { since: string; until: string } {
   const until = new Date();
   const since = new Date();
@@ -138,18 +197,34 @@ export async function fetchMetaAdsMetrics(
     );
     const accounts = adAccountsRes.data ?? [];
     if (accounts.length === 0) {
-      return { ok: true, summary: { impressions: 0, clicks: 0, spend: 0 }, campaigns: [] };
+      return {
+        ok: true,
+        summary: { impressions: 0, clicks: 0, spend: 0, leads: 0, purchases: 0 },
+        campaigns: [],
+      };
     }
 
     let totalImpressions = 0;
     let totalClicks = 0;
     let totalSpend = 0;
+    let totalLeads = 0;
+    let totalPurchases = 0;
+    let totalPurchaseValue = 0;
     const campaignMap = new Map<string, MetaAdsCampaignRow>();
+
+    type InsightRow = {
+      impressions?: string;
+      clicks?: string;
+      spend?: string;
+      campaign_name?: string;
+      actions?: ActionEntry[];
+      action_values?: ActionEntry[];
+    };
 
     for (const account of accounts) {
       const accountId = account.id.replace("act_", "");
-      const insightsPath = `/act_${accountId}/insights?fields=impressions,clicks,spend&time_range=${encodeURIComponent(timeRange)}&level=account`;
-      const accountInsights = await graphGet<{ data: { impressions?: string; clicks?: string; spend?: string }[] }>(
+      const insightsPath = `/act_${accountId}/insights?fields=impressions,clicks,spend,actions,action_values&time_range=${encodeURIComponent(timeRange)}&level=account`;
+      const accountInsights = await graphGet<{ data: InsightRow[] }>(
         insightsPath,
         config.access_token,
         appSecret
@@ -159,37 +234,57 @@ export async function fetchMetaAdsMetrics(
         const imp = parseInt(row.impressions ?? "0", 10) || 0;
         const clk = parseInt(row.clicks ?? "0", 10) || 0;
         const sp = parseFloat(row.spend ?? "0") || 0;
+        const { leads, purchases } = aggregateActions(row.actions);
+        const pVal = aggregatePurchaseValue(row.action_values);
         totalImpressions += imp;
         totalClicks += clk;
         totalSpend += sp;
+        totalLeads += leads;
+        totalPurchases += purchases;
+        totalPurchaseValue += pVal;
       }
 
-      const campaignPath = `/act_${accountId}/insights?fields=campaign_name,impressions,clicks,spend&time_range=${encodeURIComponent(timeRange)}&level=campaign&limit=500`;
-      const campaigns = await graphGetAllPages<{
-        campaign_name?: string;
-        impressions?: string;
-        clicks?: string;
-        spend?: string;
-      }>(campaignPath, config.access_token, appSecret);
+      const campaignPath = `/act_${accountId}/insights?fields=campaign_name,impressions,clicks,spend,actions,action_values&time_range=${encodeURIComponent(timeRange)}&level=campaign&limit=500`;
+      const campaigns = await graphGetAllPages<InsightRow>(campaignPath, config.access_token, appSecret);
       for (const c of campaigns) {
         const name = c.campaign_name ?? "—";
         const existing = campaignMap.get(name);
         const imp = parseInt(c.impressions ?? "0", 10) || 0;
         const clk = parseInt(c.clicks ?? "0", 10) || 0;
         const sp = parseFloat(c.spend ?? "0") || 0;
+        const { leads, purchases } = aggregateActions(c.actions);
+        const pVal = aggregatePurchaseValue(c.action_values);
         if (existing) {
           existing.impressions += imp;
           existing.clicks += clk;
           existing.spend += sp;
+          existing.leads += leads;
+          existing.purchases += purchases;
+          existing.purchaseValue = (existing.purchaseValue ?? 0) + pVal;
         } else {
-          campaignMap.set(name, { campaignName: name, impressions: imp, clicks: clk, spend: sp });
+          campaignMap.set(name, {
+            campaignName: name,
+            impressions: imp,
+            clicks: clk,
+            spend: sp,
+            leads,
+            purchases,
+            purchaseValue: pVal > 0 ? pVal : undefined,
+          });
         }
       }
     }
 
     return {
       ok: true,
-      summary: { impressions: totalImpressions, clicks: totalClicks, spend: totalSpend },
+      summary: {
+        impressions: totalImpressions,
+        clicks: totalClicks,
+        spend: totalSpend,
+        leads: totalLeads,
+        purchases: totalPurchases,
+        purchaseValue: totalPurchaseValue > 0 ? totalPurchaseValue : undefined,
+      },
       campaigns: Array.from(campaignMap.values()),
     };
   } catch (e) {

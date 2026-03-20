@@ -1,6 +1,19 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, RefreshCw, Share2, Clock, Eye, MousePointer, DollarSign, Target, Filter } from "lucide-react";
+import {
+  BarChart3,
+  RefreshCw,
+  Share2,
+  Clock,
+  Eye,
+  MousePointer,
+  DollarSign,
+  Target,
+  Filter,
+  UserPlus,
+  ShoppingBag,
+  TrendingUp,
+} from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -81,6 +94,22 @@ const metaAdsCampaignColumns = [
   columnHelper.accessor("spend", {
     header: "Gasto",
     cell: (ctx) => formatSpend(ctx.getValue()),
+  }),
+  columnHelper.accessor("leads", {
+    header: "Leads",
+    cell: (ctx) => formatNumber(ctx.getValue() ?? 0),
+  }),
+  columnHelper.accessor("purchases", {
+    header: "Vendas",
+    cell: (ctx) => formatNumber(ctx.getValue() ?? 0),
+  }),
+  columnHelper.display({
+    id: "valorVendas",
+    header: "Valor vendas",
+    cell: (ctx) => {
+      const v = ctx.row.original.purchaseValue;
+      return v != null && v > 0 ? formatSpend(v) : "—";
+    },
   }),
   columnHelper.display({
     id: "ctr",
@@ -291,6 +320,13 @@ export function Marketing() {
                 const metaSpend = metaMetrics?.ok ? metaMetrics.summary.spend : 0;
                 const totalSpend = googleSpend + metaSpend;
                 const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+                const metaLeads = metaMetrics?.ok ? (metaMetrics.summary.leads ?? 0) : 0;
+                const metaPurchases = metaMetrics?.ok ? (metaMetrics.summary.purchases ?? 0) : 0;
+                const metaPurchaseVal = metaMetrics?.ok ? (metaMetrics.summary.purchaseValue ?? 0) : 0;
+                const googleConversions = metrics?.ok ? (metrics.summary.conversions ?? 0) : 0;
+                const googleConvValue = metrics?.ok ? (metrics.summary.conversionsValue ?? 0) : 0;
+                const totalResultValue = googleConvValue + metaPurchaseVal;
+                const totalResults = googleConversions + metaLeads + metaPurchases;
                 return (
                   <>
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -331,6 +367,62 @@ export function Marketing() {
                         </CardContent>
                       </Card>
                     </div>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <Card className="rounded-xl">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                          <CardTitle className="text-sm font-medium text-muted-foreground">Leads (Meta)</CardTitle>
+                          <UserPlus className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                          <span className="text-2xl font-semibold">{formatNumber(metaLeads)}</span>
+                          <p className="mt-1 text-xs text-muted-foreground">Formulários e lead ads</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="rounded-xl">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                          <CardTitle className="text-sm font-medium text-muted-foreground">Vendas (Meta)</CardTitle>
+                          <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                          <span className="text-2xl font-semibold">{formatNumber(metaPurchases)}</span>
+                          <p className="mt-1 text-xs text-muted-foreground">Compras rastreadas (pixel)</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="rounded-xl">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                          <CardTitle className="text-sm font-medium text-muted-foreground">Conversões (Google)</CardTitle>
+                          <Target className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                          <span className="text-2xl font-semibold">{formatNumber(googleConversions)}</span>
+                          <p className="mt-1 text-xs text-muted-foreground">Resultados configurados na conta</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="rounded-xl">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                          <CardTitle className="text-sm font-medium text-muted-foreground">Resultados combinados</CardTitle>
+                          <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                          <span className="text-2xl font-semibold">{formatNumber(totalResults)}</span>
+                          <p className="mt-1 text-xs text-muted-foreground">Google conv. + Meta leads + vendas</p>
+                        </CardContent>
+                      </Card>
+                    </div>
+                    {(totalResultValue > 0 || googleConvValue > 0 || metaPurchaseVal > 0) && (
+                      <Card className="rounded-xl">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                          <CardTitle className="text-sm font-medium text-muted-foreground">Valor atribuído (vendas / conversões)</CardTitle>
+                          <DollarSign className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                          <span className="text-2xl font-semibold">{formatSpend(totalResultValue)}</span>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Google (valor de conversões) + Meta (valor de compras no pixel)
+                          </p>
+                        </CardContent>
+                      </Card>
+                    )}
                     {hasIntegrations && hasMeta && (googleSpend > 0 || metaSpend > 0) && (
                       <Card className="rounded-xl">
                         <CardHeader>
@@ -442,6 +534,33 @@ export function Marketing() {
                       </CardContent>
                     </Card>
                   </div>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <Card className="rounded-xl">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Valor das conversões</CardTitle>
+                        <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <span className="text-2xl font-semibold">
+                          {formatSpend(metrics.summary.conversionsValue ?? 0)}
+                        </span>
+                        <p className="mt-1 text-xs text-muted-foreground">Atribuído no Google Ads</p>
+                      </CardContent>
+                    </Card>
+                    <Card className="rounded-xl">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">CPA (custo / conversão)</CardTitle>
+                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <span className="text-2xl font-semibold">
+                          {metrics.summary.conversions > 0
+                            ? formatCost(metrics.summary.costMicros / metrics.summary.conversions)
+                            : "—"}
+                        </span>
+                      </CardContent>
+                    </Card>
+                  </div>
                   {metrics.campaigns.length > 0 && (
                     <Card className="rounded-xl">
                       <CardHeader>
@@ -457,6 +576,7 @@ export function Marketing() {
                                 <th className="pb-2 font-medium text-right">Cliques</th>
                                 <th className="pb-2 font-medium text-right">Custo</th>
                                 <th className="pb-2 font-medium text-right">Conversões</th>
+                                <th className="pb-2 font-medium text-right">Valor conv.</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -467,6 +587,7 @@ export function Marketing() {
                                   <td className="py-2 text-right">{formatNumber(row.clicks)}</td>
                                   <td className="py-2 text-right">{formatCost(row.costMicros)}</td>
                                   <td className="py-2 text-right">{formatNumber(row.conversions)}</td>
+                                  <td className="py-2 text-right">{formatSpend(row.conversionsValue ?? 0)}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -526,6 +647,46 @@ export function Marketing() {
                       </CardHeader>
                       <CardContent>
                         <span className="text-2xl font-semibold">{formatSpend(metaMetrics.summary.spend)}</span>
+                      </CardContent>
+                    </Card>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <Card className="rounded-xl">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Leads</CardTitle>
+                        <UserPlus className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <span className="text-2xl font-semibold">
+                          {formatNumber(metaMetrics.summary.leads ?? 0)}
+                        </span>
+                        <p className="mt-1 text-xs text-muted-foreground">Lead ads, formulários</p>
+                      </CardContent>
+                    </Card>
+                    <Card className="rounded-xl">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Vendas</CardTitle>
+                        <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <span className="text-2xl font-semibold">
+                          {formatNumber(metaMetrics.summary.purchases ?? 0)}
+                        </span>
+                        <p className="mt-1 text-xs text-muted-foreground">Eventos de compra (pixel)</p>
+                      </CardContent>
+                    </Card>
+                    <Card className="rounded-xl">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Valor vendas</CardTitle>
+                        <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <span className="text-2xl font-semibold">
+                          {metaMetrics.summary.purchaseValue != null && metaMetrics.summary.purchaseValue > 0
+                            ? formatSpend(metaMetrics.summary.purchaseValue)
+                            : "—"}
+                        </span>
+                        <p className="mt-1 text-xs text-muted-foreground">Atribuído no Meta</p>
                       </CardContent>
                     </Card>
                   </div>

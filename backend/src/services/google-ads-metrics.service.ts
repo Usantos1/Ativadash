@@ -15,6 +15,8 @@ export interface GoogleAdsMetricsSummary {
   clicks: number;
   costMicros: number;
   conversions: number;
+  /** Valor atribuído às conversões (moeda da conta) */
+  conversionsValue: number;
 }
 
 export interface GoogleAdsCampaignRow {
@@ -23,6 +25,7 @@ export interface GoogleAdsCampaignRow {
   clicks: number;
   costMicros: number;
   conversions: number;
+  conversionsValue: number;
 }
 
 export type GoogleAdsMetricsResult =
@@ -103,7 +106,8 @@ async function searchStream(
       metrics.impressions,
       metrics.clicks,
       metrics.cost_micros,
-      metrics.conversions
+      metrics.conversions,
+      metrics.conversions_value
     FROM campaign
     WHERE segments.date DURING LAST_${days}_DAYS
       AND campaign.status = 'ENABLED'
@@ -145,6 +149,7 @@ async function searchStream(
     clicks: 0,
     costMicros: 0,
     conversions: 0,
+    conversionsValue: 0,
   };
 
   for (const row of results) {
@@ -153,17 +158,22 @@ async function searchStream(
     const clicks = Number(m.clicks ?? 0);
     const costMicros = Number(m.costMicros ?? (m as Record<string, unknown>).cost_micros ?? 0);
     const conversions = Number(m.conversions ?? 0);
+    const conversionsValue = Number(
+      (m as Record<string, unknown>).conversionsValue ?? (m as Record<string, unknown>).conversions_value ?? 0
+    );
     campaigns.push({
       campaignName: row.campaign?.name ?? "",
       impressions,
       clicks,
       costMicros,
       conversions,
+      conversionsValue,
     });
     summary.impressions += impressions;
     summary.clicks += clicks;
     summary.costMicros += costMicros;
     summary.conversions += conversions;
+    summary.conversionsValue += conversionsValue;
   }
 
   return { summary, campaigns };
@@ -205,7 +215,7 @@ export async function fetchGoogleAdsMetrics(
     if (customerIds.length === 0) {
       return {
         ok: true,
-        summary: { impressions: 0, clicks: 0, costMicros: 0, conversions: 0 },
+        summary: { impressions: 0, clicks: 0, costMicros: 0, conversions: 0, conversionsValue: 0 },
         campaigns: [],
       };
     }
