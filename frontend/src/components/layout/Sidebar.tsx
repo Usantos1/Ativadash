@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useUIStore } from "@/stores/ui-store";
 import {
@@ -30,8 +29,9 @@ const mainNav = [
     to: "/marketing",
     label: "Marketing",
     icon: Megaphone,
+    alwaysExpanded: true,
     children: [
-      { to: "/marketing", label: "Visão geral", icon: BarChart3 },
+      { to: "/marketing", label: "Dash", icon: BarChart3 },
       { to: "/marketing/captacao", label: "Captação", icon: Target },
       { to: "/marketing/conversao", label: "Conversão", icon: TrendingUp },
       { to: "/marketing/receita", label: "Receita", icon: DollarSign },
@@ -53,7 +53,6 @@ interface SidebarProps {
 export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const collapsed = useUIStore((s) => s.sidebarCollapsed);
   const toggleCollapsed = useUIStore((s) => s.toggleSidebarCollapsed);
-  const [marketingExpanded, setMarketingExpanded] = useState(true);
   const location = useLocation();
 
   const isMarketingActive = location.pathname.startsWith("/marketing");
@@ -108,17 +107,18 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2 scrollbar-thin">
         {mainNav.map((item) => {
           if (item.children) {
+            const expanded = !collapsed && (item.alwaysExpanded ?? false);
             return (
               <div key={item.to}>
-                <button
-                  type="button"
-                  onClick={() => setMarketingExpanded((prev) => !prev)}
+                <NavLink
+                  to={item.to}
+                  onClick={onMobileClose}
                   className={cn("w-full", navItemClass(isMarketingActive))}
                 >
                   <item.icon className={iconClass} />
                   {!collapsed && <span className="flex-1 text-left">{item.label}</span>}
-                </button>
-                {!collapsed && marketingExpanded && (
+                </NavLink>
+                {expanded && (
                   <div className="ml-2 mt-0.5 space-y-0.5 border-l border-border/60 pl-2">
                     {item.children.map((child) => (
                       <NavLink
