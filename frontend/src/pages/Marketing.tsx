@@ -14,7 +14,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   fetchIntegrations,
   fetchGoogleAdsMetrics,
+  fetchMetaAdsMetrics,
   type GoogleAdsMetricsResponse,
+  type MetaAdsMetricsResponse,
 } from "@/lib/integrations-api";
 
 const periods = [
@@ -32,6 +34,15 @@ function formatCost(micros: number): string {
   }).format(micros / 1_000_000);
 }
 
+function formatSpend(value: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 function formatNumber(n: number): string {
   return new Intl.NumberFormat("pt-BR").format(n);
 }
@@ -40,15 +51,22 @@ export function Marketing() {
   const navigate = useNavigate();
   const [period, setPeriod] = useState<"7d" | "30d" | "90d">("30d");
   const [hasIntegrations, setHasIntegrations] = useState(false);
+  const [hasMeta, setHasMeta] = useState(false);
   const [metrics, setMetrics] = useState<GoogleAdsMetricsResponse | null>(null);
+  const [metaMetrics, setMetaMetrics] = useState<MetaAdsMetricsResponse | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metaMetricsLoading, setMetaMetricsLoading] = useState(false);
   const [metricsError, setMetricsError] = useState<string | null>(null);
+  const [metaMetricsError, setMetaMetricsError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     fetchIntegrations()
       .then((list) => {
-        if (!cancelled) setHasIntegrations(list.some((i) => i.status === "connected"));
+        if (!cancelled) {
+          setHasIntegrations(list.some((i) => i.status === "connected"));
+          setHasMeta(list.some((i) => i.slug === "meta" && i.status === "connected"));
+        }
       })
       .catch(() => {
         if (!cancelled) setHasIntegrations(false);
@@ -71,10 +89,30 @@ export function Marketing() {
     }
   }, [hasIntegrations, period]);
 
+  const loadMetaMetrics = useCallback(async () => {
+    if (!hasMeta) return;
+    setMetaMetricsLoading(true);
+    setMetaMetricsError(null);
+    try {
+      const data = await fetchMetaAdsMetrics(period);
+      setMetaMetrics(data ?? null);
+      if (!data) setMetaMetricsError("Não foi possível carregar os dados do Meta Ads.");
+    } catch {
+      setMetaMetricsError("Erro ao buscar métricas do Meta Ads.");
+    } finally {
+      setMetaMetricsLoading(false);
+    }
+  }, [hasMeta, period]);
+
   useEffect(() => {
     if (hasIntegrations) loadMetrics();
     else setMetrics(null);
   }, [hasIntegrations, period, loadMetrics]);
+
+  useEffect(() => {
+    if (hasMeta) loadMetaMetrics();
+    else setMetaMetrics(null);
+  }, [hasMeta, period, loadMetaMetrics]);
 
   return (
     <div className="space-y-6">
@@ -109,20 +147,31 @@ export function Marketing() {
           </Select>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {hasIntegrations ? (
+          {hasIntegrations || hasMeta ? (
             <>
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Clock className="h-3.5 w-3.5" />
-                Dados do Google Ads
-              </span>
+              {hasIntegrations && (
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Clock className="h-3.5 w-3.5" />
+                  Google Ads
+                </span>
+              )}
+              {hasMeta && (
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Clock className="h-3.5 w-3.5" />
+                  Meta Ads
+                </span>
+              )}
               <Button
                 variant="outline"
                 size="sm"
                 className="rounded-lg"
-                disabled={metricsLoading}
-                onClick={loadMetrics}
+                disabled={metricsLoading || metaMetricsLoading}
+                onClick={() => {
+                  loadMetrics();
+                  loadMetaMetrics();
+                }}
               >
-                <RefreshCw className={`h-4 w-4 ${metricsLoading ? "animate-spin" : ""}`} />
+                <RefreshCw className={`h-4 w-4 ${(metricsLoading || metaMetricsLoading) ? "animate-spin" : ""}`} />
                 Atualizar
               </Button>
             </>
@@ -139,108 +188,201 @@ export function Marketing() {
         </div>
       </div>
 
-      {!hasIntegrations ? (
+      {!hasIntegrations && !hasMeta ? (
         <EmptyState
           icon={BarChart3}
           title="Nenhum dado de marketing ainda"
-          description="Conecte o Google Ads (e outras plataformas depois) nas Integrações para começar a ver métricas de captação, conversão e receita aqui."
+          description="Conecte o Google Ads ou Meta Ads nas Integrações para começar a ver métricas aqui."
           actionLabel="Ir para Integrações"
           onAction={() => navigate("/marketing/integracoes")}
           className="min-h-[320px]"
         />
-      ) : metricsLoading && !metrics ? (
-        <div className="flex min-h-[280px] items-center justify-center rounded-xl border border-border/80 bg-card">
-          <p className="text-muted-foreground">Carregando métricas do Google Ads...</p>
-        </div>
-      ) : metricsError && !metrics ? (
-        <div className="rounded-xl border border-border/80 bg-card p-6">
-          <p className="text-sm text-muted-foreground">{metricsError}</p>
-          <Button variant="outline" size="sm" className="mt-3 rounded-lg" onClick={loadMetrics}>
-            Tentar novamente
-          </Button>
-        </div>
-      ) : metrics?.ok ? (
-        <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card className="rounded-xl">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Impressões</CardTitle>
-                <Eye className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <span className="text-2xl font-semibold">{formatNumber(metrics.summary.impressions)}</span>
-              </CardContent>
-            </Card>
-            <Card className="rounded-xl">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Cliques</CardTitle>
-                <MousePointer className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <span className="text-2xl font-semibold">{formatNumber(metrics.summary.clicks)}</span>
-              </CardContent>
-            </Card>
-            <Card className="rounded-xl">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Custo</CardTitle>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <span className="text-2xl font-semibold">{formatCost(metrics.summary.costMicros)}</span>
-              </CardContent>
-            </Card>
-            <Card className="rounded-xl">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Conversões</CardTitle>
-                <Target className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <span className="text-2xl font-semibold">{formatNumber(metrics.summary.conversions)}</span>
-              </CardContent>
-            </Card>
-          </div>
-          {metrics.campaigns.length > 0 && (
-            <Card className="rounded-xl">
-              <CardHeader>
-                <CardTitle>Por campanha</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Métricas por campanha no período selecionado
-                </p>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-left text-muted-foreground">
-                        <th className="pb-2 font-medium">Campanha</th>
-                        <th className="pb-2 font-medium text-right">Impressões</th>
-                        <th className="pb-2 font-medium text-right">Cliques</th>
-                        <th className="pb-2 font-medium text-right">Custo</th>
-                        <th className="pb-2 font-medium text-right">Conversões</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {metrics.campaigns.map((row, i) => (
-                        <tr key={i} className="border-b border-border/50 last:border-0">
-                          <td className="py-2 font-medium">{row.campaignName || "—"}</td>
-                          <td className="py-2 text-right">{formatNumber(row.impressions)}</td>
-                          <td className="py-2 text-right">{formatNumber(row.clicks)}</td>
-                          <td className="py-2 text-right">{formatCost(row.costMicros)}</td>
-                          <td className="py-2 text-right">{formatNumber(row.conversions)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
       ) : (
-        <div className="rounded-xl border border-border/80 bg-card p-6">
-          <p className="text-sm text-muted-foreground">
-            Nenhum dado no período. Altere o período ou confira se o Developer Token está configurado.
-          </p>
+        <div className="space-y-8">
+          {/* Google Ads */}
+          {hasIntegrations && (
+            <>
+              {metricsLoading && !metrics ? (
+                <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-border/80 bg-card">
+                  <p className="text-muted-foreground">Carregando métricas do Google Ads...</p>
+                </div>
+              ) : metricsError && !metrics ? (
+                <div className="rounded-xl border border-border/80 bg-card p-6">
+                  <p className="text-sm font-medium text-muted-foreground">Google Ads</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{metricsError}</p>
+                  <Button variant="outline" size="sm" className="mt-3 rounded-lg" onClick={loadMetrics}>
+                    Tentar novamente
+                  </Button>
+                </div>
+              ) : metrics?.ok ? (
+                <div className="space-y-4">
+                  <h2 className="text-lg font-semibold">Google Ads</h2>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <Card className="rounded-xl">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Impressões</CardTitle>
+                        <Eye className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <span className="text-2xl font-semibold">{formatNumber(metrics.summary.impressions)}</span>
+                      </CardContent>
+                    </Card>
+                    <Card className="rounded-xl">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Cliques</CardTitle>
+                        <MousePointer className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <span className="text-2xl font-semibold">{formatNumber(metrics.summary.clicks)}</span>
+                      </CardContent>
+                    </Card>
+                    <Card className="rounded-xl">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Custo</CardTitle>
+                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <span className="text-2xl font-semibold">{formatCost(metrics.summary.costMicros)}</span>
+                      </CardContent>
+                    </Card>
+                    <Card className="rounded-xl">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Conversões</CardTitle>
+                        <Target className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <span className="text-2xl font-semibold">{formatNumber(metrics.summary.conversions)}</span>
+                      </CardContent>
+                    </Card>
+                  </div>
+                  {metrics.campaigns.length > 0 && (
+                    <Card className="rounded-xl">
+                      <CardHeader>
+                        <CardTitle>Por campanha (Google Ads)</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b text-left text-muted-foreground">
+                                <th className="pb-2 font-medium">Campanha</th>
+                                <th className="pb-2 font-medium text-right">Impressões</th>
+                                <th className="pb-2 font-medium text-right">Cliques</th>
+                                <th className="pb-2 font-medium text-right">Custo</th>
+                                <th className="pb-2 font-medium text-right">Conversões</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {metrics.campaigns.map((row, i) => (
+                                <tr key={i} className="border-b border-border/50 last:border-0">
+                                  <td className="py-2 font-medium">{row.campaignName || "—"}</td>
+                                  <td className="py-2 text-right">{formatNumber(row.impressions)}</td>
+                                  <td className="py-2 text-right">{formatNumber(row.clicks)}</td>
+                                  <td className="py-2 text-right">{formatCost(row.costMicros)}</td>
+                                  <td className="py-2 text-right">{formatNumber(row.conversions)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              ) : null}
+            </>
+          )}
+
+          {/* Meta Ads */}
+          {hasMeta && (
+            <>
+              {metaMetricsLoading && !metaMetrics ? (
+                <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-border/80 bg-card">
+                  <p className="text-muted-foreground">Carregando métricas do Meta Ads...</p>
+                </div>
+              ) : metaMetricsError && !metaMetrics ? (
+                <div className="rounded-xl border border-border/80 bg-card p-6">
+                  <p className="text-sm font-medium text-muted-foreground">Meta Ads</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{metaMetricsError}</p>
+                  <Button variant="outline" size="sm" className="mt-3 rounded-lg" onClick={loadMetaMetrics}>
+                    Tentar novamente
+                  </Button>
+                </div>
+              ) : metaMetrics?.ok ? (
+                <div className="space-y-4">
+                  <h2 className="text-lg font-semibold">Meta Ads</h2>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <Card className="rounded-xl">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Impressões</CardTitle>
+                        <Eye className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <span className="text-2xl font-semibold">{formatNumber(metaMetrics.summary.impressions)}</span>
+                      </CardContent>
+                    </Card>
+                    <Card className="rounded-xl">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Cliques</CardTitle>
+                        <MousePointer className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <span className="text-2xl font-semibold">{formatNumber(metaMetrics.summary.clicks)}</span>
+                      </CardContent>
+                    </Card>
+                    <Card className="rounded-xl">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Gasto</CardTitle>
+                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <span className="text-2xl font-semibold">{formatSpend(metaMetrics.summary.spend)}</span>
+                      </CardContent>
+                    </Card>
+                  </div>
+                  {metaMetrics.campaigns.length > 0 && (
+                    <Card className="rounded-xl">
+                      <CardHeader>
+                        <CardTitle>Por campanha (Meta Ads)</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b text-left text-muted-foreground">
+                                <th className="pb-2 font-medium">Campanha</th>
+                                <th className="pb-2 font-medium text-right">Impressões</th>
+                                <th className="pb-2 font-medium text-right">Cliques</th>
+                                <th className="pb-2 font-medium text-right">Gasto</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {metaMetrics.campaigns.map((row, i) => (
+                                <tr key={i} className="border-b border-border/50 last:border-0">
+                                  <td className="py-2 font-medium">{row.campaignName || "—"}</td>
+                                  <td className="py-2 text-right">{formatNumber(row.impressions)}</td>
+                                  <td className="py-2 text-right">{formatNumber(row.clicks)}</td>
+                                  <td className="py-2 text-right">{formatSpend(row.spend)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              ) : null}
+            </>
+          )}
+
+          {hasIntegrations && !metrics?.ok && !metricsError && !metricsLoading && hasMeta && !metaMetrics?.ok && !metaMetricsError && !metaMetricsLoading && (
+            <div className="rounded-xl border border-border/80 bg-card p-6">
+              <p className="text-sm text-muted-foreground">
+                Nenhum dado no período. Altere o período ou confira as integrações.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
