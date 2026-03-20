@@ -4,7 +4,7 @@ import { useAuthStore } from "@/stores/auth-store";
 function getApiBase(): string {
   if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
   if (typeof window !== "undefined" && window.location.hostname === "app.ativadash.com") {
-    return "https://api.ativadash.com";
+    return "https://api.ativadash.com/api";
   }
   return "/api";
 }

@@ -406,6 +406,16 @@ npm run build
 pm2 restart ativadash-api
 ```
 
+**Se aparecer** `Process or Namespace ativa-dash-api not found`: o nome correto é `ativadash-api` (sem "iva-"). Liste os processos com `pm2 list`. Se o backend não estiver rodando, suba assim (a partir de `/var/www/ativadash/backend`):
+
+```bash
+cd /var/www/ativadash/backend
+pm2 start dist/src/index.js --name ativadash-api
+pm2 save
+```
+
+**Variáveis de ambiente no servidor:** use sintaxe bash, não PowerShell. Exemplo: `export VITE_API_URL="https://api.ativadash.com"` antes do comando (no deploy atual o front já usa a API pelo hostname, então não é obrigatório).
+
 ---
 
 Licença: Proprietário - Ativa Dash
