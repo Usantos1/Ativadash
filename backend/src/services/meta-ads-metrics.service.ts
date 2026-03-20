@@ -46,11 +46,18 @@ async function getMetaAdsConfig(organizationId: string): Promise<MetaAdsConfig |
 async function graphGet<T>(path: string, accessToken: string): Promise<T> {
   const url = path.startsWith("http") ? path : `${GRAPH_BASE}${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(accessToken)}`;
   const res = await fetch(url);
+  const text = await res.text();
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Graph API: ${res.status} ${text}`);
+    try {
+      const json = JSON.parse(text) as { error?: { message?: string } };
+      const msg = json?.error?.message ?? text;
+      throw new Error(msg);
+    } catch (e) {
+      if (e instanceof Error && e.message !== text) throw e;
+      throw new Error(`Graph API ${res.status}: ${text.slice(0, 200)}`);
+    }
   }
-  return res.json() as Promise<T>;
+  return JSON.parse(text) as T;
 }
 
 function dateRange(days: number): { since: string; until: string } {

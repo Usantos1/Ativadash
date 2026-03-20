@@ -14,13 +14,10 @@ export async function getGoogleAdsMetricsHandler(req: Request, res: Response) {
 
   try {
     const result = await fetchGoogleAdsMetrics(user.organizationId, periodDays);
-    if (!result.ok) {
-      return res.status(400).json({ message: result.message });
-    }
     return res.json(result);
   } catch (e) {
     console.error(e);
-    return res.status(500).json({ message: "Erro ao buscar métricas do Google Ads." });
+    return res.status(500).json({ ok: false, message: "Erro ao buscar métricas do Google Ads." });
   }
 }
 
@@ -34,12 +31,9 @@ export async function getMetaAdsMetricsHandler(req: Request, res: Response) {
 
   try {
     const result = await fetchMetaAdsMetrics(user.organizationId, periodDays);
-    if (!result.ok) {
-      return res.status(400).json({ message: result.message });
-    }
     return res.json(result);
   } catch (e) {
     console.error(e);
-    return res.status(500).json({ message: "Erro ao buscar métricas do Meta Ads." });
+    return res.status(500).json({ ok: false, message: "Erro ao buscar métricas do Meta Ads." });
   }
 }

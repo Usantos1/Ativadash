@@ -80,9 +80,18 @@ export function Marketing() {
     setMetricsError(null);
     try {
       const data = await fetchGoogleAdsMetrics(period);
-      setMetrics(data ?? null);
-      if (!data) setMetricsError("Não foi possível carregar os dados. Verifique se o Developer Token do Google Ads está configurado no servidor.");
+      if (!data) {
+        setMetrics(null);
+        setMetricsError("Não foi possível carregar os dados. Verifique se o Developer Token do Google Ads está configurado no servidor.");
+      } else if (!data.ok) {
+        setMetrics(null);
+        setMetricsError(data.message);
+      } else {
+        setMetrics(data);
+        setMetricsError(null);
+      }
     } catch {
+      setMetrics(null);
       setMetricsError("Erro ao buscar métricas.");
     } finally {
       setMetricsLoading(false);
@@ -95,9 +104,18 @@ export function Marketing() {
     setMetaMetricsError(null);
     try {
       const data = await fetchMetaAdsMetrics(period);
-      setMetaMetrics(data ?? null);
-      if (!data) setMetaMetricsError("Não foi possível carregar os dados do Meta Ads.");
+      if (!data) {
+        setMetaMetrics(null);
+        setMetaMetricsError("Não foi possível carregar os dados do Meta Ads.");
+      } else if (!data.ok) {
+        setMetaMetrics(null);
+        setMetaMetricsError(data.message);
+      } else {
+        setMetaMetrics(data);
+        setMetaMetricsError(null);
+      }
     } catch {
+      setMetaMetrics(null);
       setMetaMetricsError("Erro ao buscar métricas do Meta Ads.");
     } finally {
       setMetaMetricsLoading(false);
