@@ -59,8 +59,11 @@
   }
   body {
     font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
-    @apply bg-[#f1f3f6] text-foreground antialiased;
+    @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  body:not(.dark) {
+    background-color: #f1f3f6;
   }
 }
 

@@ -36,7 +36,7 @@ const mainNav = [
       { to: "/marketing/conversao", label: "Conversão", icon: TrendingUp },
       { to: "/marketing/receita", label: "Receita", icon: DollarSign },
       { to: "/marketing/integracoes", label: "Integrações", icon: Plug },
-      { to: "/marketing/configuracoes", label: "Configurações", icon: Wrench },
+      { to: "/marketing/configuracoes", label: "Config. Marketing", icon: Wrench },
     ],
   },
   { to: "/clientes", label: "Clientes", icon: Users },
@@ -69,27 +69,27 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
 
   const content = (
     <>
-      <div className="flex h-14 items-center justify-between border-b border-border/60 px-2">
+      <div className="flex h-16 items-center justify-between border-b border-border/60 px-2">
         {!collapsed ? (
-          <NavLink to="/dashboard" className="flex items-center gap-2.5 font-semibold text-foreground">
-            <BarChart3 className="h-6 w-6 text-primary" />
-            <span>Ativa Dash</span>
-          </NavLink>
+          <>
+            <div className="w-8 shrink-0" aria-hidden />
+            <NavLink to="/dashboard" className="flex flex-1 justify-center" title="Ativa Dash">
+              <img src="/logo-ativa-dash.png" alt="Ativa Dash" className="h-12 w-auto max-w-full object-contain" />
+            </NavLink>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              onClick={() => toggleCollapsed()}
+              aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+          </>
         ) : (
           <NavLink to="/dashboard" className="flex w-full justify-center py-2" aria-label="Ativa Dash">
-            <BarChart3 className="h-6 w-6 text-primary" />
+            <img src="/logo-ativa-dash.png" alt="" className="h-11 w-auto object-contain" />
           </NavLink>
-        )}
-        {!collapsed && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0"
-            onClick={() => toggleCollapsed()}
-            aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
         )}
       </div>
       {collapsed && (

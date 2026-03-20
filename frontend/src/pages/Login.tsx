@@ -3,7 +3,6 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -65,11 +64,8 @@ export function Login() {
     <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4">
       <div className="w-full max-w-[400px]">
         <div className="mb-8 flex justify-center">
-          <Link to="/" className="flex items-center gap-2 font-semibold text-primary">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-              <BarChart3 className="h-6 w-6 text-primary" />
-            </div>
-            <span className="text-xl">Ativa Dash</span>
+          <Link to="/" className="flex items-center gap-2 font-semibold text-foreground">
+            <img src="/logo-ativa-dash.png" alt="Ativa Dash" className="h-10 w-auto object-contain" />
           </Link>
         </div>
         <Card className="border-0 shadow-lg">
