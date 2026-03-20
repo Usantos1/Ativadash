@@ -2,7 +2,7 @@ import { env } from "../config/env.js";
 import { prisma } from "../utils/prisma.js";
 
 const GOOGLE_ADS_SLUG = "google-ads";
-const API_VERSION = "v17";
+const API_VERSION = "v20";
 
 interface GoogleAdsConfig {
   access_token: string;

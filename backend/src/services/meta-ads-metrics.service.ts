@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+import { env } from "../config/env.js";
 import { prisma } from "../utils/prisma.js";
 
 const META_SLUG = "meta";
@@ -43,8 +45,15 @@ async function getMetaAdsConfig(organizationId: string): Promise<MetaAdsConfig |
   }
 }
 
-async function graphGet<T>(path: string, accessToken: string): Promise<T> {
-  const url = path.startsWith("http") ? path : `${GRAPH_BASE}${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(accessToken)}`;
+function appSecretProof(accessToken: string, appSecret: string): string {
+  return crypto.createHmac("sha256", appSecret).update(accessToken).digest("hex");
+}
+
+async function graphGet<T>(path: string, accessToken: string, appSecret: string): Promise<T> {
+  const proof = appSecretProof(accessToken, appSecret);
+  const url = path.startsWith("http")
+    ? path
+    : `${GRAPH_BASE}${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(accessToken)}&appsecret_proof=${encodeURIComponent(proof)}`;
   const res = await fetch(url);
   const text = await res.text();
   if (!res.ok) {
@@ -81,11 +90,16 @@ export async function fetchMetaAdsMetrics(
 
   const range = dateRange(periodDays);
   const timeRange = JSON.stringify({ since: range.since, until: range.until });
+  const appSecret = env.META_APP_SECRET;
+  if (!appSecret) {
+    return { ok: false, message: "META_APP_SECRET não configurado no servidor." };
+  }
 
   try {
     const adAccountsRes = await graphGet<{ data: { id: string; name: string; account_id: string }[] }>(
       `/me/adaccounts?fields=id,name,account_id`,
-      config.access_token
+      config.access_token,
+      appSecret
     );
     const accounts = adAccountsRes.data ?? [];
     if (accounts.length === 0) {
@@ -102,7 +116,8 @@ export async function fetchMetaAdsMetrics(
       const insightsPath = `/act_${accountId}/insights?fields=impressions,clicks,spend&time_range=${encodeURIComponent(timeRange)}&level=account`;
       const accountInsights = await graphGet<{ data: { impressions?: string; clicks?: string; spend?: string }[] }>(
         insightsPath,
-        config.access_token
+        config.access_token,
+        appSecret
       );
       const row = accountInsights.data?.[0];
       if (row) {
@@ -117,7 +132,7 @@ export async function fetchMetaAdsMetrics(
       const campaignPath = `/act_${accountId}/insights?fields=campaign_name,impressions,clicks,spend&time_range=${encodeURIComponent(timeRange)}&level=campaign`;
       const campaignInsights = await graphGet<{
         data: { campaign_name?: string; impressions?: string; clicks?: string; spend?: string }[];
-      }>(campaignPath, config.access_token);
+      }>(campaignPath, config.access_token, appSecret);
       const campaigns = campaignInsights.data ?? [];
       for (const c of campaigns) {
         const name = c.campaign_name ?? "—";
