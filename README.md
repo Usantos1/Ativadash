@@ -52,12 +52,36 @@ Quando tiver PostgreSQL na VPS: em `backend/prisma/schema.prisma` troque `provid
    - `API_BASE_URL=http://localhost:3000` (URL pública da API; em produção use https://sua-api.com)
 5. No app, vá em **Marketing > Integrações** e clique em **Conectar** no card Google Ads. Conclua o fluxo OAuth no Google; ao voltar, a integração aparecerá como conectada.
 
-## Deploy (VPS + PM2)
+## Deploy
+
+### Backend (API)
+
+O backend é **Node.js + Express + Prisma**. Ele **não roda em Cloudflare Workers** como está, porque:
+
+- Workers usam runtime V8/edge (não Node completo).
+- Prisma usa binário do query engine, incompatível com Workers.
+- Express e módulos como `bcrypt` são pensados para Node.
+
+**Onde rodar a API:**
+
+- **VPS** (DigitalOcean, EC2, etc.) com Node + PM2.
+- **Railway, Render, Fly.io** — deploy de app Node com PostgreSQL.
+- **Cloudflare** só faria sentido com outra arquitetura: reescrever a API para Workers + D1 (ou DB externo via fetch), sem Prisma/Express.
+
+### Frontend
+
+O frontend (Vite/React) pode ir para **Cloudflare Pages** sem problema: faça `npm run build` na pasta `frontend` e faça deploy da pasta `frontend/dist` no Pages. Aponte a variável de ambiente da API para a URL do seu backend (VPS, Railway, etc.).
+
+### Subir no Git e enviar para o GitHub
 
 ```bash
-npm run build
-# Configurar PM2 com ecosystem.config.js
+cd Ativadash
+git remote add origin https://github.com/SEU_USUARIO/Ativadash.git
+git branch -M main
+git push -u origin main
 ```
+
+(Substitua `SEU_USUARIO/Ativadash` pela URL do seu repositório.)
 
 ## Licença
 
