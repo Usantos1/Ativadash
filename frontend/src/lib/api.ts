@@ -2,11 +2,15 @@ import { useAuthStore } from "@/stores/auth-store";
 
 // Em produção (app.ativadash.com) usa a API; em dev usa env ou proxy /api
 function getApiBase(): string {
-  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
-  if (typeof window !== "undefined" && window.location.hostname === "app.ativadash.com") {
-    return "https://api.ativadash.com/api";
+  let base: string;
+  if (import.meta.env.VITE_API_URL) {
+    base = import.meta.env.VITE_API_URL;
+  } else if (typeof window !== "undefined" && window.location.hostname === "app.ativadash.com") {
+    base = "https://api.ativadash.com";
+  } else {
+    return "/api";
   }
-  return "/api";
+  return base.endsWith("/api") ? base : `${base.replace(/\/$/, "")}/api`;
 }
 export const API_BASE = getApiBase();
 
