@@ -125,12 +125,6 @@ export function Login() {
                 {loading ? "Entrando..." : "Entrar"}
               </Button>
             </form>
-            <p className="mt-4 text-center text-sm text-muted-foreground">
-              Não tem conta?{" "}
-              <Link to="/register" className="font-medium text-primary hover:underline">
-                Cadastre-se
-              </Link>
-            </p>
           </CardContent>
         </Card>
         <p className="mt-6 text-center text-xs text-muted-foreground">
