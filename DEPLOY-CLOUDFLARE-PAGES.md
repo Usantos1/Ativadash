@@ -2,6 +2,8 @@
 
 A API roda em um **Cloudflare Worker** com **D1**. O frontend roda em **Cloudflare Pages**. Não é necessário VPS.
 
+**Importante:** são **dois projetos diferentes** na Cloudflare (um Pages para o frontend e um Worker para a API). **Não use** o build da raiz do repo (`npm run build`): ele compila backend Node + frontend e não é o que a Cloudflare deve rodar.
+
 ## 1. API no Worker (D1 + secrets)
 
 ### 1.1 Criar o banco D1
@@ -47,10 +49,20 @@ npx wrangler secret put GOOGLE_CLIENT_SECRET
 
 ### 1.4 Deploy do Worker
 
+**Opção A – Deploy pelo seu PC (recomendado):**
+
 ```bash
 cd worker
 npm run deploy
 ```
+
+**Opção B – Worker conectado ao Git (CI):**  
+No dashboard do Worker, em **Settings** → **Build** (ou Build configuration):
+
+- **Root directory:** `worker` (se a interface tiver esse campo).
+- **Build command:** `npm ci && npm run deploy` (para rodar a partir da pasta `worker`).
+
+Se não houver “Root directory”, use Build command: `cd worker && npm ci && npx wrangler deploy`.
 
 Anote a URL do Worker (ex: `https://ativadash-api.xxx.workers.dev`). Ela será a base da API (`/api/...`).
 
@@ -60,13 +72,17 @@ Anote a URL do Worker (ex: `https://ativadash-api.xxx.workers.dev`). Ela será a
 
 1. **Workers e Pages** → **Create** → **Pages** → **Connect to Git**.
 2. Repositório: **Ativadash** (ou o que você usar).
-3. Build:
-   - **Build command:** `cd frontend && npm ci && npm run build`
+3. **Build configuration** (obrigatório alterar):
+   - **Build command:** `cd frontend && npm ci && npm run build`  
+     (não use `npm run build` da raiz)
    - **Build output directory:** `frontend/dist`
-4. Em **Settings** → **Environment variables** (Production):
+4. **Root directory:** deixe em branco (raiz do repo).
+5. Em **Settings** → **Environment variables** (Production):
    - `VITE_API_URL` = URL do Worker, ex: `https://ativadash-api.xxx.workers.dev`
 
 Assim o frontend passa a chamar a API no Worker em produção. Em desenvolvimento, sem `VITE_API_URL`, continua usando o proxy para `http://localhost:3000` (backend Node) ou você pode apontar para o Worker em dev.
+
+**Se o build atual está falhando ou rodando backend:** no projeto **Pages**, em **Settings** → **Builds & deployments** → **Build configurations**, troque o comando de build para exatamente `cd frontend && npm ci && npm run build` e o diretório de saída para `frontend/dist`.
 
 ---
 
