@@ -1,8 +1,17 @@
-const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
+import { useAuthStore } from "@/stores/auth-store";
 
-async function getAccessToken(): Promise<string | null> {
-  const state = (await import("@/stores/auth-store")).useAuthStore.getState();
-  return state.accessToken;
+// Em produção (app.ativadash.com) usa a API; em dev usa env ou proxy /api
+function getApiBase(): string {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  if (typeof window !== "undefined" && window.location.hostname === "app.ativadash.com") {
+    return "https://api.ativadash.com";
+  }
+  return "/api";
+}
+export const API_BASE = getApiBase();
+
+function getAccessToken(): string | null {
+  return useAuthStore.getState().accessToken;
 }
 
 export async function apiRequest<T>(
@@ -19,7 +28,6 @@ export async function apiRequest<T>(
   }
   const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
   if (res.status === 401) {
-    const { useAuthStore } = await import("@/stores/auth-store");
     useAuthStore.getState().logout();
     window.location.href = "/login";
     throw new Error("Não autorizado");

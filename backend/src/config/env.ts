@@ -12,4 +12,5 @@ export const env = {
   API_BASE_URL: process.env.API_BASE_URL ?? `http://localhost:${Number(process.env.PORT) || 3000}`,
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? "",
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET ?? "",
+  GOOGLE_ADS_DEVELOPER_TOKEN: process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? "",
 };

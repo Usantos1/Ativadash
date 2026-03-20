@@ -9,7 +9,7 @@ export function MainLayout() {
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
 
   return (
-    <div className="min-h-screen bg-[#f8f9fb]">
+    <div className="min-h-screen bg-[#f1f3f6]">
       <Sidebar
         mobileOpen={sidebarOpen}
         onMobileClose={() => setSidebarOpen(false)}
@@ -21,7 +21,7 @@ export function MainLayout() {
           sidebarCollapsed && "md:ml-14"
         )}
       >
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-4 border-b border-border/60 bg-white/90 px-4 backdrop-blur">
+        <header className="sticky top-0 z-20 flex h-14 items-center gap-4 border-b border-border/50 bg-white/95 px-4 shadow-sm backdrop-blur-sm">
           <SidebarTrigger onOpen={() => setSidebarOpen(true)} />
           <div className="flex-1" />
           {/* Espaço para breadcrumb ou ações do topo */}

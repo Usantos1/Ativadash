@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import * as auth from "./auth.js";
 import * as integrations from "./integrations.js";
+import { fetchGoogleAdsMetrics } from "./google-ads-metrics.js";
 
 export interface Env {
   DB: D1Database;
@@ -11,6 +12,7 @@ export interface Env {
   API_BASE_URL?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  GOOGLE_ADS_DEVELOPER_TOKEN?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -199,6 +201,33 @@ app.delete("/api/integrations/:id", async (c) => {
   } catch {
     return c.json({ message: "Erro ao desvincular" }, 500);
   }
+});
+
+// ----- Marketing (métricas Google Ads) -----
+app.get("/api/marketing/google-ads/metrics", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) return c.json({ message: "Token não informado" }, 401);
+  const payload = await auth.verifyAccessToken(c.env.JWT_SECRET, authHeader.slice(7));
+  if (!payload) return c.json({ message: "Token inválido ou expirado" }, 401);
+
+  const period = c.req.query("period");
+  const periodDays = period === "7d" ? 7 : period === "90d" ? 90 : 30;
+
+  const result = await fetchGoogleAdsMetrics(
+    c.env.DB,
+    payload.organizationId,
+    {
+      GOOGLE_CLIENT_ID: c.env.GOOGLE_CLIENT_ID,
+      GOOGLE_CLIENT_SECRET: c.env.GOOGLE_CLIENT_SECRET,
+      GOOGLE_ADS_DEVELOPER_TOKEN: c.env.GOOGLE_ADS_DEVELOPER_TOKEN,
+    },
+    periodDays
+  );
+
+  if (!result.ok) {
+    return c.json({ message: result.message }, 400);
+  }
+  return c.json(result);
 });
 
 app.all("*", (c) => c.json({ message: "Rota não encontrada" }, 404));

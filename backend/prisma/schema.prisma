@@ -2,9 +2,9 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// SQLite para testar em localhost sem PostgreSQL. Na VPS, troque para postgresql e use DATABASE_URL.
+// Produção (VPS): postgresql. Dev local sem Postgres: use provider = "sqlite" e DATABASE_URL="file:./dev.db"
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

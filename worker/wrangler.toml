@@ -12,3 +12,5 @@ database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
 # Variáveis (secrets no dashboard: npx wrangler secret put JWT_SECRET)
 [vars]
 FRONTEND_URL = "http://localhost:5173"
+# API_BASE_URL em produção deve ser a URL do Worker (ex: https://ativadash-api.xxx.workers.dev)
+# Em dev, wrangler usa a origem da request; pode definir em .dev.vars se precisar

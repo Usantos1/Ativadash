@@ -22,3 +22,37 @@ export async function getGoogleAdsAuthUrl(): Promise<string> {
 export async function disconnectIntegration(id: string): Promise<void> {
   await api.delete(`/integrations/${id}`);
 }
+
+// Métricas do Google Ads (Marketing)
+export interface GoogleAdsMetricsSummary {
+  impressions: number;
+  clicks: number;
+  costMicros: number;
+  conversions: number;
+}
+
+export interface GoogleAdsCampaignRow {
+  campaignName: string;
+  impressions: number;
+  clicks: number;
+  costMicros: number;
+  conversions: number;
+}
+
+export interface GoogleAdsMetricsResponse {
+  ok: true;
+  summary: GoogleAdsMetricsSummary;
+  campaigns: GoogleAdsCampaignRow[];
+}
+
+export async function fetchGoogleAdsMetrics(period: "7d" | "30d" | "90d" = "30d"): Promise<GoogleAdsMetricsResponse | null> {
+  try {
+    const res = await api.get<GoogleAdsMetricsResponse | { ok: false; message: string }>(
+      `/marketing/google-ads/metrics?period=${period}`
+    );
+    if ("ok" in res && res.ok === false) return null;
+    return res as GoogleAdsMetricsResponse;
+  } catch {
+    return null;
+  }
+}

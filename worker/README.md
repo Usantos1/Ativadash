@@ -9,7 +9,7 @@ npm install
 # Crie o banco e coloque database_id no wrangler.toml
 npx wrangler d1 create ativadash-db
 npx wrangler d1 execute ativadash-db --local --file=./schema.sql
-# Secrets locais: crie .dev.vars com JWT_SECRET=..., JWT_REFRESH_SECRET=..., etc.
+# Secrets locais: copie .dev.vars.example para .dev.vars e preencha JWT_SECRET e JWT_REFRESH_SECRET
 npm run dev
 ```
 

@@ -1,0 +1,16 @@
+# Copie para .dev.vars e preencha. Usado em: npm run dev (wrangler dev)
+# .dev.vars não vai para o Git (adicione ao .gitignore se quiser)
+
+# JWT (gere valores fortes em produção)
+JWT_SECRET=dev-jwt-secret-mude-em-producao
+JWT_REFRESH_SECRET=dev-refresh-secret-mude-em-producao
+
+# Google Ads OAuth
+# GOOGLE_CLIENT_ID=
+# GOOGLE_CLIENT_SECRET=
+# Developer Token (obrigatório para ver métricas na página Marketing; pegue em googleads.google.com > Ferramentas > Configurações da API)
+# GOOGLE_ADS_DEVELOPER_TOKEN=
+
+# URLs (wrangler dev usa http://localhost:8787)
+# API_BASE_URL=http://localhost:8787
+# FRONTEND_URL=http://localhost:5173

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { API_BASE } from "@/lib/api";
 
 export function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -16,7 +17,7 @@ export function ForgotPassword() {
     if (!email) return;
     setLoading(true);
     try {
-      await fetch("/api/auth/forgot-password", {
+      await fetch(`${API_BASE}/auth/forgot-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),

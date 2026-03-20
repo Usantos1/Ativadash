@@ -1,6 +1,8 @@
-# Deploy no Cloudflare (tudo no Worker + Pages)
+# Deploy no Cloudflare (alternativa sem VPS)
 
-A API roda em um **Cloudflare Worker** com **D1**. O frontend roda em **Cloudflare Pages**. Não é necessário VPS.
+**Projeto principal:** uso com **VPS + PostgreSQL** — ver `README.md` e `DEPLOY-VPS.md`.
+
+Este guia é para quem quiser rodar **sem VPS**: API em **Cloudflare Worker** (D1) e frontend em **Cloudflare Pages**.
 
 **Importante:** são **dois projetos diferentes** na Cloudflare (um Pages para o frontend e um Worker para a API). **Não use** o build da raiz do repo (`npm run build`): ele compila backend Node + frontend e não é o que a Cloudflare deve rodar.
 
@@ -37,6 +39,7 @@ No dashboard: **Workers & Pages** → seu Worker → **Settings** → **Variable
   - `JWT_REFRESH_SECRET`: outra string aleatória forte
   - `GOOGLE_CLIENT_ID`: Client ID do OAuth Google (Google Ads)
   - `GOOGLE_CLIENT_SECRET`: Client secret do OAuth Google
+  - `GOOGLE_ADS_DEVELOPER_TOKEN`: Developer Token do Google Ads (para a página Marketing mostrar impressões, cliques, custo, conversões; obtenha em googleads.google.com → Ferramentas → Configurações da API)
 
 Ou via CLI:
 

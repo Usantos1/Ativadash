@@ -58,7 +58,8 @@
     @apply border-border;
   }
   body {
-    @apply bg-[#f8f9fb] text-foreground antialiased;
+    font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+    @apply bg-[#f1f3f6] text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }

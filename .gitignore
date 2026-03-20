@@ -2,6 +2,7 @@ node_modules
 dist
 .env
 .env.local
+.env.production
 *.log
 .DS_Store
 .idea
@@ -16,4 +17,4 @@ backend/prisma/dev.db-journal
 
 # Worker (Wrangler)
 worker/.wrangler
-worker/node_modules
+worker/.dev.vars
