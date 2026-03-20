@@ -228,6 +228,36 @@ Testar renovação automática:
 certbot renew --dry-run
 ```
 
+**Landing ativadash.com:** Para exibir a página institucional em `https://ativadash.com`, crie o site e inclua no Certbot:
+
+```bash
+nano /etc/nginx/sites-available/ativadash-landing
+```
+
+Cole (ajuste o caminho se o projeto estiver em outro lugar):
+
+```nginx
+server {
+    listen 80;
+    server_name ativadash.com www.ativadash.com;
+    root /var/www/ativadash/landing;
+    index index.html;
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+```
+
+Ativar e obter SSL:
+
+```bash
+ln -sf /etc/nginx/sites-available/ativadash-landing /etc/nginx/sites-enabled/
+nginx -t && systemctl reload nginx
+certbot --nginx -d ativadash.com -d www.ativadash.com
+```
+
+A pasta `landing` fica no repositório; após `git pull` em `/var/www/ativadash`, o Nginx já servirá o `index.html` da landing.
+
 ---
 
 ## 10. Build do frontend e enviar para a VPS
