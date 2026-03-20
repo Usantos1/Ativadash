@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import {
   fetchIntegrations,
   getGoogleAdsAuthUrl,
+  getMetaAdsAuthUrl,
   disconnectIntegration as disconnectApi,
   type IntegrationFromApi,
 } from "@/lib/integrations-api";
@@ -31,12 +32,13 @@ interface IntegrationDef {
   id: IntegrationId;
   name: string;
   slug: string;
+  logoSrc?: string;
   available: boolean;
 }
 
 const INTEGRATION_DEFS: IntegrationDef[] = [
   { id: "google-ads", name: "Google Ads", slug: "google-ads", available: true },
-  { id: "meta", name: "Meta Ads", slug: "meta", available: false },
+  { id: "meta", name: "Meta Ads", slug: "meta", logoSrc: "/logos/meta.svg", available: true },
   { id: "whatsapp", name: "WhatsApp", slug: "whatsapp", available: false },
   { id: "hotmart", name: "Hotmart", slug: "hotmart", available: false },
   { id: "kiwify", name: "Kiwify", slug: "kiwify", available: false },
@@ -97,6 +99,14 @@ export function Integrations() {
         return p;
       }, { replace: true });
       fetchIntegrations().then(setList);
+    } else if (connected === "meta-ads") {
+      setMessage({ type: "success", text: "Meta Ads conectado com sucesso." });
+      setSearchParams((p) => {
+        p.delete("connected");
+        p.delete("error");
+        return p;
+      }, { replace: true });
+      fetchIntegrations().then(setList);
     } else if (error) {
       const msg = error === "missing_code_or_state" ? "Autorização incompleta." : error === "invalid_state" ? "Sessão expirada. Tente conectar de novo." : error === "exchange_failed" ? "Falha ao conectar. Tente novamente." : "Erro ao conectar.";
       setMessage({ type: "error", text: msg });
@@ -115,6 +125,18 @@ export function Integrations() {
     setMessage(null);
     try {
       const url = await getGoogleAdsAuthUrl();
+      window.location.href = url;
+    } catch (e) {
+      setMessage({ type: "error", text: e instanceof Error ? e.message : "Não foi possível iniciar a conexão." });
+      setConnecting(false);
+    }
+  };
+
+  const handleConnectMetaAds = async () => {
+    setConnecting(true);
+    setMessage(null);
+    try {
+      const url = await getMetaAdsAuthUrl();
       window.location.href = url;
     } catch (e) {
       setMessage({ type: "error", text: e instanceof Error ? e.message : "Não foi possível iniciar a conexão." });
@@ -180,19 +202,25 @@ export function Integrations() {
               {filtered.map((def) => {
                 const connected = connectedBySlug.get(def.slug);
                 const connectedId = connected?.id;
+                const isConnectingGoogle = def.slug === "google-ads" && connecting;
+                const isConnectingMeta = def.slug === "meta" && connecting;
+                const connectingState = isConnectingGoogle || isConnectingMeta;
+                const onConnect =
+                  def.slug === "google-ads" && !connected && !connectingState
+                    ? handleConnectGoogleAds
+                    : def.slug === "meta" && !connected && !connectingState
+                      ? handleConnectMetaAds
+                      : undefined;
                 return (
                   <IntegrationCard
                     key={def.id}
                     name={def.name}
+                    logoSrc={def.logoSrc}
                     connected={!!connected}
                     lastSync={connected ? formatLastSync(connected.lastSyncAt) : undefined}
                     available={def.available}
-                    connecting={def.slug === "google-ads" && connecting}
-                    onConnect={
-                      def.slug === "google-ads" && !connected && !connecting
-                        ? handleConnectGoogleAds
-                        : undefined
-                    }
+                    connecting={connectingState}
+                    onConnect={onConnect}
                     onDisconnect={connectedId ? () => handleDisconnect(connectedId) : undefined}
                     onConfigure={connectedId ? () => {} : undefined}
                   />

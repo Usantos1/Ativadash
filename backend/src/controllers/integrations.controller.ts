@@ -2,6 +2,8 @@ import type { Request, Response } from "express";
 import {
   getGoogleAdsAuthUrl,
   exchangeGoogleAdsCode,
+  getMetaAdsAuthUrl,
+  exchangeMetaAdsCode,
   listIntegrations,
   disconnectIntegration,
 } from "../services/integrations.service.js";
@@ -48,6 +50,51 @@ export async function googleAdsCallbackHandler(req: Request, res: Response) {
       return res.redirect(`${redirectBase}?error=invalid_state`);
     }
     return res.redirect(`${redirectBase}?connected=google-ads`);
+  } catch (e) {
+    console.error(e);
+    return res.redirect(`${redirectBase}?error=exchange_failed`);
+  }
+}
+
+export async function getMetaAdsAuthUrlHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  if (!user?.organizationId) {
+    return res.status(401).json({ message: "Não autorizado" });
+  }
+  if (!env.META_APP_ID || !env.META_APP_SECRET) {
+    return res.status(503).json({
+      message: "Meta Ads não configurado. Defina META_APP_ID e META_APP_SECRET no servidor.",
+    });
+  }
+  try {
+    const url = getMetaAdsAuthUrl(user.organizationId);
+    return res.json({ url });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao gerar URL de autorização" });
+  }
+}
+
+export async function metaAdsCallbackHandler(req: Request, res: Response) {
+  const code = req.query.code as string | undefined;
+  const state = req.query.state as string | undefined;
+  const error = req.query.error as string | undefined;
+
+  const redirectBase = `${env.FRONTEND_URL}/marketing/integracoes`;
+
+  if (error) {
+    return res.redirect(`${redirectBase}?error=${encodeURIComponent(error)}`);
+  }
+  if (!code || !state) {
+    return res.redirect(`${redirectBase}?error=missing_code_or_state`);
+  }
+
+  try {
+    const organizationId = await exchangeMetaAdsCode(code, state);
+    if (!organizationId) {
+      return res.redirect(`${redirectBase}?error=invalid_state`);
+    }
+    return res.redirect(`${redirectBase}?connected=meta-ads`);
   } catch (e) {
     console.error(e);
     return res.redirect(`${redirectBase}?error=exchange_failed`);

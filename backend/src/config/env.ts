@@ -13,4 +13,6 @@ export const env = {
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? "",
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET ?? "",
   GOOGLE_ADS_DEVELOPER_TOKEN: process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? "",
+  META_APP_ID: process.env.META_APP_ID ?? "",
+  META_APP_SECRET: process.env.META_APP_SECRET ?? "",
 };

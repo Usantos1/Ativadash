@@ -19,6 +19,11 @@ export async function getGoogleAdsAuthUrl(): Promise<string> {
   return res.url;
 }
 
+export async function getMetaAdsAuthUrl(): Promise<string> {
+  const res = await api.get<{ url: string }>("/integrations/meta-ads/auth-url");
+  return res.url;
+}
+
 export async function disconnectIntegration(id: string): Promise<void> {
   await api.delete(`/integrations/${id}`);
 }

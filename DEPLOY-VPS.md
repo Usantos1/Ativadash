@@ -338,6 +338,7 @@ chmod -R 755 /var/www/ativadash/frontend/dist
 | PC     | `cd frontend && VITE_API_URL=https://api.ativadash.com npm run build` |
 | PC     | Enviar `frontend/dist` para `/var/www/ativadash/frontend/dist` (rsync ou scp) |
 | Google | Callback: `https://api.ativadash.com/api/integrations/google-ads/callback` |
+| Meta Ads | Callback: `https://api.ativadash.com/api/integrations/meta-ads/callback` (configurar em developers.facebook.com no app) |
 
 ---
 

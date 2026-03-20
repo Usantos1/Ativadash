@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 
 interface IntegrationCardProps {
   name: string;
+  logoSrc?: string;
   connected: boolean;
   lastSync?: string;
   available?: boolean;
@@ -16,6 +17,7 @@ interface IntegrationCardProps {
 
 export function IntegrationCard({
   name,
+  logoSrc,
   connected,
   lastSync,
   available = true,
@@ -38,7 +40,10 @@ export function IntegrationCard({
         </div>
       )}
       <CardContent className="flex flex-1 flex-col p-5">
-        <div className="flex flex-1 items-center justify-center">
+        <div className="flex flex-1 flex-col items-center justify-center gap-2">
+          {logoSrc && (
+            <img src={logoSrc} alt="" className="h-8 w-8 object-contain" />
+          )}
           <span className="text-lg font-semibold text-foreground">{name}</span>
         </div>
         {connected && lastSync && (
