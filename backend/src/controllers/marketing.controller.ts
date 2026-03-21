@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { fetchGoogleAdsMetrics } from "../services/google-ads-metrics.service.js";
 import { fetchMetaAdsMetrics } from "../services/meta-ads-metrics.service.js";
+import { parseMetricsDateRangeQuery } from "../utils/marketing-date-range.js";
 import {
   evaluateInsightsForOrganization,
   getOrCreateMarketingSettings,
@@ -21,13 +22,19 @@ export async function getGoogleAdsMetricsHandler(req: Request, res: Response) {
   if (!user?.organizationId) {
     return res.status(401).json({ message: "Não autorizado" });
   }
-  const period = req.query.period as string | undefined;
-  const periodDays = period === "7d" ? 7 : period === "90d" ? 90 : 30;
-
   try {
-    const result = await fetchGoogleAdsMetrics(user.organizationId, periodDays);
+    const range = parseMetricsDateRangeQuery({
+      startDate: req.query.startDate as string | undefined,
+      endDate: req.query.endDate as string | undefined,
+      period: req.query.period as string | undefined,
+    });
+    const result = await fetchGoogleAdsMetrics(user.organizationId, range);
     return res.json(result);
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("Período") || msg.includes("Data") || msg.includes("formato")) {
+      return res.status(400).json({ ok: false, message: msg });
+    }
     console.error(e);
     return res.status(500).json({ ok: false, message: "Erro ao buscar métricas do Google Ads." });
   }
@@ -38,13 +45,19 @@ export async function getMetaAdsMetricsHandler(req: Request, res: Response) {
   if (!user?.organizationId) {
     return res.status(401).json({ message: "Não autorizado" });
   }
-  const period = req.query.period as string | undefined;
-  const periodDays = period === "7d" ? 7 : period === "90d" ? 90 : 30;
-
   try {
-    const result = await fetchMetaAdsMetrics(user.organizationId, periodDays);
+    const range = parseMetricsDateRangeQuery({
+      startDate: req.query.startDate as string | undefined,
+      endDate: req.query.endDate as string | undefined,
+      period: req.query.period as string | undefined,
+    });
+    const result = await fetchMetaAdsMetrics(user.organizationId, range);
     return res.json(result);
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("Período") || msg.includes("Data") || msg.includes("formato")) {
+      return res.status(400).json({ ok: false, message: msg });
+    }
     console.error(e);
     return res.status(500).json({ ok: false, message: "Erro ao buscar métricas do Meta Ads." });
   }
@@ -101,6 +114,7 @@ export async function postMarketingInsightsHandler(req: Request, res: Response) 
   try {
     const result = await evaluateInsightsForOrganization(user.organizationId, {
       period,
+      periodLabel: parsed.data.periodLabel,
       totalSpendBrl,
       totalResults,
       totalAttributedValueBrl,

@@ -85,3 +85,11 @@
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
   @apply bg-muted-foreground/30;
 }
+
+/* react-day-picker (MarketingDateRangeDialog) */
+.marketing-day-picker {
+  --rdp-accent-color: hsl(var(--primary));
+  --rdp-accent-background-color: hsl(var(--primary) / 0.12);
+  --rdp-background-color: hsl(var(--background));
+  --rdp-outline: 2px solid hsl(var(--ring));
+}

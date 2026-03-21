@@ -29,6 +29,8 @@ export type UpdateMarketingSettingsInput = z.infer<typeof updateMarketingSetting
 
 export const evaluateInsightsSchema = z.object({
   period: periodEnum.optional().default("30d"),
+  /** Rótulo exibido nos alertas quando o período é customizado (ex.: intervalo de datas). */
+  periodLabel: z.string().max(240).optional(),
   totalSpendBrl: z.number().nonnegative(),
   totalResults: z.number().int().nonnegative(),
   totalAttributedValueBrl: z.number().nonnegative(),

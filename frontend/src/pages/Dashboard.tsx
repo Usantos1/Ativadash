@@ -10,6 +10,7 @@ import {
   MousePointer,
   Plug,
   RefreshCw,
+  CalendarRange,
   ShoppingBag,
   Target,
   TrendingUp,
@@ -24,13 +25,6 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DashboardPanel, KpiStat, SectionLabel } from "@/components/dashboard/DashboardPrimitives";
 import { formatCost, formatNumber, formatSpend } from "@/lib/metrics-format";
@@ -39,12 +33,7 @@ import { useUIStore } from "@/stores/ui-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { useMarketingMetrics } from "@/hooks/useMarketingMetrics";
 import { PerformanceAlerts } from "@/components/marketing/PerformanceAlerts";
-
-const periods = [
-  { value: "7d", label: "Últimos 7 dias" },
-  { value: "30d", label: "Últimos 30 dias" },
-  { value: "90d", label: "Últimos 90 dias" },
-] as const;
+import { MarketingDateRangeDialog } from "@/components/marketing/MarketingDateRangeDialog";
 
 function greetingName(email: string | undefined): string {
   if (!email) return "Bem-vindo";
@@ -60,12 +49,20 @@ export function Dashboard() {
   const user = useAuthStore((s) => s.user);
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const {
-    period,
-    setPeriod,
+    dateRange,
+    dateRangeLabel,
+    presetId,
+    compareEnabled,
+    pickerOpen,
+    setPickerOpen,
+    applyDateFilter,
     hasGoogle,
     hasMeta,
     metrics,
     metaMetrics,
+    cmpMetrics,
+    cmpMetaMetrics,
+    cmpLoading,
     metricsLoading,
     metaMetricsLoading,
     metricsError,
@@ -77,6 +74,13 @@ export function Dashboard() {
     insightData,
     insightLoading,
   } = useMarketingMetrics();
+
+  const dashCurrentSpend =
+    (metrics?.ok ? metrics.summary.costMicros / 1_000_000 : 0) +
+    (metaMetrics?.ok ? metaMetrics.summary.spend : 0);
+  const dashPrevSpend =
+    (cmpMetrics?.ok ? cmpMetrics.summary.costMicros / 1_000_000 : 0) +
+    (cmpMetaMetrics?.ok ? cmpMetaMetrics.summary.spend : 0);
 
   const hasAnyChannel = hasGoogle || hasMeta;
   const dataLoading = (hasGoogle && metricsLoading && !metrics) || (hasMeta && metaMetricsLoading && !metaMetrics);
@@ -146,18 +150,25 @@ export function Dashboard() {
             </p>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={period} onValueChange={(v) => setPeriod(v as "7d" | "30d" | "90d")}>
-              <SelectTrigger className="h-9 min-w-0 w-full max-w-[170px] rounded-lg border-border/80 bg-background text-sm sm:w-[170px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {periods.map((p) => (
-                  <SelectItem key={p.value} value={p.value}>
-                    {p.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 max-w-full justify-start gap-2 rounded-lg border-border/80 sm:max-w-[280px]"
+              onClick={() => setPickerOpen(true)}
+            >
+              <CalendarRange className="h-3.5 w-3.5 shrink-0 opacity-70" />
+              <span className="truncate text-left font-medium">{dateRangeLabel}</span>
+            </Button>
+            <MarketingDateRangeDialog
+              open={pickerOpen}
+              onOpenChange={setPickerOpen}
+              initial={dateRange}
+              initialLabel={dateRangeLabel}
+              initialPresetId={presetId}
+              initialCompare={compareEnabled}
+              onApply={applyDateFilter}
+            />
             {hasAnyChannel && (
               <Button
                 variant="outline"
@@ -178,6 +189,30 @@ export function Dashboard() {
           </div>
         </div>
       </div>
+
+      {compareEnabled && hasAnyChannel && (
+        <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground">
+          {cmpLoading ? (
+            <span>Carregando comparação com o período anterior…</span>
+          ) : dashPrevSpend <= 0 && dashCurrentSpend <= 0 ? (
+            <span>Comparação ativa — sem gasto no período atual nem no anterior.</span>
+          ) : (
+            <span>
+              <strong className="font-medium text-foreground">Comparação:</strong> gasto no período anterior{" "}
+              <span className="font-medium text-foreground">{formatSpend(dashPrevSpend)}</span>
+              {dashCurrentSpend > 0 && dashPrevSpend > 0 && (
+                <>
+                  {" "}
+                  (
+                  {dashCurrentSpend >= dashPrevSpend ? "+" : ""}
+                  {(((dashCurrentSpend - dashPrevSpend) / dashPrevSpend) * 100).toFixed(1)}% em relação ao período
+                  anterior)
+                </>
+              )}
+            </span>
+          )}
+        </div>
+      )}
 
       <DashboardPanel className="px-4 py-3">
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">

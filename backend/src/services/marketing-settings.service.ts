@@ -108,12 +108,15 @@ export function evaluatePerformanceInsights(
   settings: MarketingSettingsDto,
   input: {
     period: string;
+    periodLabel?: string | null;
     totalSpendBrl: number;
     totalResults: number;
     totalAttributedValueBrl: number;
   }
 ): { kpis: { cpa: number | null; roas: number | null }; alerts: InsightAlert[]; periodLabel: string } {
-  const periodLabel = periodLabels[input.period] ?? "período selecionado";
+  const custom = input.periodLabel?.trim();
+  const periodLabel =
+    custom && custom.length > 0 ? custom : (periodLabels[input.period] ?? "período selecionado");
   const cpa = input.totalResults > 0 ? input.totalSpendBrl / input.totalResults : null;
   const roas =
     input.totalSpendBrl > 0 && input.totalAttributedValueBrl > 0
@@ -247,7 +250,13 @@ export function evaluatePerformanceInsights(
 
 export async function evaluateInsightsForOrganization(
   organizationId: string,
-  input: { period: string; totalSpendBrl: number; totalResults: number; totalAttributedValueBrl: number }
+  input: {
+    period: string;
+    periodLabel?: string | null;
+    totalSpendBrl: number;
+    totalResults: number;
+    totalAttributedValueBrl: number;
+  }
 ) {
   const settings = await getOrCreateMarketingSettings(organizationId);
   return evaluatePerformanceInsights(settings, input);

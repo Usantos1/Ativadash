@@ -5,12 +5,26 @@ import {
   fetchMetaAdsMetrics,
   type GoogleAdsMetricsResponse,
   type MetaAdsMetricsResponse,
+  type MetricsDateRange,
 } from "@/lib/integrations-api";
 import { buildInsightTotals } from "@/lib/marketing-totals";
 import { usePerformanceInsights } from "@/hooks/usePerformanceInsights";
+import {
+  defaultLast30ApiRange,
+  inferInsightPeriod,
+  previousPeriodOfEqualLength,
+  pushRecentPreset,
+  type MarketingPresetId,
+} from "@/lib/marketing-date-presets";
+import type { DateFilterApplyPayload } from "@/components/marketing/MarketingDateRangeDialog";
 
 export function useMarketingMetrics() {
-  const [period, setPeriod] = useState<"7d" | "30d" | "90d">("30d");
+  const [dateRange, setDateRange] = useState<MetricsDateRange>(() => defaultLast30ApiRange());
+  const [dateRangeLabel, setDateRangeLabel] = useState("Últimos 30 dias");
+  const [presetId, setPresetId] = useState<MarketingPresetId>("last_30d");
+  const [compareEnabled, setCompareEnabled] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
   const [hasGoogle, setHasGoogle] = useState(false);
   const [hasMeta, setHasMeta] = useState(false);
   const [metrics, setMetrics] = useState<GoogleAdsMetricsResponse | null>(null);
@@ -20,6 +34,15 @@ export function useMarketingMetrics() {
   const [metricsError, setMetricsError] = useState<string | null>(null);
   const [metaMetricsError, setMetaMetricsError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const [cmpMetrics, setCmpMetrics] = useState<GoogleAdsMetricsResponse | null>(null);
+  const [cmpMetaMetrics, setCmpMetaMetrics] = useState<MetaAdsMetricsResponse | null>(null);
+  const [cmpLoading, setCmpLoading] = useState(false);
+
+  const compareRange = useMemo<MetricsDateRange | null>(() => {
+    if (!compareEnabled) return null;
+    return previousPeriodOfEqualLength(dateRange.startDate, dateRange.endDate);
+  }, [compareEnabled, dateRange.startDate, dateRange.endDate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,7 +69,7 @@ export function useMarketingMetrics() {
     setMetricsLoading(true);
     setMetricsError(null);
     try {
-      const data = await fetchGoogleAdsMetrics(period);
+      const data = await fetchGoogleAdsMetrics(dateRange);
       if (!data) {
         setMetrics(null);
         setMetricsError(
@@ -66,14 +89,14 @@ export function useMarketingMetrics() {
     } finally {
       setMetricsLoading(false);
     }
-  }, [hasGoogle, period]);
+  }, [hasGoogle, dateRange.startDate, dateRange.endDate]);
 
   const loadMetaMetrics = useCallback(async () => {
     if (!hasMeta) return;
     setMetaMetricsLoading(true);
     setMetaMetricsError(null);
     try {
-      const data = await fetchMetaAdsMetrics(period);
+      const data = await fetchMetaAdsMetrics(dateRange);
       if (!data) {
         setMetaMetrics(null);
         setMetaMetricsError("Não foi possível carregar os dados do Meta Ads.");
@@ -91,33 +114,90 @@ export function useMarketingMetrics() {
     } finally {
       setMetaMetricsLoading(false);
     }
-  }, [hasMeta, period]);
+  }, [hasMeta, dateRange.startDate, dateRange.endDate]);
+
+  const loadComparison = useCallback(async () => {
+    if (!compareRange) {
+      setCmpMetrics(null);
+      setCmpMetaMetrics(null);
+      return;
+    }
+    setCmpLoading(true);
+    try {
+      if (hasGoogle) {
+        const d = await fetchGoogleAdsMetrics(compareRange);
+        setCmpMetrics(d && d.ok ? d : null);
+      } else setCmpMetrics(null);
+      if (hasMeta) {
+        const d = await fetchMetaAdsMetrics(compareRange);
+        setCmpMetaMetrics(d && d.ok ? d : null);
+      } else setCmpMetaMetrics(null);
+    } catch {
+      setCmpMetrics(null);
+      setCmpMetaMetrics(null);
+    } finally {
+      setCmpLoading(false);
+    }
+  }, [compareRange, hasGoogle, hasMeta]);
 
   useEffect(() => {
     if (hasGoogle) loadMetrics();
     else setMetrics(null);
-  }, [hasGoogle, period, loadMetrics]);
+  }, [hasGoogle, loadMetrics]);
 
   useEffect(() => {
     if (hasMeta) loadMetaMetrics();
     else setMetaMetrics(null);
-  }, [hasMeta, period, loadMetaMetrics]);
+  }, [hasMeta, loadMetaMetrics]);
 
+  useEffect(() => {
+    if (compareEnabled && compareRange && (hasGoogle || hasMeta)) {
+      loadComparison();
+    } else {
+      setCmpMetrics(null);
+      setCmpMetaMetrics(null);
+    }
+  }, [compareEnabled, compareRange, hasGoogle, hasMeta, loadComparison]);
+
+  const insightPeriod = inferInsightPeriod(dateRange.startDate, dateRange.endDate);
   const insightTotals = useMemo(() => buildInsightTotals(metrics, metaMetrics), [metrics, metaMetrics]);
-  const { data: insightData, loading: insightLoading } = usePerformanceInsights(period, insightTotals);
+  const { data: insightData, loading: insightLoading } = usePerformanceInsights(
+    insightPeriod,
+    insightTotals,
+    dateRangeLabel
+  );
 
   const refreshAll = useCallback(() => {
     loadMetrics();
     loadMetaMetrics();
-  }, [loadMetrics, loadMetaMetrics]);
+    if (compareEnabled && compareRange) loadComparison();
+  }, [loadMetrics, loadMetaMetrics, loadComparison, compareEnabled, compareRange]);
+
+  function applyDateFilter(p: DateFilterApplyPayload) {
+    setDateRange({ startDate: p.startDate, endDate: p.endDate });
+    setDateRangeLabel(p.label);
+    setPresetId(p.presetId);
+    setCompareEnabled(p.compareEnabled);
+    if (p.presetId !== "custom") {
+      pushRecentPreset(p.presetId);
+    }
+  }
 
   return {
-    period,
-    setPeriod,
+    dateRange,
+    dateRangeLabel,
+    presetId,
+    compareEnabled,
+    pickerOpen,
+    setPickerOpen,
+    applyDateFilter,
     hasGoogle,
     hasMeta,
     metrics,
     metaMetrics,
+    cmpMetrics,
+    cmpMetaMetrics,
+    cmpLoading,
     metricsLoading,
     metaMetricsLoading,
     metricsError,

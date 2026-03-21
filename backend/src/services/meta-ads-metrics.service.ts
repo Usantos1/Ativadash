@@ -197,27 +197,16 @@ function aggregatePurchaseValue(actionValues?: ActionEntry[]): number {
   return total;
 }
 
-function dateRange(days: number): { since: string; until: string } {
-  const until = new Date();
-  const since = new Date();
-  since.setDate(since.getDate() - days);
-  return {
-    since: since.toISOString().slice(0, 10),
-    until: until.toISOString().slice(0, 10),
-  };
-}
-
 export async function fetchMetaAdsMetrics(
   organizationId: string,
-  periodDays: number
+  range: { start: string; end: string }
 ): Promise<MetaAdsMetricsResult> {
   const config = await getMetaAdsConfig(organizationId);
   if (!config?.access_token) {
     return { ok: false, message: "Meta Ads não conectado. Conecte em Integrações." };
   }
 
-  const range = dateRange(periodDays);
-  const timeRange = JSON.stringify({ since: range.since, until: range.until });
+  const timeRange = JSON.stringify({ since: range.start, until: range.end });
   const appSecret = env.META_APP_SECRET;
   if (!appSecret) {
     return { ok: false, message: "META_APP_SECRET não configurado no servidor." };

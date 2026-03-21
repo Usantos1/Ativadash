@@ -12,15 +12,9 @@ import {
   Target,
   TrendingUp,
   UserPlus,
+  CalendarRange,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DashboardPanel, KpiStat, SectionLabel } from "@/components/dashboard/DashboardPrimitives";
 import { PerformanceAlerts } from "@/components/marketing/PerformanceAlerts";
@@ -28,12 +22,7 @@ import { formatCost, formatNumber, formatSpend } from "@/lib/metrics-format";
 import { useMarketingMetrics } from "@/hooks/useMarketingMetrics";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
-
-const periods = [
-  { value: "7d", label: "Últimos 7 dias" },
-  { value: "30d", label: "Últimos 30 dias" },
-  { value: "90d", label: "Últimos 90 dias" },
-] as const;
+import { MarketingDateRangeDialog } from "@/components/marketing/MarketingDateRangeDialog";
 
 export type FunnelVariant = "captacao" | "conversao" | "receita";
 
@@ -63,12 +52,20 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const c = copy[variant];
   const {
-    period,
-    setPeriod,
+    dateRange,
+    dateRangeLabel,
+    presetId,
+    compareEnabled,
+    pickerOpen,
+    setPickerOpen,
+    applyDateFilter,
     hasGoogle,
     hasMeta,
     metrics,
     metaMetrics,
+    cmpMetrics,
+    cmpMetaMetrics,
+    cmpLoading,
     metricsLoading,
     metaMetricsLoading,
     refreshAll,
@@ -76,6 +73,13 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
     insightData,
     insightLoading,
   } = useMarketingMetrics();
+
+  const funnelCurrentSpend =
+    (metrics?.ok ? metrics.summary.costMicros / 1_000_000 : 0) +
+    (metaMetrics?.ok ? metaMetrics.summary.spend : 0);
+  const funnelPrevSpend =
+    (cmpMetrics?.ok ? cmpMetrics.summary.costMicros / 1_000_000 : 0) +
+    (cmpMetaMetrics?.ok ? cmpMetaMetrics.summary.spend : 0);
 
   const googleOk = metrics?.ok;
   const metaOk = metaMetrics?.ok;
@@ -127,18 +131,25 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
       <DashboardPanel className="px-4 py-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={period} onValueChange={(v) => setPeriod(v as "7d" | "30d" | "90d")}>
-              <SelectTrigger className="h-9 min-w-0 w-full max-w-[170px] rounded-md border-border/80 bg-background text-sm sm:w-[170px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {periods.map((p) => (
-                  <SelectItem key={p.value} value={p.value}>
-                    {p.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 max-w-full justify-start gap-2 rounded-md border-border/80 sm:max-w-[280px]"
+              onClick={() => setPickerOpen(true)}
+            >
+              <CalendarRange className="h-3.5 w-3.5 shrink-0 opacity-70" />
+              <span className="truncate text-left font-medium">{dateRangeLabel}</span>
+            </Button>
+            <MarketingDateRangeDialog
+              open={pickerOpen}
+              onOpenChange={setPickerOpen}
+              initial={dateRange}
+              initialLabel={dateRangeLabel}
+              initialPresetId={presetId}
+              initialCompare={compareEnabled}
+              onApply={applyDateFilter}
+            />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {hasGoogle || hasMeta ? (
@@ -173,6 +184,30 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
           </div>
         </div>
       </DashboardPanel>
+
+      {compareEnabled && (hasGoogle || hasMeta) && (
+        <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground">
+          {cmpLoading ? (
+            <span>Carregando comparação com o período anterior…</span>
+          ) : funnelPrevSpend <= 0 && funnelCurrentSpend <= 0 ? (
+            <span>Comparação ativa — sem gasto no período atual nem no anterior.</span>
+          ) : (
+            <span>
+              <strong className="font-medium text-foreground">Comparação:</strong> gasto no período anterior{" "}
+              <span className="font-medium text-foreground">{formatSpend(funnelPrevSpend)}</span>
+              {funnelCurrentSpend > 0 && funnelPrevSpend > 0 && (
+                <>
+                  {" "}
+                  (
+                  {funnelCurrentSpend >= funnelPrevSpend ? "+" : ""}
+                  {(((funnelCurrentSpend - funnelPrevSpend) / funnelPrevSpend) * 100).toFixed(1)}% em relação ao
+                  período anterior)
+                </>
+              )}
+            </span>
+          )}
+        </div>
+      )}
 
       <PerformanceAlerts alerts={insightData?.alerts} loading={insightLoading} />
 

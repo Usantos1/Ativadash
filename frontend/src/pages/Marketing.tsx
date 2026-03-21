@@ -9,6 +9,7 @@ import {
   DollarSign,
   Target,
   Filter,
+  CalendarRange,
   UserPlus,
   ShoppingBag,
   TrendingUp,
@@ -36,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { MarketingDateRangeDialog } from "@/components/marketing/MarketingDateRangeDialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AnalyticTable } from "@/components/marketing/AnalyticTable";
@@ -47,12 +49,6 @@ import { useUIStore } from "@/stores/ui-store";
 import type { MetaAdsCampaignRow } from "@/lib/integrations-api";
 import { useMarketingMetrics } from "@/hooks/useMarketingMetrics";
 import { PerformanceAlerts } from "@/components/marketing/PerformanceAlerts";
-
-const periods = [
-  { value: "7d", label: "Últimos 7 dias" },
-  { value: "30d", label: "Últimos 30 dias" },
-  { value: "90d", label: "Últimos 90 dias" },
-] as const;
 
 const columnHelper = createColumnHelper<MetaAdsCampaignRow>();
 const metaAdsCampaignColumns = [
@@ -112,12 +108,20 @@ export function Marketing() {
   const navigate = useNavigate();
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const {
-    period,
-    setPeriod,
+    dateRange,
+    dateRangeLabel,
+    presetId,
+    compareEnabled,
+    pickerOpen,
+    setPickerOpen,
+    applyDateFilter,
     hasGoogle,
     hasMeta,
     metrics,
     metaMetrics,
+    cmpMetrics,
+    cmpMetaMetrics,
+    cmpLoading,
     metricsLoading,
     metaMetricsLoading,
     metricsError,
@@ -129,6 +133,13 @@ export function Marketing() {
     insightData,
     insightLoading,
   } = useMarketingMetrics();
+
+  const currentSpendBrl =
+    (metrics?.ok ? metrics.summary.costMicros / 1_000_000 : 0) +
+    (metaMetrics?.ok ? metaMetrics.summary.spend : 0);
+  const prevSpendBrl =
+    (cmpMetrics?.ok ? cmpMetrics.summary.costMicros / 1_000_000 : 0) +
+    (cmpMetaMetrics?.ok ? cmpMetaMetrics.summary.spend : 0);
 
   return (
     <div
@@ -166,18 +177,25 @@ export function Marketing() {
                 <SelectItem value="none">Nenhum lançamento</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={period} onValueChange={(v) => setPeriod(v as "7d" | "30d" | "90d")}>
-              <SelectTrigger className="h-9 min-w-0 w-full max-w-[170px] rounded-md border-border/80 bg-background text-sm sm:w-[170px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {periods.map((p) => (
-                  <SelectItem key={p.value} value={p.value}>
-                    {p.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 max-w-full justify-start gap-2 rounded-md border-border/80 sm:max-w-[280px]"
+              onClick={() => setPickerOpen(true)}
+            >
+              <CalendarRange className="h-3.5 w-3.5 shrink-0 opacity-70" />
+              <span className="truncate text-left font-medium">{dateRangeLabel}</span>
+            </Button>
+            <MarketingDateRangeDialog
+              open={pickerOpen}
+              onOpenChange={setPickerOpen}
+              initial={dateRange}
+              initialLabel={dateRangeLabel}
+              initialPresetId={presetId}
+              initialCompare={compareEnabled}
+              onApply={applyDateFilter}
+            />
             {(hasGoogle || hasMeta) && (
               <span className="hidden text-xs text-muted-foreground sm:inline">
                 {hasMeta && hasGoogle ? "Meta + Google" : hasMeta ? "Meta Ads" : "Google Ads"}
@@ -216,6 +234,30 @@ export function Marketing() {
           </div>
         </div>
       </DashboardPanel>
+
+      {compareEnabled && (hasGoogle || hasMeta) && (
+        <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground">
+          {cmpLoading ? (
+            <span>Carregando comparação com o período anterior de mesmo tamanho…</span>
+          ) : prevSpendBrl <= 0 && currentSpendBrl <= 0 ? (
+            <span>Comparação ativa — sem gasto registrado no período atual nem no anterior.</span>
+          ) : (
+            <span>
+              <strong className="font-medium text-foreground">Comparação:</strong> gasto no período anterior{" "}
+              <span className="font-medium text-foreground">{formatSpend(prevSpendBrl)}</span>
+              {currentSpendBrl > 0 && prevSpendBrl > 0 && (
+                <>
+                  {" "}
+                  (
+                  {currentSpendBrl >= prevSpendBrl ? "+" : ""}
+                  {(((currentSpendBrl - prevSpendBrl) / prevSpendBrl) * 100).toFixed(1)}% em relação ao período
+                  anterior)
+                </>
+              )}
+            </span>
+          )}
+        </div>
+      )}
 
       <PerformanceAlerts alerts={insightData?.alerts} loading={insightLoading} />
 

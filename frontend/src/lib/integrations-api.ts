@@ -54,10 +54,23 @@ export interface GoogleAdsMetricsResponse {
 
 export type GoogleAdsMetricsResult = GoogleAdsMetricsResponse | { ok: false; message: string };
 
-export async function fetchGoogleAdsMetrics(period: "7d" | "30d" | "90d" = "30d"): Promise<GoogleAdsMetricsResult | null> {
+/** Intervalo em YYYY-MM-DD (fuso da conta / backend). */
+export type MetricsDateRange = { startDate: string; endDate: string };
+
+function metricsQuery(range: MetricsDateRange): string {
+  const q = new URLSearchParams({
+    startDate: range.startDate,
+    endDate: range.endDate,
+  });
+  return q.toString();
+}
+
+export async function fetchGoogleAdsMetrics(
+  range: MetricsDateRange
+): Promise<GoogleAdsMetricsResult | null> {
   try {
     const res = await api.get<GoogleAdsMetricsResult>(
-      `/marketing/google-ads/metrics?period=${period}`
+      `/marketing/google-ads/metrics?${metricsQuery(range)}`
     );
     return res;
   } catch {
@@ -96,10 +109,12 @@ export interface MetaAdsMetricsResponse {
 
 export type MetaAdsMetricsResult = MetaAdsMetricsResponse | { ok: false; message: string };
 
-export async function fetchMetaAdsMetrics(period: "7d" | "30d" | "90d" = "30d"): Promise<MetaAdsMetricsResult | null> {
+export async function fetchMetaAdsMetrics(
+  range: MetricsDateRange
+): Promise<MetaAdsMetricsResult | null> {
   try {
     const res = await api.get<MetaAdsMetricsResult>(
-      `/marketing/meta-ads/metrics?period=${period}`
+      `/marketing/meta-ads/metrics?${metricsQuery(range)}`
     );
     return res;
   } catch {

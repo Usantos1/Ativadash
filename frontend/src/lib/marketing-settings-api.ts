@@ -76,10 +76,12 @@ export async function evaluateMarketingInsights(
     totalSpendBrl: number;
     totalResults: number;
     totalAttributedValueBrl: number;
-  }
+  },
+  periodLabel?: string
 ): Promise<EvaluateInsightsResponse> {
   return api.post<EvaluateInsightsResponse>("/marketing/insights/evaluate", {
     period,
     ...totals,
+    ...(periodLabel?.trim() ? { periodLabel: periodLabel.trim() } : {}),
   });
 }

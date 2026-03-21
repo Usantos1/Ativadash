@@ -98,7 +98,7 @@ async function searchStream(
   accessToken: string,
   developerToken: string,
   customerId: string,
-  days: number
+  range: { start: string; end: string }
 ): Promise<{ summary: GoogleAdsMetricsSummary; campaigns: GoogleAdsCampaignRow[] }> {
   const query = `
     SELECT
@@ -109,7 +109,7 @@ async function searchStream(
       metrics.conversions,
       metrics.conversions_value
     FROM campaign
-    WHERE segments.date DURING LAST_${days}_DAYS
+    WHERE segments.date BETWEEN '${range.start}' AND '${range.end}'
       AND campaign.status = 'ENABLED'
   `.trim();
 
@@ -181,7 +181,7 @@ async function searchStream(
 
 export async function fetchGoogleAdsMetrics(
   organizationId: string,
-  periodDays: number = 30
+  range: { start: string; end: string }
 ): Promise<GoogleAdsMetricsResult> {
   const config = await getGoogleAdsConfig(organizationId);
   if (!config) {
@@ -224,7 +224,7 @@ export async function fetchGoogleAdsMetrics(
       accessToken,
       env.GOOGLE_ADS_DEVELOPER_TOKEN,
       customerId,
-      periodDays
+      range
     );
     return { ok: true, summary, campaigns };
   } catch (e) {
