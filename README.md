@@ -49,6 +49,20 @@ Acesse **http://localhost:5173**. O proxy aponta `/api` para `http://localhost:3
 - **Backend:** rode na VPS (Node + PM2 ou similar). Banco **PostgreSQL**; variáveis em `backend/.env` (ou ambiente). Ver `DEPLOY-VPS.md`.
 - **Frontend:** build estático (`cd frontend && npm run build`); sirva a pasta `frontend/dist` (ex.: Nginx na VPS). Em produção defina `VITE_API_URL` com a URL da API (ex.: `https://api.seudominio.com`).
 
+## Workspace (clientes, projetos, lançamentos)
+
+API autenticada em `/api/workspace/*` (JWT + `organizationId`):
+
+- `GET|POST /workspace/clients`, `PATCH|DELETE /workspace/clients/:id`
+- `GET|POST /workspace/projects`, `PATCH|DELETE /workspace/projects/:id`
+- `GET|POST /workspace/launches`, `PATCH|DELETE /workspace/launches/:id`
+- `GET /workspace/members` — usuários da empresa
+- `PATCH /auth/profile` — atualizar nome do usuário
+
+No frontend: rotas `/clientes`, `/projetos`, `/lancamentos`, `/configuracoes`, `/perfil`, `/usuarios`, `/planos`, `/admin`.
+
+Após puxar o código, rode na VPS: `npx prisma migrate deploy` (inclui FK `Project` → `ClientAccount`).
+
 ## Google Ads
 
 1. **Google Cloud Console:** projeto, credenciais OAuth 2.0 (tipo “Aplicativo da Web”).

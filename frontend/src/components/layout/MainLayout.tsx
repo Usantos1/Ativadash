@@ -4,10 +4,11 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Moon, Sun, User, Settings, LogOut } from "lucide-react";
 import { Sidebar, SidebarTrigger } from "@/components/layout/Sidebar";
 import { useUIStore } from "@/stores/ui-store";
-import { useAuthStore, type User as AuthUser } from "@/stores/auth-store";
+import { useAuthStore, type AuthMeResponse } from "@/stores/auth-store";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { OrganizationSwitcher } from "@/components/layout/OrganizationSwitcher";
 
 export function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -15,6 +16,7 @@ export function MainLayout() {
   const theme = useUIStore((s) => s.theme);
   const toggleTheme = useUIStore((s) => s.toggleTheme);
   const user = useAuthStore((s) => s.user);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
 
@@ -27,13 +29,12 @@ export function MainLayout() {
     useUIStore.getState().setTheme(useUIStore.getState().theme);
   }, []);
 
-  /** Sincroniza usuário + empresa (organização) com o backend após login ou sessão antiga */
+  /** Sincroniza perfil, vínculos e empresas gerenciadas (revenda) após login, refresh ou troca de empresa */
   useEffect(() => {
-    const token = useAuthStore.getState().accessToken;
-    if (!token) return;
+    if (!accessToken) return;
     let cancelled = false;
     api
-      .get<AuthUser>("/auth/me")
+      .get<AuthMeResponse>("/auth/me")
       .then((profile) => {
         if (cancelled) return;
         useAuthStore.setState({
@@ -44,6 +45,8 @@ export function MainLayout() {
             organizationId: profile.organizationId,
             organization: profile.organization,
           },
+          memberships: profile.memberships,
+          managedOrganizations: profile.managedOrganizations,
         });
       })
       .catch(() => {
@@ -52,7 +55,7 @@ export function MainLayout() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [accessToken]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -68,6 +71,7 @@ export function MainLayout() {
       >
         <header className="sticky top-0 z-20 flex h-16 items-center gap-4 border-b border-border/50 bg-card/95 px-4 shadow-sm backdrop-blur-sm">
           <SidebarTrigger onOpen={() => setSidebarOpen(true)} />
+          <OrganizationSwitcher />
           <div className="flex-1" />
           <div className="flex items-center gap-1">
             <Button

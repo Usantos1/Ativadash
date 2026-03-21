@@ -18,6 +18,17 @@ export type AuthUserDto = {
   organization: AuthOrganizationDto;
 };
 
+export type MembershipSummaryDto = {
+  organizationId: string;
+  role: string;
+  organization: AuthOrganizationDto;
+};
+
+export type AuthProfileExtendedDto = AuthUserDto & {
+  memberships: MembershipSummaryDto[];
+  managedOrganizations: AuthOrganizationDto[];
+};
+
 async function organizationToDto(organizationId: string): Promise<AuthOrganizationDto> {
   const org = await prisma.organization.findFirst({
     where: { id: organizationId, deletedAt: null },
@@ -42,6 +53,76 @@ async function buildAuthUserDto(
     organizationId,
     organization,
   };
+}
+
+async function listMembershipSummaries(userId: string): Promise<MembershipSummaryDto[]> {
+  const rows = await prisma.membership.findMany({
+    where: { userId },
+    include: { organization: true },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows
+    .filter((m) => !m.organization.deletedAt)
+    .map((m) => ({
+      organizationId: m.organizationId,
+      role: m.role,
+      organization: {
+        id: m.organization.id,
+        name: m.organization.name,
+        slug: m.organization.slug,
+      },
+    }));
+}
+
+/** Acesso direto (Membership) ou revenda: owner/admin da empresa mãe acessa empresa filha. */
+export async function userHasEffectiveAccess(userId: string, organizationId: string): Promise<boolean> {
+  const direct = await prisma.membership.findUnique({
+    where: { userId_organizationId: { userId, organizationId } },
+    include: { organization: true },
+  });
+  if (direct && !direct.organization.deletedAt) return true;
+
+  const org = await prisma.organization.findFirst({
+    where: { id: organizationId, deletedAt: null },
+  });
+  if (!org?.parentOrganizationId) return false;
+
+  const parentMem = await prisma.membership.findUnique({
+    where: {
+      userId_organizationId: { userId, organizationId: org.parentOrganizationId },
+    },
+  });
+  return parentMem != null && ["owner", "admin"].includes(parentMem.role);
+}
+
+/** Renomear empresa: membro direto admin/owner OU admin/owner da mãe (revenda). */
+export async function canManageOrganization(userId: string, organizationId: string): Promise<boolean> {
+  const m = await prisma.membership.findUnique({
+    where: { userId_organizationId: { userId, organizationId } },
+  });
+  if (m && ["owner", "admin"].includes(m.role)) return true;
+
+  const org = await prisma.organization.findFirst({
+    where: { id: organizationId, deletedAt: null },
+  });
+  if (!org?.parentOrganizationId) return false;
+
+  const pm = await prisma.membership.findUnique({
+    where: {
+      userId_organizationId: { userId, organizationId: org.parentOrganizationId },
+    },
+  });
+  return pm != null && ["owner", "admin"].includes(pm.role);
+}
+
+/** Operações na conta da agência (listar/criar filhos): só admin/owner com membership na org atual. */
+export async function assertDirectOrgAdmin(userId: string, organizationId: string): Promise<void> {
+  const m = await prisma.membership.findUnique({
+    where: { userId_organizationId: { userId, organizationId } },
+  });
+  if (!m || !["owner", "admin"].includes(m.role)) {
+    throw new Error("Sem permissão para gerenciar empresas vinculadas");
+  }
 }
 
 export async function register(data: RegisterInput) {
@@ -76,8 +157,10 @@ export async function register(data: RegisterInput) {
   const { accessToken, refreshToken } = await createTokens(user.id, user.email, org.id);
   await saveRefreshToken(user.id, refreshToken);
   const userDto = await buildAuthUserDto(user.id, user.email, user.name, org.id);
+  const memberships = await listMembershipSummaries(user.id);
   return {
     user: userDto,
+    memberships,
     accessToken,
     refreshToken,
   };
@@ -106,50 +189,104 @@ export async function login(data: LoginInput) {
     membership.organizationId
   );
   await saveRefreshToken(user.id, refreshToken);
+  const userDto = await buildAuthUserDto(
+    user.id,
+    user.email,
+    user.name,
+    membership.organizationId
+  );
+  const memberships = await listMembershipSummaries(user.id);
   return {
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      organizationId: membership.organizationId,
-    },
+    user: userDto,
+    memberships,
     accessToken,
     refreshToken,
   };
 }
 
-export async function refreshAccessToken(refreshToken: string) {
+export async function refreshAccessToken(refreshTokenStr: string) {
+  let decoded: { userId?: string; type?: string; organizationId?: string };
+  try {
+    decoded = jwt.verify(refreshTokenStr, env.JWT_REFRESH_SECRET) as {
+      userId?: string;
+      type?: string;
+      organizationId?: string;
+    };
+  } catch {
+    throw new Error("Refresh token inválido ou expirado");
+  }
+  if (decoded.type !== "refresh" || !decoded.userId) {
+    throw new Error("Refresh token inválido ou expirado");
+  }
+
   const stored = await prisma.refreshToken.findUnique({
-    where: { token: refreshToken },
+    where: { token: refreshTokenStr },
     include: { user: true },
   });
   if (!stored || stored.expiresAt < new Date()) {
     throw new Error("Refresh token inválido ou expirado");
   }
-  const membership = await prisma.membership.findFirst({
-    where: { userId: stored.userId },
-    orderBy: { createdAt: "asc" },
-  });
-  if (!membership) {
+
+  let orgId = decoded.organizationId;
+  if (!orgId) {
+    const m = await prisma.membership.findFirst({
+      where: { userId: stored.userId },
+      orderBy: { createdAt: "asc" },
+    });
+    orgId = m?.organizationId;
+  }
+  if (!orgId) {
     throw new Error("Usuário sem organização");
   }
+
+  const allowed = await userHasEffectiveAccess(stored.userId, orgId);
+  if (!allowed) {
+    throw new Error("Sem acesso a esta empresa");
+  }
+
   await prisma.refreshToken.delete({ where: { id: stored.id } });
   const { accessToken, refreshToken: newRefresh } = await createTokens(
     stored.user.id,
     stored.user.email,
-    membership.organizationId
+    orgId
   );
   await saveRefreshToken(stored.user.id, newRefresh);
-  const userDto = await buildAuthUserDto(
-    stored.user.id,
-    stored.user.email,
-    stored.user.name,
-    membership.organizationId
-  );
+  const userDto = await getAuthProfile(stored.userId, orgId);
+  if (!userDto) {
+    throw new Error("Sessão inválida");
+  }
+  const memberships = await listMembershipSummaries(stored.userId);
   return {
     user: userDto,
+    memberships,
     accessToken,
     refreshToken: newRefresh,
+  };
+}
+
+export async function switchActiveOrganization(userId: string, targetOrganizationId: string) {
+  const allowed = await userHasEffectiveAccess(userId, targetOrganizationId);
+  if (!allowed) {
+    throw new Error("Sem acesso a esta empresa");
+  }
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
+  });
+  if (!user) {
+    throw new Error("Usuário não encontrado");
+  }
+  const { accessToken, refreshToken } = await createTokens(userId, user.email, targetOrganizationId);
+  await saveRefreshToken(userId, refreshToken);
+  const userDto = await getAuthProfile(userId, targetOrganizationId);
+  if (!userDto) {
+    throw new Error("Não foi possível carregar o perfil");
+  }
+  const memberships = await listMembershipSummaries(userId);
+  return {
+    user: userDto,
+    memberships,
+    accessToken,
+    refreshToken,
   };
 }
 
@@ -159,14 +296,14 @@ async function createTokens(userId: string, email: string, organizationId: strin
   const refreshOpts: SignOptions = { expiresIn: "7d" };
   const accessToken = jwt.sign(payload, env.JWT_SECRET, accessOpts);
   const refreshToken = jwt.sign(
-    { userId, type: "refresh" },
+    { userId, type: "refresh", organizationId },
     env.JWT_REFRESH_SECRET,
     refreshOpts
   );
   return { accessToken, refreshToken };
 }
 
-/** Perfil para GET /auth/me: exige vínculo Membership ativo com a org do JWT */
+/** Perfil: membership direta ou acesso de revenda (JWT com organizationId da empresa cliente). */
 export async function getAuthProfile(userId: string, organizationId: string): Promise<AuthUserDto | null> {
   const membership = await prisma.membership.findUnique({
     where: {
@@ -174,24 +311,84 @@ export async function getAuthProfile(userId: string, organizationId: string): Pr
     },
     include: { user: true, organization: true },
   });
-  if (!membership?.user || membership.user.deletedAt) return null;
-  if (membership.organization.deletedAt) return null;
+  if (membership?.user && !membership.user.deletedAt && !membership.organization.deletedAt) {
+    return {
+      id: membership.user.id,
+      email: membership.user.email,
+      name: membership.user.name,
+      organizationId: membership.organization.id,
+      organization: {
+        id: membership.organization.id,
+        name: membership.organization.name,
+        slug: membership.organization.slug,
+      },
+    };
+  }
+
+  const org = await prisma.organization.findFirst({
+    where: { id: organizationId, deletedAt: null },
+  });
+  if (!org?.parentOrganizationId) return null;
+
+  const parentMembership = await prisma.membership.findUnique({
+    where: {
+      userId_organizationId: { userId, organizationId: org.parentOrganizationId },
+    },
+  });
+  if (!parentMembership || !["owner", "admin"].includes(parentMembership.role)) {
+    return null;
+  }
+
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
+  });
+  if (!user) return null;
+
   return {
-    id: membership.user.id,
-    email: membership.user.email,
-    name: membership.user.name,
-    organizationId: membership.organization.id,
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    organizationId: org.id,
     organization: {
-      id: membership.organization.id,
-      name: membership.organization.name,
-      slug: membership.organization.slug,
+      id: org.id,
+      name: org.name,
+      slug: org.slug,
     },
   };
 }
 
+export async function getAuthProfileExtended(
+  userId: string,
+  organizationId: string
+): Promise<AuthProfileExtendedDto | null> {
+  const profile = await getAuthProfile(userId, organizationId);
+  if (!profile) return null;
+  const memberships = await listMembershipSummaries(userId);
+  const managedOrganizations = await prisma.organization.findMany({
+    where: { parentOrganizationId: organizationId, deletedAt: null },
+    select: { id: true, name: true, slug: true },
+    orderBy: { name: "asc" },
+  });
+  return {
+    ...profile,
+    memberships,
+    managedOrganizations,
+  };
+}
+
+export async function updateProfile(userId: string, name: string) {
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: { name: name.trim() },
+  });
+  return { id: user.id, email: user.email, name: user.name };
+}
+
 async function saveRefreshToken(userId: string, token: string) {
   const decoded = jwt.decode(token) as { exp?: number };
-  const expiresAt = decoded?.exp ? new Date(decoded.exp * 1000) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const expiresAt = decoded?.exp
+    ? new Date(decoded.exp * 1000)
+    : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   await prisma.refreshToken.create({
     data: { token, userId, expiresAt },
   });

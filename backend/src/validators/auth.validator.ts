@@ -25,7 +25,12 @@ export const refreshTokenSchema = z.object({
   refreshToken: z.string().min(1, "Refresh token obrigatório"),
 });
 
+export const switchOrganizationSchema = z.object({
+  organizationId: z.string().min(1, "Empresa inválida"),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;
+export type SwitchOrganizationInput = z.infer<typeof switchOrganizationSchema>;

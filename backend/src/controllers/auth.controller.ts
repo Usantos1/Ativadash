@@ -3,14 +3,18 @@ import {
   login as loginService,
   register as registerService,
   refreshAccessToken,
-  getAuthProfile,
+  getAuthProfileExtended,
+  switchActiveOrganization,
+  updateProfile,
 } from "../services/auth.service.js";
 import {
   loginSchema,
   registerSchema,
   forgotPasswordSchema,
   refreshTokenSchema,
+  switchOrganizationSchema,
 } from "../validators/auth.validator.js";
+import { updateProfileSchema } from "../validators/workspace.validator.js";
 
 export async function login(req: Request, res: Response) {
   const parsed = loginSchema.safeParse(req.body);
@@ -73,13 +77,49 @@ export async function refresh(req: Request, res: Response) {
   }
 }
 
+type JwtUser = { userId: string; email: string; organizationId: string };
+
 export async function me(req: Request, res: Response) {
-  const jwtUser = (req as Request & { user: { userId: string; email: string; organizationId: string } }).user;
-  const profile = await getAuthProfile(jwtUser.userId, jwtUser.organizationId);
+  const jwtUser = (req as Request & { user: JwtUser }).user;
+  const profile = await getAuthProfileExtended(jwtUser.userId, jwtUser.organizationId);
   if (!profile) {
     return res.status(403).json({
       message: "Usuário não está associado a esta empresa ou o vínculo foi removido.",
     });
   }
   return res.json(profile);
+}
+
+export async function switchOrganization(req: Request, res: Response) {
+  const jwtUser = (req as Request & { user: JwtUser }).user;
+  const parsed = switchOrganizationSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: parsed.error.errors[0]?.message ?? "Dados inválidos",
+    });
+  }
+  try {
+    const result = await switchActiveOrganization(jwtUser.userId, parsed.data.organizationId);
+    return res.json(result);
+  } catch (e) {
+    return res.status(403).json({
+      message: e instanceof Error ? e.message : "Não foi possível trocar de empresa",
+    });
+  }
+}
+
+export async function patchProfile(req: Request, res: Response) {
+  const jwtUser = (req as Request & { user: { userId: string } }).user;
+  const parsed = updateProfileSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: parsed.error.errors[0]?.message ?? "Dados inválidos",
+    });
+  }
+  try {
+    const user = await updateProfile(jwtUser.userId, parsed.data.name);
+    return res.json(user);
+  } catch {
+    return res.status(500).json({ message: "Erro ao atualizar perfil" });
+  }
 }

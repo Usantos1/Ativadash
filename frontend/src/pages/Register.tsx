@@ -67,7 +67,10 @@ export function Register() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || "Erro ao cadastrar");
-      setAuth(json.user, json.accessToken, json.refreshToken);
+      setAuth(json.user, json.accessToken, json.refreshToken, {
+        memberships: json.memberships ?? null,
+        managedOrganizations: null,
+      });
       navigate("/dashboard", { replace: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao cadastrar");

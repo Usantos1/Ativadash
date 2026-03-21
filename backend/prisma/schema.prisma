@@ -34,6 +34,10 @@ model Organization {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
+  /// Agência/revenda: empresas filhas (cada uma com dados isolados)
+  parentOrganizationId String?
+  parentOrganization     Organization?  @relation("OrgHierarchy", fields: [parentOrganizationId], references: [id], onDelete: SetNull)
+  childOrganizations     Organization[] @relation("OrgHierarchy")
   planId    String?
   plan      Plan?    @relation(fields: [planId], references: [id])
   createdAt DateTime @default(now())
@@ -47,6 +51,8 @@ model Organization {
   dashboards         Dashboard[]
   goals              Goal[]
   marketingSettings  MarketingSettings?
+
+  @@index([parentOrganizationId])
 }
 
 /// Metas e alertas de performance de marketing por organização
@@ -113,6 +119,8 @@ model ClientAccount {
   updatedAt      DateTime @updatedAt
   deletedAt      DateTime?
 
+  projects Project[]
+
   @@index([organizationId])
 }
 
@@ -122,6 +130,7 @@ model Project {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name           String
   clientAccountId String?
+  clientAccount   ClientAccount? @relation(fields: [clientAccountId], references: [id], onDelete: SetNull)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   deletedAt      DateTime?

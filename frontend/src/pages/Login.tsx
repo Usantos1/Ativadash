@@ -47,11 +47,10 @@ export function Login() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || "Erro ao entrar");
-      login(
-        json.user,
-        json.accessToken,
-        json.refreshToken
-      );
+      login(json.user, json.accessToken, json.refreshToken, {
+        memberships: json.memberships ?? null,
+        managedOrganizations: null,
+      });
       navigate(from, { replace: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao entrar");

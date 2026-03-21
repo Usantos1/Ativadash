@@ -8,6 +8,12 @@ export interface OrganizationSummary {
   slug: string;
 }
 
+export interface MembershipSummary {
+  organizationId: string;
+  role: string;
+  organization: OrganizationSummary;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -17,11 +23,27 @@ export interface User {
   organization?: OrganizationSummary;
 }
 
+/** Resposta de GET /auth/me */
+export type AuthMeResponse = User & {
+  organization: OrganizationSummary;
+  memberships: MembershipSummary[];
+  managedOrganizations: OrganizationSummary[];
+};
+
+type AuthPatch = Partial<{
+  memberships: MembershipSummary[] | null;
+  managedOrganizations: OrganizationSummary[] | null;
+}>;
+
 interface AuthState {
   user: User | null;
   accessToken: string | null;
   refreshToken: string | null;
-  setAuth: (user: User, accessToken: string, refreshToken: string) => void;
+  /** Empresas em que o usuário é membro (troca de contexto) */
+  memberships: MembershipSummary[] | null;
+  /** Empresas cliente sob a agência atual (revenda) */
+  managedOrganizations: OrganizationSummary[] | null;
+  setAuth: (user: User, accessToken: string, refreshToken: string, patch?: AuthPatch) => void;
   setTokens: (accessToken: string, refreshToken: string) => void;
   logout: () => void;
   isAuthenticated: () => boolean;
@@ -33,11 +55,26 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       accessToken: null,
       refreshToken: null,
-      setAuth: (user, accessToken, refreshToken) =>
-        set({ user, accessToken, refreshToken }),
+      memberships: null,
+      managedOrganizations: null,
+      setAuth: (user, accessToken, refreshToken, patch) =>
+        set((s) => ({
+          user,
+          accessToken,
+          refreshToken,
+          memberships: patch?.memberships !== undefined ? patch.memberships : s.memberships,
+          managedOrganizations:
+            patch?.managedOrganizations !== undefined ? patch.managedOrganizations : s.managedOrganizations,
+        })),
       setTokens: (accessToken, refreshToken) => set({ accessToken, refreshToken }),
       logout: () =>
-        set({ user: null, accessToken: null, refreshToken: null }),
+        set({
+          user: null,
+          accessToken: null,
+          refreshToken: null,
+          memberships: null,
+          managedOrganizations: null,
+        }),
       isAuthenticated: () => !!get().accessToken,
     }),
     { name: "ativa-dash-auth" }

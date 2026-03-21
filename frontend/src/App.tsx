@@ -6,10 +6,18 @@ import { Register } from "@/pages/Register";
 import { ForgotPassword } from "@/pages/ForgotPassword";
 import { Dashboard } from "@/pages/Dashboard";
 import { Marketing } from "@/pages/Marketing";
-import { PlaceholderPage } from "@/pages/PlaceholderPage";
 import { Integrations } from "@/pages/Integrations";
 import { MarketingSettings } from "@/pages/MarketingSettings";
 import { MarketingFunnelPage } from "@/pages/MarketingFunnelPage";
+import { ClientsPage } from "@/pages/ClientsPage";
+import { ProjectsPage } from "@/pages/ProjectsPage";
+import { LaunchesPage } from "@/pages/LaunchesPage";
+import { SettingsHubPage } from "@/pages/SettingsHubPage";
+import { ProfilePage } from "@/pages/ProfilePage";
+import { CompanySettingsPage } from "@/pages/CompanySettingsPage";
+import { TeamPage } from "@/pages/TeamPage";
+import { PlansPage } from "@/pages/PlansPage";
+import { AdminPage } from "@/pages/AdminPage";
 
 function ProtectedLayout() {
   return (
@@ -35,14 +43,15 @@ export default function App() {
           <Route path="marketing/receita" element={<MarketingFunnelPage variant="receita" />} />
           <Route path="marketing/integracoes" element={<Integrations />} />
           <Route path="marketing/configuracoes" element={<MarketingSettings />} />
-          <Route path="clientes" element={<PlaceholderPage title="Clientes" />} />
-          <Route path="projetos" element={<PlaceholderPage title="Projetos" />} />
-          <Route path="lancamentos" element={<PlaceholderPage title="Lançamentos" />} />
-          <Route path="configuracoes" element={<PlaceholderPage title="Configurações" />} />
-          <Route path="perfil" element={<PlaceholderPage title="Perfil" />} />
-          <Route path="usuarios" element={<PlaceholderPage title="Usuários" />} />
-          <Route path="planos" element={<PlaceholderPage title="Planos" />} />
-          <Route path="admin" element={<PlaceholderPage title="Admin" />} />
+          <Route path="clientes" element={<ClientsPage />} />
+          <Route path="projetos" element={<ProjectsPage />} />
+          <Route path="lancamentos" element={<LaunchesPage />} />
+          <Route path="configuracoes" element={<SettingsHubPage />} />
+          <Route path="configuracoes/empresa" element={<CompanySettingsPage />} />
+          <Route path="perfil" element={<ProfilePage />} />
+          <Route path="usuarios" element={<TeamPage />} />
+          <Route path="planos" element={<PlansPage />} />
+          <Route path="admin" element={<AdminPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
       </Routes>

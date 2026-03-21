@@ -1,0 +1,26 @@
+import { Router } from "express";
+import { authMiddleware } from "../middlewares/auth.middleware.js";
+import * as workspace from "../controllers/workspace.controller.js";
+
+const router = Router();
+
+router.use(authMiddleware);
+
+router.get("/clients", workspace.clientsList);
+router.post("/clients", workspace.clientsCreate);
+router.patch("/clients/:id", workspace.clientsUpdate);
+router.delete("/clients/:id", workspace.clientsDelete);
+
+router.get("/projects", workspace.projectsList);
+router.post("/projects", workspace.projectsCreate);
+router.patch("/projects/:id", workspace.projectsUpdate);
+router.delete("/projects/:id", workspace.projectsDelete);
+
+router.get("/launches", workspace.launchesList);
+router.post("/launches", workspace.launchesCreate);
+router.patch("/launches/:id", workspace.launchesUpdate);
+router.delete("/launches/:id", workspace.launchesDelete);
+
+router.get("/members", workspace.membersList);
+
+export default router;

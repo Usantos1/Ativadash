@@ -40,7 +40,12 @@ export async function apiRequest<T>(
     const err = await res.json().catch(() => ({ message: res.statusText }));
     throw new Error(err.message || "Erro na requisição");
   }
-  return res.json();
+  if (res.status === 204) {
+    return undefined as T;
+  }
+  const text = await res.text();
+  if (!text) return undefined as T;
+  return JSON.parse(text) as T;
 }
 
 export const api = {
@@ -49,5 +54,7 @@ export const api = {
     apiRequest<T>(endpoint, { method: "POST", body: body ? JSON.stringify(body) : undefined }),
   put: <T>(endpoint: string, body?: unknown) =>
     apiRequest<T>(endpoint, { method: "PUT", body: body ? JSON.stringify(body) : undefined }),
+  patch: <T>(endpoint: string, body?: unknown) =>
+    apiRequest<T>(endpoint, { method: "PATCH", body: body ? JSON.stringify(body) : undefined }),
   delete: <T>(endpoint: string) => apiRequest<T>(endpoint, { method: "DELETE" }),
 };

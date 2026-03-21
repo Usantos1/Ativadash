@@ -6,6 +6,8 @@ import { env } from "./config/env.js";
 import authRoutes from "./routes/auth.routes.js";
 import integrationsRoutes from "./routes/integrations.routes.js";
 import marketingRoutes from "./routes/marketing.routes.js";
+import workspaceRoutes from "./routes/workspace.routes.js";
+import organizationRoutes from "./routes/organization.routes.js";
 
 const app = express();
 
@@ -28,6 +30,8 @@ app.use("/api", limiter);
 app.use("/api/auth", authRoutes);
 app.use("/api/integrations", integrationsRoutes);
 app.use("/api/marketing", marketingRoutes);
+app.use("/api/workspace", workspaceRoutes);
+app.use("/api/organization", organizationRoutes);
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", service: "ativa-dash-api" });
