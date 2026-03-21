@@ -116,6 +116,8 @@ Cole (e ajuste):
 
 ```env
 NODE_ENV=production
+# Com Nginx na frente, em produção o app já usa trust proxy (rate limit + X-Forwarded-For).
+# Só defina se precisar desligar: TRUST_PROXY=false
 PORT=3000
 DATABASE_URL="postgresql://ativadash:SUA_SENHA_SEGURA@localhost:5432/ativa_dash?schema=public"
 JWT_SECRET=gere-uma-string-aleatoria-longa-aqui

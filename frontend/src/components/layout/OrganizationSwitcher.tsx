@@ -105,7 +105,7 @@ export function OrganizationSwitcher() {
               onSelect={() => onSelect(opt.id)}
             >
               <span className="flex items-center gap-2 text-sm font-medium">
-                {opt.id === user.organizationId ? (
+                {opt.id === currentOrgId ? (
                   <Check className="h-3.5 w-3.5 text-primary" />
                 ) : (
                   <span className="w-3.5" />

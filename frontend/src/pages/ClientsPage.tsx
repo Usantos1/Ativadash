@@ -85,7 +85,8 @@ export function ClientsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Clientes</h1>
           <p className="text-sm text-muted-foreground">
-            Contas de cliente da sua empresa — use para organizar projetos e lançamentos.
+            Cadastro comercial da <strong className="font-medium text-foreground">empresa ativa</strong> no menu
+            (cada organização vê só os seus). Use para organizar projetos e lançamentos.
           </p>
         </div>
         <Button onClick={openCreate}>
