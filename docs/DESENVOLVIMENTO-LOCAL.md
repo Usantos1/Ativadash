@@ -1,5 +1,7 @@
 # Desenvolvimento local (API + Postgres)
 
+Passo a passo completo e checklist: **[LOCAL-SETUP.md](./LOCAL-SETUP.md)**.
+
 ## Erro: “credentials for `ativadash` are not valid”
 
 O backend usa `DATABASE_URL` no `.env`. Esse erro significa que **não existe** usuário/senha/banco iguais aos da URL no PostgreSQL que está em `localhost:5432`, ou o serviço não está rodando.

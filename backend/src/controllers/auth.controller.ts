@@ -22,6 +22,7 @@ import {
   acceptInvitationExistingUser,
 } from "../services/invitations.service.js";
 import { updateProfileSchema } from "../validators/workspace.validator.js";
+import { getDatabaseUnavailableResponse } from "../utils/prisma-connection-error.js";
 
 export async function login(req: Request, res: Response) {
   const parsed = loginSchema.safeParse(req.body);
@@ -34,6 +35,10 @@ export async function login(req: Request, res: Response) {
     const result = await loginService(parsed.data);
     return res.json(result);
   } catch (e) {
+    const dbErr = getDatabaseUnavailableResponse(e);
+    if (dbErr) {
+      return res.status(dbErr.status).json({ message: dbErr.message });
+    }
     return res.status(401).json({
       message: e instanceof Error ? e.message : "Erro ao entrar",
     });
@@ -51,6 +56,10 @@ export async function register(req: Request, res: Response) {
     const result = await registerService(parsed.data);
     return res.status(201).json(result);
   } catch (e) {
+    const dbErr = getDatabaseUnavailableResponse(e);
+    if (dbErr) {
+      return res.status(dbErr.status).json({ message: dbErr.message });
+    }
     return res.status(400).json({
       message: e instanceof Error ? e.message : "Erro ao cadastrar",
     });

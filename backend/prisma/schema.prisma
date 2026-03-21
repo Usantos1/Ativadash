@@ -2,7 +2,7 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// Produção (VPS): postgresql. Dev local sem Postgres: use provider = "sqlite" e DATABASE_URL="file:./dev.db"
+// Local: Postgres + DATABASE_URL no backend/.env — ver docs/LOCAL-SETUP.md
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
