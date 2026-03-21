@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Search, Plug, MessageCircle, Megaphone, Loader2, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +24,10 @@ import {
   type UpdateMarketingSettingsPayload,
 } from "@/lib/marketing-settings-api";
 import { IX } from "@/lib/integrationsCopy";
+import { AnalyticsPageHeader } from "@/components/analytics/AnalyticsPageHeader";
+import { AnalyticsSection } from "@/components/analytics/AnalyticsSection";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { IntegrationHealth } from "@/components/integrations/IntegrationCard";
 
 export type IntegrationId =
   | "google-ads"
@@ -41,34 +45,53 @@ export type IntegrationId =
   | "pagar-me"
   | "webhooks";
 
+type IntegrationCategory = "media" | "crm" | "checkout" | "webhooks" | "other";
+
+const CATEGORY_SECTION_TITLE: Record<IntegrationCategory, string> = {
+  media: "M?dia paga",
+  crm: "CRM e mensageria",
+  checkout: "Checkout, afiliados e pagamentos",
+  webhooks: "Webhooks e automa??o",
+  other: "Outras plataformas",
+};
+
 interface IntegrationDef {
   id: IntegrationId;
   name: string;
   slug: string;
   logoSrc?: string;
   available: boolean;
+  category: IntegrationCategory;
 }
 
 const AVAILABLE_SLUGS = new Set<string>(["google-ads", "meta"]);
 
 const INTEGRATION_DEFS: IntegrationDef[] = [
-  { id: "google-ads", name: "Google Ads", slug: "google-ads", available: true },
-  { id: "meta", name: "Meta Ads", slug: "meta", logoSrc: "/logos/meta.svg", available: true },
-  { id: "whatsapp", name: "WhatsApp", slug: "whatsapp", available: false },
-  { id: "hotmart", name: "Hotmart", slug: "hotmart", available: false },
-  { id: "kiwify", name: "Kiwify", slug: "kiwify", available: false },
-  { id: "eduzz", name: "Eduzz", slug: "eduzz", available: false },
-  { id: "braip", name: "Braip", slug: "braip", available: false },
-  { id: "monetizze", name: "Monetizze", slug: "monetizze", available: false },
-  { id: "hubla", name: "Hubla", slug: "hubla", available: false },
-  { id: "ticto", name: "Ticto", slug: "ticto", available: false },
-  { id: "guru", name: "Guru", slug: "guru", available: false },
-  { id: "greenn", name: "Greenn", slug: "greenn", available: false },
-  { id: "pagar-me", name: "Pagar.me", slug: "pagar-me", available: false },
-  { id: "webhooks", name: "Webhooks personalizados", slug: "webhooks", available: false },
+  { id: "google-ads", name: "Google Ads", slug: "google-ads", available: true, category: "media" },
+  { id: "meta", name: "Meta Ads", slug: "meta", logoSrc: "/logos/meta.svg", available: true, category: "media" },
+  { id: "whatsapp", name: "WhatsApp", slug: "whatsapp", available: false, category: "crm" },
+  { id: "hotmart", name: "Hotmart", slug: "hotmart", available: false, category: "checkout" },
+  { id: "kiwify", name: "Kiwify", slug: "kiwify", available: false, category: "checkout" },
+  { id: "eduzz", name: "Eduzz", slug: "eduzz", available: false, category: "checkout" },
+  { id: "braip", name: "Braip", slug: "braip", available: false, category: "checkout" },
+  { id: "monetizze", name: "Monetizze", slug: "monetizze", available: false, category: "checkout" },
+  { id: "hubla", name: "Hubla", slug: "hubla", available: false, category: "checkout" },
+  { id: "ticto", name: "Ticto", slug: "ticto", available: false, category: "checkout" },
+  { id: "guru", name: "Guru", slug: "guru", available: false, category: "checkout" },
+  { id: "greenn", name: "Greenn", slug: "greenn", available: false, category: "checkout" },
+  { id: "pagar-me", name: "Pagar.me", slug: "pagar-me", available: false, category: "checkout" },
+  { id: "webhooks", name: "Webhooks personalizados", slug: "webhooks", available: false, category: "webhooks" },
 ];
 
 const ATIVA_CRM_CONNECTIONS_URL = "https://app.ativacrm.com/connections";
+
+function healthFromLastSync(iso: string | null | undefined): IntegrationHealth {
+  if (!iso) return "idle";
+  const age = Date.now() - new Date(iso).getTime();
+  if (Number.isNaN(age)) return "idle";
+  if (age < 72 * 3600 * 1000) return "healthy";
+  return "warning";
+}
 
 function formatLastSync(iso: string | null): string | undefined {
   if (!iso) return undefined;
@@ -329,14 +352,23 @@ function AtivaCrmIntegrationPanel({
 }
 
 export function Integrations() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState("");
   const [list, setList] = useState<IntegrationFromApi[]>([]);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [laterSectionOpen, setLaterSectionOpen] = useState(false);
   const [clients, setClients] = useState<ClientAccount[]>([]);
+
+  const refetchIntegrations = useCallback(async () => {
+    try {
+      const data = await fetchIntegrations();
+      setList(data);
+    } catch {
+      setList([]);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -436,7 +468,7 @@ export function Integrations() {
       );
       setMessage({ type: "success", text: "V?nculo com cliente atualizado." });
     } catch (e) {
-      setMessage({ type: "error", text: e instanceof Error ? e.message : "Erro ao salvar vínculo." });
+      setMessage({ type: "error", text: e instanceof Error ? e.message : "Erro ao salvar v?nculo." });
     }
   };
 
@@ -455,11 +487,17 @@ export function Integrations() {
   const filteredNow = filtered.filter((d) => AVAILABLE_SLUGS.has(d.slug));
   const filteredLater = filtered.filter((d) => !AVAILABLE_SLUGS.has(d.slug));
 
-  useEffect(() => {
-    if (filteredNow.length === 0 && filteredLater.length > 0) {
-      setLaterSectionOpen(true);
+  const laterByCategory = (() => {
+    const m = new Map<IntegrationCategory, IntegrationDef[]>();
+    for (const d of filteredLater) {
+      const arr = m.get(d.category) ?? [];
+      arr.push(d);
+      m.set(d.category, arr);
     }
-  }, [filteredNow.length, filteredLater.length]);
+    return m;
+  })();
+
+  const categoryOrder: IntegrationCategory[] = ["media", "crm", "checkout", "webhooks", "other"];
 
   function renderCard(def: IntegrationDef) {
     const connected = connectedBySlug.get(def.slug);
@@ -475,10 +513,10 @@ export function Integrations() {
           : undefined;
     const clientFooter =
       connected && connectedId && (def.slug === "google-ads" || def.slug === "meta") ? (
-        <label className="flex flex-col gap-1 text-muted-foreground">
-          <span>Cliente comercial (menu Clientes)</span>
+        <label className="flex flex-col gap-1.5 font-medium text-foreground">
+          <span className="text-muted-foreground">Vincular cliente comercial</span>
           <select
-            className="h-9 w-full rounded-md border border-input bg-background px-2 text-foreground"
+            className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground"
             value={connected.clientAccountId ?? ""}
             onChange={(ev) => {
               const v = ev.target.value;
@@ -495,6 +533,23 @@ export function Integrations() {
         </label>
       ) : undefined;
 
+    const clientName = connected?.clientAccountId
+      ? (clients.find((c) => c.id === connected.clientAccountId)?.name ?? null)
+      : null;
+
+    const dataSourceLabel =
+      def.slug === "google-ads"
+        ? "Google Ads API"
+        : def.slug === "meta"
+          ? "Meta Marketing API"
+          : def.category === "checkout"
+            ? "Plataforma de vendas"
+            : def.slug === "webhooks"
+              ? "HTTPS / payloads JSON"
+              : def.category === "crm"
+                ? "Mensageria / CRM"
+                : "?";
+
     return (
       <IntegrationCard
         key={def.id}
@@ -502,10 +557,34 @@ export function Integrations() {
         logoSrc={def.logoSrc}
         connected={!!connected}
         lastSync={connected ? formatLastSync(connected.lastSyncAt) : undefined}
+        lastSyncAt={connected?.lastSyncAt}
         available={def.available}
         connecting={connectingState}
         onConnect={onConnect}
         onDisconnect={connectedId ? () => handleDisconnect(connectedId) : undefined}
+        categoryLabel={CATEGORY_SECTION_TITLE[def.category]}
+        typeLabel={def.available ? "Pronta para uso" : "Roadmap"}
+        dataSourceLabel={dataSourceLabel}
+        accountLabel={connected ? connected.platform : undefined}
+        clientName={clientName}
+        health={connected ? healthFromLastSync(connected.lastSyncAt) : undefined}
+        errorCount={0}
+        onConfigure={
+          connected && (def.slug === "google-ads" || def.slug === "meta")
+            ? () => navigate("/marketing/configuracoes")
+            : undefined
+        }
+        onTest={
+          connected && (def.slug === "google-ads" || def.slug === "meta")
+            ? () => {
+                void refetchIntegrations();
+                setMessage({
+                  type: "success",
+                  text: "Conex?o verificada ? lista atualizada. Confira a data de sincroniza??o no card.",
+                });
+              }
+            : undefined
+        }
         footer={clientFooter}
       />
     );
@@ -513,24 +592,21 @@ export function Integrations() {
 
   return (
     <div className="min-w-0 max-w-full space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{IX.pageTitle}</h1>
-          <p className="text-muted-foreground">
-            {IX.introPublicidadeWhatsapp}
-            <strong className="font-medium text-foreground">WhatsApp (CRM)</strong>.
-          </p>
-        </div>
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder={IX.searchPlaceholder}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="rounded-lg pl-9"
-          />
-        </div>
-      </div>
+      <AnalyticsPageHeader
+        title={IX.pageTitle}
+        subtitle={`${IX.introPublicidadeWhatsapp}WhatsApp (CRM).`}
+        actions={
+          <div className="relative w-full min-w-0 sm:w-72">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder={IX.searchPlaceholder}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="rounded-full border-border/70 bg-background/90 pl-9 shadow-sm"
+            />
+          </div>
+        }
+      />
 
       {message && (
         <div
@@ -559,48 +635,41 @@ export function Integrations() {
 
           <TabsContent value="ads" className="mt-0 min-w-0 focus-visible:outline-none">
             {loading ? (
-              <div className="flex justify-center py-12 text-muted-foreground">Carregando...</div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Skeleton className="h-52 rounded-xl" />
+                <Skeleton className="h-52 rounded-xl" />
+              </div>
             ) : (
               <>
                 <div className="space-y-6">
                   {filteredNow.length > 0 && (
-                    <div>
-                      <h2 className="mb-3 text-sm font-semibold text-foreground">{IX.disponiveisAgora}</h2>
-                      <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
+                    <AnalyticsSection title={IX.disponiveisAgora} description="OAuth e leitura de campanhas no período." dense>
+                      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
                         {filteredNow.map(renderCard)}
                       </div>
-                    </div>
+                    </AnalyticsSection>
                   )}
 
-                  {filteredLater.length > 0 && (
-                    <details
-                      className="group rounded-lg border border-border/60 bg-muted/20"
-                      open={laterSectionOpen}
-                      onToggle={(e) => setLaterSectionOpen(e.currentTarget.open)}
-                    >
-                      <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-foreground marker:content-none [&::-webkit-details-marker]:hidden">
-                        <span className="flex items-center justify-between gap-2">
-                          <span>
-                            {IX.outrasPlataformas}
-                            <span className="font-normal text-muted-foreground">
-                              {IX.emBreveCount(filteredLater.length)}
-                            </span>
-                          </span>
-                          <span className="text-xs text-muted-foreground group-open:hidden">Mostrar</span>
-                          <span className="hidden text-xs text-muted-foreground group-open:inline">Ocultar</span>
-                        </span>
-                      </summary>
-                      <div className="border-t border-border/60 p-4 pt-2">
-                        <p className="mb-4 text-xs text-muted-foreground">
-                          {IX.roadmapWhatsappAba}
-                          <strong className="text-foreground">WhatsApp (CRM)</strong> {IX.nestaPagina}
-                        </p>
-                        <div className="grid min-w-0 grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
-                          {filteredLater.map(renderCard)}
+                  {categoryOrder.map((cat) => {
+                    const defs = laterByCategory.get(cat);
+                    if (!defs?.length) return null;
+                    return (
+                      <AnalyticsSection
+                        key={cat}
+                        title={`${CATEGORY_SECTION_TITLE[cat]} · em breve`}
+                        description={
+                          cat === "crm"
+                            ? `${IX.roadmapWhatsappAba}WhatsApp (CRM) ${IX.nestaPagina}`
+                            : "Integração prevista no roadmap ? entre em contato para priorizar."
+                        }
+                        dense
+                      >
+                        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                          {defs.map(renderCard)}
                         </div>
-                      </div>
-                    </details>
-                  )}
+                      </AnalyticsSection>
+                    );
+                  })}
                 </div>
                 {filtered.length === 0 && (
                   <EmptyState

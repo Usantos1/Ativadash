@@ -286,6 +286,89 @@ export function computeScaleFactor(filteredSpend: number, totalSpend: number): n
 }
 
 /** Meta numérica de leads para “falta para meta” (maior alvo entre metas relacionadas a captação). */
+export type GradeLetter = "A" | "B" | "C" | "D";
+
+export type GradedCampaignRow = {
+  channel: "Google" | "Meta";
+  campaignName: string;
+  grade: GradeLetter;
+  impressions: number;
+  clicks: number;
+  spend: number;
+  leads: number;
+  sales: number;
+  revenue: number;
+  ctr: number;
+};
+
+/** Atribui faixa A–D por quartil de CTR (mesma lógica ponderada de `gradeDistributionFromCampaigns`). */
+export function enrichCampaignsWithGrades(
+  googleRows: GoogleAdsCampaignRow[],
+  metaRows: MetaAdsCampaignRow[]
+): GradedCampaignRow[] {
+  type Item = { ctr: number; weight: number; row: GradedCampaignRow };
+  const items: Item[] = [];
+  for (const r of googleRows) {
+    const w = r.conversions + r.clicks * 0.1;
+    if (w <= 0 && r.impressions <= 0) continue;
+    const ctr = r.impressions > 0 ? r.clicks / r.impressions : 0;
+    items.push({
+      ctr,
+      weight: Math.max(1, w),
+      row: {
+        channel: "Google",
+        campaignName: r.campaignName,
+        grade: "D",
+        impressions: r.impressions,
+        clicks: r.clicks,
+        spend: r.costMicros / 1_000_000,
+        leads: r.conversions,
+        sales: 0,
+        revenue: r.conversionsValue ?? 0,
+        ctr,
+      },
+    });
+  }
+  for (const r of metaRows) {
+    const w = r.leads + r.purchases + r.clicks * 0.1;
+    if (w <= 0 && r.impressions <= 0) continue;
+    const ctr = r.impressions > 0 ? r.clicks / r.impressions : 0;
+    items.push({
+      ctr,
+      weight: Math.max(1, w),
+      row: {
+        channel: "Meta",
+        campaignName: r.campaignName,
+        grade: "D",
+        impressions: r.impressions,
+        clicks: r.clicks,
+        spend: r.spend,
+        leads: r.leads,
+        sales: r.purchases ?? 0,
+        revenue: r.purchaseValue ?? 0,
+        ctr,
+      },
+    });
+  }
+  if (items.length === 0) return [];
+  items.sort((a, b) => b.ctr - a.ctr);
+  const n = items.length;
+  return items.map((c, i) => {
+    const q = i / n;
+    const g: GradeLetter = q < 0.25 ? "A" : q < 0.5 ? "B" : q < 0.75 ? "C" : "D";
+    return { ...c.row, grade: g };
+  });
+}
+
+/** Agrupa nome de campanha em “UTM campanha” heurística (primeiro segmento ou nome curto). */
+export function inferPseudoUtmCampaign(campaignName: string): string {
+  const t = campaignName.trim();
+  if (!t) return "—";
+  const parts = t.split(/[|_/\\-]+|\u2014+/).map((s) => s.trim()).filter(Boolean);
+  if (parts.length >= 2) return parts.slice(0, 2).join(" · ");
+  return t.length > 48 ? `${t.slice(0, 46)}…` : t;
+}
+
 export function pickLeadGoalTarget(goals: { targetValue: number; name: string; type: string }[]): number | null {
   if (!goals.length) return null;
   const leadish = goals.filter(

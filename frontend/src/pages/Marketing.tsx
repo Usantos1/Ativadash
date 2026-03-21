@@ -32,13 +32,15 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AnalyticTable } from "@/components/marketing/AnalyticTable";
 import { ScrollRegion } from "@/components/ui/scroll-region";
-import { DashboardPanel, KpiStat, SectionLabel } from "@/components/dashboard/DashboardPrimitives";
+import { SectionLabel } from "@/components/dashboard/DashboardPrimitives";
+import { AnalyticsPageHeader } from "@/components/analytics/AnalyticsPageHeader";
+import { KpiPremium } from "@/components/analytics/KpiPremium";
+import { AnalyticsSection } from "@/components/analytics/AnalyticsSection";
 import { CaptureTrendComposedChart } from "@/components/marketing/CaptureTrendComposedChart";
 import { CaptureDualDonuts } from "@/components/marketing/CaptureDualDonuts";
 import { formatCost, formatNumber, formatSpend } from "@/lib/metrics-format";
 import { cn } from "@/lib/utils";
-import { useUIStore } from "@/stores/ui-store";
-import type { MetaAdsCampaignRow } from "@/lib/integrations-api";
+import type { GoogleAdsCampaignRow, MetaAdsCampaignRow } from "@/lib/integrations-api";
 import { useMarketingMetrics } from "@/hooks/useMarketingMetrics";
 import { PerformanceAlerts } from "@/components/marketing/PerformanceAlerts";
 import { fetchLaunches, fetchGoals, type LaunchRow } from "@/lib/workspace-api";
@@ -60,6 +62,15 @@ import {
   pickLeadGoalTarget,
   splitHotColdLeadsSpend,
 } from "@/lib/marketing-capture-aggregate";
+
+function relDelta(
+  current: number,
+  prev: number,
+  compareEnabled: boolean
+): { pct: number } | undefined {
+  if (!compareEnabled || prev <= 0 || !Number.isFinite(current) || !Number.isFinite(prev)) return undefined;
+  return { pct: ((current - prev) / prev) * 100 };
+}
 
 const columnHelper = createColumnHelper<MetaAdsCampaignRow>();
 const metaAdsCampaignColumns = [
@@ -117,7 +128,6 @@ const metaAdsCampaignColumns = [
 
 export function Marketing() {
   const navigate = useNavigate();
-  const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const {
     dateRange,
     dateRangeLabel,
@@ -199,6 +209,19 @@ export function Marketing() {
     return filterMetaCampaigns(metaMetrics.campaigns, launchNameForFilter, tempFilter);
   }, [metaMetrics, launchNameForFilter, tempFilter]);
 
+  const googleCampaignsCmpFiltered = useMemo(() => {
+    if (!cmpMetrics?.ok) return [];
+    return filterGoogleCampaigns(cmpMetrics.campaigns, launchNameForFilter, tempFilter);
+  }, [cmpMetrics, launchNameForFilter, tempFilter]);
+
+  const metaCampaignsCmpFiltered = useMemo(() => {
+    if (!cmpMetaMetrics?.ok) return [];
+    return filterMetaCampaigns(cmpMetaMetrics.campaigns, launchNameForFilter, tempFilter);
+  }, [cmpMetaMetrics, launchNameForFilter, tempFilter]);
+
+  const cmpAggG = useMemo(() => aggregateGoogle(googleCampaignsCmpFiltered), [googleCampaignsCmpFiltered]);
+  const cmpAggM = useMemo(() => aggregateMeta(metaCampaignsCmpFiltered), [metaCampaignsCmpFiltered]);
+
   const aggG = useMemo(() => aggregateGoogle(googleCampaignsFiltered), [googleCampaignsFiltered]);
   const aggM = useMemo(() => aggregateMeta(metaCampaignsFiltered), [metaCampaignsFiltered]);
 
@@ -229,12 +252,67 @@ export function Marketing() {
   );
 
   const leadsReais = aggG.conversions + aggM.leads;
-  const totalClicksF = aggG.clicks + aggM.clicks;
+  const prevFilteredSpend = cmpAggG.costMicros / 1_000_000 + cmpAggM.spend;
+  const prevLeadsReais = cmpAggG.conversions + cmpAggM.leads;
+  const prevAttributedRevenue = cmpAggG.conversionsValue + cmpAggM.purchaseValue;
+
+  const attributedRevenue = aggG.conversionsValue + aggM.purchaseValue;
+  const impressionsT = aggG.impressions + aggM.impressions;
+  const clicksT = aggG.clicks + aggM.clicks;
+  const ctrT = impressionsT > 0 ? (clicksT / impressionsT) * 100 : null;
+  const cpcT = clicksT > 0 ? filteredSpend / clicksT : null;
+  const cpmT = impressionsT > 0 ? (filteredSpend / impressionsT) * 1000 : null;
+  const roasBlend = filteredSpend > 0 && attributedRevenue > 0 ? attributedRevenue / filteredSpend : null;
+  const ticketMedio = aggM.purchases > 0 ? attributedRevenue / aggM.purchases : null;
+  const leadToSalePct = aggM.leads > 0 ? (aggM.purchases / aggM.leads) * 100 : null;
+
+  const unifiedCampaignRows = useMemo(() => {
+    const gRows: GoogleAdsCampaignRow[] = metrics?.ok ? googleCampaignsFiltered : [];
+    const mRows: MetaAdsCampaignRow[] = metaMetrics?.ok ? metaCampaignsFiltered : [];
+    const out: {
+      channel: "Google" | "Meta";
+      campaignName: string;
+      spend: number;
+      impressions: number;
+      clicks: number;
+      leads: number;
+      sales: number;
+      revenue: number;
+    }[] = [];
+    for (const r of gRows) {
+      out.push({
+        channel: "Google",
+        campaignName: r.campaignName,
+        spend: r.costMicros / 1_000_000,
+        impressions: r.impressions,
+        clicks: r.clicks,
+        leads: r.conversions,
+        sales: 0,
+        revenue: r.conversionsValue ?? 0,
+      });
+    }
+    for (const r of mRows) {
+      out.push({
+        channel: "Meta",
+        campaignName: r.campaignName,
+        spend: r.spend,
+        impressions: r.impressions,
+        clicks: r.clicks,
+        leads: r.leads,
+        sales: r.purchases ?? 0,
+        revenue: r.purchaseValue ?? 0,
+      });
+    }
+    return out.sort((a, b) => b.spend - a.spend);
+  }, [metrics?.ok, metaMetrics?.ok, googleCampaignsFiltered, metaCampaignsFiltered]);
+
   const mqlNumerator = aggG.conversions + aggM.purchases;
   const mqlDen = Math.max(1, aggG.conversions + aggM.leads + aggM.purchases);
   const mqlPct = (mqlNumerator / mqlDen) * 100;
   const cpaTrafego = leadsReais > 0 ? filteredSpend / leadsReais : 0;
-  const surveyRatePct = totalClicksF > 0 ? (leadsReais / totalClicksF) * 100 : null;
+  const surveyRatePct = clicksT > 0 ? (leadsReais / clicksT) * 100 : null;
+  const cplQualified =
+    mqlNumerator > 0 ? filteredSpend / mqlNumerator : leadsReais > 0 ? filteredSpend / leadsReais : null;
 
   const faltaMetaLeads =
     leadGoalTarget != null && leadGoalTarget > 0 ? Math.max(0, Math.round(leadGoalTarget - leadsReais)) : null;
@@ -244,6 +322,15 @@ export function Marketing() {
     leadGoalTarget != null && targetCpa != null && leadGoalTarget > 0
       ? leadGoalTarget * targetCpa - filteredSpend
       : null;
+
+  const prevImpressionsT = cmpAggG.impressions + cmpAggM.impressions;
+  const prevClicksT = cmpAggG.clicks + cmpAggM.clicks;
+  const prevCtrT = prevImpressionsT > 0 ? (prevClicksT / prevImpressionsT) * 100 : null;
+  const prevCpcT = prevClicksT > 0 ? prevFilteredSpend / prevClicksT : null;
+  const prevCpmT = prevImpressionsT > 0 ? (prevFilteredSpend / prevImpressionsT) * 1000 : null;
+  const prevCpaTrafego = prevLeadsReais > 0 ? prevFilteredSpend / prevLeadsReais : null;
+  const prevRoasBlend =
+    prevFilteredSpend > 0 && prevAttributedRevenue > 0 ? prevAttributedRevenue / prevFilteredSpend : null;
 
   const grades = useMemo(
     () => gradeDistributionFromCampaigns(googleCampaignsFiltered, metaCampaignsFiltered),
@@ -315,37 +402,41 @@ export function Marketing() {
     </Button>
   );
 
-  return (
-    <div
-      className={cn(
-        "w-full space-y-6",
-        sidebarCollapsed ? "max-w-none" : "mx-auto max-w-[1600px]"
-      )}
-    >
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Marketing</h1>
-          <p className="text-sm text-muted-foreground">
-            Captação por lançamento · Meta e Google Ads
-          </p>
-        </div>
-        {lastUpdated && (
-          <p className="text-xs text-muted-foreground">
-            Última atualização:{" "}
-            <span className="font-medium text-foreground">
-              {lastUpdated.toLocaleDateString("pt-BR")} às{" "}
-              {lastUpdated.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-            </span>
-          </p>
-        )}
-      </div>
+  const dataSourceLabel =
+    hasMeta && hasGoogle ? "Meta + Google Ads" : hasMeta ? "Meta Ads" : hasGoogle ? "Google Ads" : "—";
 
-      <DashboardPanel className="px-4 py-3">
+  return (
+    <div className="w-full space-y-6">
+      <AnalyticsPageHeader
+        title="Marketing"
+        subtitle="Visão executiva de investimento, captação e retorno — consolidado por lançamento, temperatura de tráfego e período."
+        meta={
+          <>
+            {lastUpdated ? (
+              <span>
+                Última sincronização:{" "}
+                <span className="font-medium text-foreground">
+                  {lastUpdated.toLocaleDateString("pt-BR")} ·{" "}
+                  {lastUpdated.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </span>
+            ) : null}
+            {compareEnabled ? (
+              <span className="rounded-md bg-primary/10 px-2 py-0.5 font-medium text-primary">
+                Comparando com período anterior
+              </span>
+            ) : null}
+            <span>Fonte dos dados: {dataSourceLabel}</span>
+          </>
+        }
+      />
+
+      <div className="rounded-xl border border-border/70 bg-card/90 p-4 shadow-sm backdrop-blur-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex min-w-0 max-w-full items-center gap-2 sm:max-w-[320px]">
+            <div className="flex min-w-0 max-w-full items-center gap-2 sm:max-w-[min(100%,360px)]">
               <Select value={launchId} onValueChange={setLaunchId}>
-                <SelectTrigger className="h-9 min-w-0 flex-1 rounded-md border-border/80 bg-background text-sm">
+                <SelectTrigger className="h-9 min-w-0 flex-1 rounded-lg border-border/80 bg-background text-sm shadow-sm">
                   <SelectValue placeholder="Lançamento" />
                 </SelectTrigger>
                 <SelectContent>
@@ -370,7 +461,7 @@ export function Marketing() {
                 </span>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-1 rounded-md border border-border/60 bg-muted/30 p-0.5">
+            <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border/60 bg-muted/40 p-0.5">
               {tempBtn("geral", "Geral")}
               {tempBtn("frio", "Frio")}
               {tempBtn("quente", "Quente")}
@@ -379,7 +470,7 @@ export function Marketing() {
               type="button"
               variant="outline"
               size="sm"
-              className="h-9 max-w-full justify-start gap-2 rounded-md border-border/80 sm:max-w-[280px]"
+              className="h-9 max-w-full justify-start gap-2 rounded-lg border-border/80 bg-background shadow-sm sm:max-w-[300px]"
               onClick={() => setPickerOpen(true)}
             >
               <CalendarRange className="h-3.5 w-3.5 shrink-0 opacity-70" />
@@ -394,11 +485,6 @@ export function Marketing() {
               initialCompare={compareEnabled}
               onApply={applyDateFilter}
             />
-            {(hasGoogle || hasMeta) && (
-              <span className="hidden text-xs text-muted-foreground sm:inline">
-                {hasMeta && hasGoogle ? "Meta + Google" : hasMeta ? "Meta Ads" : "Google Ads"}
-              </span>
-            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {hasGoogle || hasMeta ? (
@@ -406,7 +492,7 @@ export function Marketing() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 rounded-md border-border/80"
+                  className="h-9 rounded-lg border-border/80 shadow-sm"
                   disabled={metricsLoading || metaMetricsLoading}
                   onClick={() => refreshAll()}
                 >
@@ -418,16 +504,16 @@ export function Marketing() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 rounded-md border-border/80"
+                  className="h-9 rounded-lg border-border/80 shadow-sm"
                   type="button"
                   onClick={() => navigate("/lancamentos")}
                 >
                   <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                  Editar
+                  Lançamentos
                 </Button>
                 <Button
                   size="sm"
-                  className="h-9 rounded-md"
+                  className="h-9 rounded-lg shadow-sm"
                   variant="secondary"
                   type="button"
                   onClick={handleShare}
@@ -436,7 +522,7 @@ export function Marketing() {
                   Compartilhar
                 </Button>
                 {shareHint ? <span className="text-xs text-muted-foreground">{shareHint}</span> : null}
-                <Button variant="outline" size="sm" className="h-9 rounded-md border-border/80" asChild>
+                <Button variant="outline" size="sm" className="h-9 rounded-lg border-border/80 shadow-sm" asChild>
                   <Link to="/marketing/configuracoes">Metas e alertas</Link>
                 </Button>
               </>
@@ -449,12 +535,12 @@ export function Marketing() {
           </div>
         </div>
         {launchId !== "all" && selectedLaunch && (
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            Campanhas filtradas quando o nome contém tokens do lançamento (“{selectedLaunch.name}”). Ajuste nomes no
-            Google/Meta ou o título do lançamento para coincidir.
+          <p className="mt-3 border-t border-border/50 pt-3 text-[11px] leading-relaxed text-muted-foreground">
+            Filtro por lançamento: campanhas cujo nome contém tokens de “{selectedLaunch.name}”. Ajuste títulos no
+            Google/Meta ou o nome do lançamento para alinhar.
           </p>
         )}
-      </DashboardPanel>
+      </div>
 
       {(hasGoogle || hasMeta) && loadingAny && (
         <div className="rounded-lg border border-primary/20 bg-primary/[0.06] px-4 py-3 shadow-sm">
@@ -500,61 +586,202 @@ export function Marketing() {
       ) : (
         <div className="space-y-6">
           {(metrics?.ok || metaMetrics?.ok) && (
-            <DashboardPanel className="overflow-hidden">
-              <div className="border-b border-border/60 bg-muted/30 px-5 py-4">
-                <h2 className="text-base font-semibold tracking-tight">Desempenho geral da captação</h2>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Indicadores no período · respeitam lançamento e temperatura selecionados
-                </p>
-              </div>
-              <div className="space-y-6 p-5">
+            <AnalyticsSection
+              title="Indicadores executivos"
+              description="KPIs consolidados no período, filtros de lançamento e temperatura aplicados. Deltas aparecem ao ativar comparação no calendário."
+              dense
+            >
+              <div className="space-y-5">
                 <div>
-                  <SectionLabel>Indicadores principais</SectionLabel>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-                    <KpiStat title="Leads reais totais" value={formatNumber(Math.round(leadsReais))} icon={UserPlus} />
-                    <KpiStat
-                      title="Leads qualificados (MQL)"
-                      value={`${mqlPct.toFixed(2)}%`}
-                      hint="Conversões Google + vendas Meta ÷ volume com leads"
-                      icon={Target}
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Linha 1 · resultado e retorno
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+                    <KpiPremium
+                      label="Investimento"
+                      value={formatSpend(filteredSpend)}
+                      icon={DollarSign}
+                      source={dataSourceLabel}
+                      delta={relDelta(filteredSpend, prevFilteredSpend, compareEnabled)}
                     />
-                    <KpiStat
-                      title="CPA tráfego"
+                    <KpiPremium
+                      label="Leads"
+                      value={formatNumber(Math.round(leadsReais))}
+                      icon={UserPlus}
+                      source={dataSourceLabel}
+                      delta={relDelta(leadsReais, prevLeadsReais, compareEnabled)}
+                      hint="Conversões Google + leads Meta no filtro."
+                    />
+                    <KpiPremium
+                      label="Leads qualificados (est.)"
+                      value={formatNumber(Math.round(mqlNumerator))}
+                      icon={Target}
+                      source={dataSourceLabel}
+                      delta={relDelta(mqlNumerator, cmpAggG.conversions + cmpAggM.purchases, compareEnabled)}
+                      hint={`${mqlPct.toFixed(1)}% do volume com sinal de lead/venda (modelo interno).`}
+                    />
+                    <KpiPremium
+                      label="Vendas (Meta)"
+                      value={formatNumber(aggM.purchases)}
+                      icon={TrendingUp}
+                      source="Meta Ads"
+                      delta={relDelta(aggM.purchases, cmpAggM.purchases, compareEnabled)}
+                      hint="Compras no pixel; Google permanece em conversões na aba da plataforma."
+                    />
+                    <KpiPremium
+                      label="Faturamento atribuído"
+                      value={formatSpend(attributedRevenue)}
+                      icon={BarChart3}
+                      source={dataSourceLabel}
+                      delta={relDelta(attributedRevenue, prevAttributedRevenue, compareEnabled)}
+                      hint="Valor de conversão Google + valor de compra Meta."
+                    />
+                    <KpiPremium
+                      label="ROAS"
+                      value={roasBlend != null ? `${roasBlend.toFixed(2)}x` : "—"}
+                      icon={TrendingUp}
+                      source={dataSourceLabel}
+                      delta={
+                        roasBlend != null && prevRoasBlend != null
+                          ? relDelta(roasBlend, prevRoasBlend, compareEnabled)
+                          : undefined
+                      }
+                    />
+                    <KpiPremium
+                      label="CPA (tráfego)"
                       value={leadsReais > 0 ? formatSpend(cpaTrafego) : "—"}
                       icon={DollarSign}
-                    />
-                    <KpiStat title="Valor investido" value={formatSpend(filteredSpend)} icon={DollarSign} />
-                    <KpiStat
-                      title="Falta para a meta"
-                      value={faltaMetaLeads != null ? formatNumber(faltaMetaLeads) : "—"}
-                      hint={
-                        leadGoalTarget != null
-                          ? `Meta: ${formatNumber(leadGoalTarget)} leads`
-                          : "Sem meta de leads cadastrada (Goal)"
+                      source={dataSourceLabel}
+                      delta={
+                        leadsReais > 0 && prevLeadsReais > 0 && prevCpaTrafego != null
+                          ? relDelta(cpaTrafego, prevCpaTrafego, compareEnabled)
+                          : undefined
                       }
-                      icon={TrendingUp}
+                      deltaInvert
+                      hint="Investimento ÷ leads totais."
                     />
-                    <KpiStat
-                      title="Falta investir (estim.)"
-                      value={
-                        faltaInvestir != null
-                          ? formatSpend(faltaInvestir)
-                          : "—"
-                      }
-                      hint="Meta de leads × CPA alvo − gasto (configurações)"
+                    <KpiPremium
+                      label="Ticket médio"
+                      value={ticketMedio != null ? formatSpend(ticketMedio) : "—"}
                       icon={DollarSign}
-                    />
-                    <KpiStat
-                      title="Taxa clique → lead"
-                      value={surveyRatePct != null ? `${surveyRatePct.toFixed(2)}%` : "—"}
-                      hint="Proxy até integrar pesquisa/CRM"
-                      icon={MousePointer}
+                      source="Receita ÷ vendas Meta"
+                      hint={aggM.purchases === 0 ? "Sem vendas Meta no período." : undefined}
                     />
                   </div>
                 </div>
 
                 <div>
-                  <SectionLabel>Faixas de performance (por CTR ponderado)</SectionLabel>
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Linha 2 · eficiência e metas
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+                    <KpiPremium
+                      size="sm"
+                      label="CTR"
+                      value={ctrT != null ? `${ctrT.toFixed(2)}%` : "—"}
+                      icon={MousePointer}
+                      source={dataSourceLabel}
+                      delta={
+                        ctrT != null && prevCtrT != null
+                          ? relDelta(ctrT, prevCtrT, compareEnabled)
+                          : undefined
+                      }
+                    />
+                    <KpiPremium
+                      size="sm"
+                      label="CPC"
+                      value={cpcT != null ? formatSpend(cpcT) : "—"}
+                      icon={MousePointer}
+                      source={dataSourceLabel}
+                      delta={
+                        cpcT != null && prevCpcT != null
+                          ? relDelta(cpcT, prevCpcT, compareEnabled)
+                          : undefined
+                      }
+                      deltaInvert
+                    />
+                    <KpiPremium
+                      size="sm"
+                      label="CPM"
+                      value={cpmT != null ? formatSpend(cpmT) : "—"}
+                      icon={Eye}
+                      source={dataSourceLabel}
+                      delta={
+                        cpmT != null && prevCpmT != null
+                          ? relDelta(cpmT, prevCpmT, compareEnabled)
+                          : undefined
+                      }
+                      deltaInvert
+                    />
+                    <KpiPremium
+                      size="sm"
+                      label="Conv. lead → venda"
+                      value={leadToSalePct != null ? `${leadToSalePct.toFixed(2)}%` : "—"}
+                      icon={Target}
+                      source="Meta"
+                      hint="Vendas Meta ÷ leads Meta."
+                    />
+                    <KpiPremium
+                      size="sm"
+                      label="Clique → lead"
+                      value={surveyRatePct != null ? `${surveyRatePct.toFixed(2)}%` : "—"}
+                      icon={Filter}
+                      source="Proxy funil"
+                      hint="Leads totais ÷ cliques até integrar página/checkout."
+                    />
+                    <KpiPremium
+                      size="sm"
+                      label="Checkout → compra"
+                      value="—"
+                      icon={BarChart3}
+                      source="—"
+                      hint="Conecte checkout/pagamentos para preencher."
+                    />
+                    <KpiPremium
+                      size="sm"
+                      label="Taxa de resposta"
+                      value="—"
+                      icon={Clock}
+                      source="CRM"
+                      hint="Disponível quando houver integração de equipe/comercial."
+                    />
+                    <KpiPremium
+                      size="sm"
+                      label="Custo / resultado qualif."
+                      value={cplQualified != null ? formatSpend(cplQualified) : "—"}
+                      icon={DollarSign}
+                      source={dataSourceLabel}
+                      deltaInvert
+                      hint="Investimento ÷ (conv. Google + vendas Meta)."
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <KpiPremium
+                    size="sm"
+                    label="Falta para meta de leads"
+                    value={faltaMetaLeads != null ? formatNumber(faltaMetaLeads) : "—"}
+                    icon={TrendingUp}
+                    hint={
+                      leadGoalTarget != null
+                        ? `Meta: ${formatNumber(leadGoalTarget)} leads (Goals).`
+                        : "Defina meta em Metas e alertas / Goals."
+                    }
+                  />
+                  <KpiPremium
+                    size="sm"
+                    label="Falta investir (estim.)"
+                    value={faltaInvestir != null ? formatSpend(faltaInvestir) : "—"}
+                    icon={DollarSign}
+                    hint="Meta de leads × CPA alvo − gasto (configurações)."
+                  />
+                </div>
+
+                <div>
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Distribuição por faixa (CTR ponderado)
+                  </p>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {(
                       [
@@ -566,7 +793,7 @@ export function Marketing() {
                     ).map(([k, label, pct]) => (
                       <div
                         key={k}
-                        className="rounded-lg border border-border/80 bg-muted/20 px-3 py-2.5 text-center"
+                        className="rounded-lg border border-border/80 bg-muted/15 px-3 py-2.5 text-center transition-colors hover:bg-muted/25"
                       >
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                           Faixa {k}
@@ -592,28 +819,142 @@ export function Marketing() {
                   </div>
                 </div>
               </div>
-            </DashboardPanel>
+            </AnalyticsSection>
           )}
 
-          <DashboardPanel className="overflow-hidden">
-            <div className="border-b border-border/60 bg-muted/30 px-5 py-4">
-              <h2 className="text-base font-semibold tracking-tight">Desempenho por plataformas</h2>
-              <p className="mt-0.5 text-xs text-muted-foreground">Meta Ads e Google Ads · gráficos e campanhas</p>
-            </div>
-            <div className="p-5 pt-4">
-              <Tabs defaultValue={hasMeta ? "meta-ads" : "google-ads"} className="w-full">
-                <TabsList className="h-10 rounded-md border border-border/80 bg-muted/40 p-1">
-                  {hasMeta && (
-                    <TabsTrigger value="meta-ads" className="rounded-md text-xs font-semibold uppercase tracking-wide">
-                      Meta Ads
-                    </TabsTrigger>
+          {(metrics?.ok || metaMetrics?.ok) && unifiedCampaignRows.length > 0 && (
+            <AnalyticsSection
+              title="Campanhas consolidadas"
+              description="Visão única Meta + Google, ordenada por investimento. Ideal para revisão executiva e priorização."
+              dense
+            >
+              <ScrollRegion className="scrollbar-thin">
+                <table className="w-full min-w-[920px] text-sm">
+                  <thead>
+                    <tr className="border-b border-border/70 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <th className="pb-3 pr-3 font-medium">Canal</th>
+                      <th className="pb-3 pr-3 font-medium">Campanha</th>
+                      <th className="pb-3 pr-3 text-right font-medium">Investimento</th>
+                      <th className="pb-3 pr-3 text-right font-medium">Impr.</th>
+                      <th className="pb-3 pr-3 text-right font-medium">Cliques</th>
+                      <th className="pb-3 pr-3 text-right font-medium">CTR</th>
+                      <th className="pb-3 pr-3 text-right font-medium">CPC</th>
+                      <th className="pb-3 pr-3 text-right font-medium">Leads / conv.</th>
+                      <th className="pb-3 pr-3 text-right font-medium">Vendas</th>
+                      <th className="pb-3 pr-3 text-right font-medium">Receita</th>
+                      <th className="pb-3 text-right font-medium">CPA</th>
+                      <th className="pb-3 text-right font-medium">ROAS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {unifiedCampaignRows.map((row, i) => {
+                      const ctr = row.impressions > 0 ? (row.clicks / row.impressions) * 100 : null;
+                      const cpc = row.clicks > 0 ? row.spend / row.clicks : null;
+                      const leadish = row.leads + row.sales;
+                      const cpa = leadish > 0 ? row.spend / leadish : null;
+                      const roasRow = row.spend > 0 && row.revenue > 0 ? row.revenue / row.spend : null;
+                      return (
+                        <tr
+                          key={`${row.channel}-${row.campaignName}-${i}`}
+                          className="border-b border-border/40 transition-colors hover:bg-muted/30"
+                        >
+                          <td className="py-2.5 pr-3">
+                            <span
+                              className={cn(
+                                "inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                                row.channel === "Meta"
+                                  ? "bg-primary/15 text-primary"
+                                  : "bg-muted text-muted-foreground"
+                              )}
+                            >
+                              {row.channel}
+                            </span>
+                          </td>
+                          <td className="max-w-[220px] truncate py-2.5 pr-3 font-medium" title={row.campaignName}>
+                            {row.campaignName || "—"}
+                          </td>
+                          <td className="py-2.5 pr-3 text-right tabular-nums">{formatSpend(row.spend)}</td>
+                          <td className="py-2.5 pr-3 text-right tabular-nums">{formatNumber(row.impressions)}</td>
+                          <td className="py-2.5 pr-3 text-right tabular-nums">{formatNumber(row.clicks)}</td>
+                          <td className="py-2.5 pr-3 text-right tabular-nums">
+                            {ctr != null ? `${ctr.toFixed(2)}%` : "—"}
+                          </td>
+                          <td className="py-2.5 pr-3 text-right tabular-nums">
+                            {cpc != null ? formatSpend(cpc) : "—"}
+                          </td>
+                          <td className="py-2.5 pr-3 text-right tabular-nums">{formatNumber(row.leads)}</td>
+                          <td className="py-2.5 pr-3 text-right tabular-nums">{formatNumber(row.sales)}</td>
+                          <td className="py-2.5 pr-3 text-right tabular-nums">{formatSpend(row.revenue)}</td>
+                          <td className="py-2.5 text-right tabular-nums">
+                            {cpa != null ? formatSpend(cpa) : "—"}
+                          </td>
+                          <td className="py-2.5 text-right tabular-nums">
+                            {roasRow != null ? `${roasRow.toFixed(2)}x` : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </ScrollRegion>
+            </AnalyticsSection>
+          )}
+
+          <AnalyticsSection
+            title="Desempenho por plataforma"
+            description="Detalhamento nativo de cada rede: séries diárias, funis e tabelas de campanha."
+            dense
+          >
+            <Tabs defaultValue="consolidado" className="w-full">
+              <TabsList className="mb-4 flex h-auto min-h-10 w-full flex-wrap gap-1 rounded-lg border border-border/80 bg-muted/40 p-1">
+                <TabsTrigger
+                  value="consolidado"
+                  className="rounded-md text-xs font-semibold uppercase tracking-wide data-[state=active]:shadow-sm"
+                >
+                  Resumo
+                </TabsTrigger>
+                {hasMeta && (
+                  <TabsTrigger
+                    value="meta-ads"
+                    className="rounded-md text-xs font-semibold uppercase tracking-wide data-[state=active]:shadow-sm"
+                  >
+                    Meta Ads
+                  </TabsTrigger>
+                )}
+                {hasGoogle && (
+                  <TabsTrigger
+                    value="google-ads"
+                    className="rounded-md text-xs font-semibold uppercase tracking-wide data-[state=active]:shadow-sm"
+                  >
+                    Google Ads
+                  </TabsTrigger>
+                )}
+              </TabsList>
+
+              <TabsContent value="consolidado" className="mt-0 space-y-4">
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  Use a aba de cada rede para métricas completas e gráficos específicos. A tabela consolidada acima
+                  reúne ambas para leitura única.
+                </p>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {hasMeta && metaMetrics?.ok && (
+                    <div className="rounded-lg border border-border/70 bg-muted/10 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Meta Ads</p>
+                      <p className="mt-2 text-2xl font-semibold tabular-nums">{formatSpend(aggM.spend)}</p>
+                      <p className="text-xs text-muted-foreground">Gasto filtrado · {formatNumber(aggM.leads)} leads</p>
+                    </div>
                   )}
-                  {hasGoogle && (
-                    <TabsTrigger value="google-ads" className="rounded-md text-xs font-semibold uppercase tracking-wide">
-                      Google Ads
-                    </TabsTrigger>
+                  {hasGoogle && metrics?.ok && (
+                    <div className="rounded-lg border border-border/70 bg-muted/10 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Google Ads</p>
+                      <p className="mt-2 text-2xl font-semibold tabular-nums">{formatCost(aggG.costMicros)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Gasto filtrado · {formatNumber(aggG.conversions)} conversões
+                      </p>
+                    </div>
                   )}
-                </TabsList>
+                </div>
+              </TabsContent>
 
                 {hasGoogle && (
                   <TabsContent value="google-ads" className="mt-4 space-y-5">
@@ -633,20 +974,23 @@ export function Marketing() {
                       <>
                         <SectionLabel>Resumo (filtrado)</SectionLabel>
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                          <KpiStat title="Impressões" value={formatNumber(aggG.impressions)} icon={Eye} />
-                          <KpiStat title="Cliques" value={formatNumber(aggG.clicks)} icon={MousePointer} />
-                          <KpiStat title="Gasto" value={formatCost(aggG.costMicros)} icon={DollarSign} />
-                          <KpiStat title="Conversões" value={formatNumber(aggG.conversions)} icon={Target} />
+                          <KpiPremium size="sm" label="Impressões" value={formatNumber(aggG.impressions)} icon={Eye} source="Google Ads" />
+                          <KpiPremium size="sm" label="Cliques" value={formatNumber(aggG.clicks)} icon={MousePointer} source="Google Ads" />
+                          <KpiPremium size="sm" label="Gasto" value={formatCost(aggG.costMicros)} icon={DollarSign} source="Google Ads" />
+                          <KpiPremium size="sm" label="Conversões" value={formatNumber(aggG.conversions)} icon={Target} source="Google Ads" />
                         </div>
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                          <KpiStat
-                            title="CPA"
+                          <KpiPremium
+                            size="sm"
+                            label="CPA"
                             value={
                               aggG.conversions > 0
                                 ? formatCost(aggG.costMicros / aggG.conversions)
                                 : "—"
                             }
                             icon={DollarSign}
+                            source="Google Ads"
+                            deltaInvert
                           />
                         </div>
                         <div className="grid gap-4 lg:grid-cols-2">
@@ -737,15 +1081,18 @@ export function Marketing() {
                       <>
                         <SectionLabel>Resumo (filtrado)</SectionLabel>
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                          <KpiStat title="Leads gerenciador" value={formatNumber(aggM.leads)} icon={UserPlus} />
-                          <KpiStat
-                            title="CPA"
+                          <KpiPremium size="sm" label="Leads" value={formatNumber(aggM.leads)} icon={UserPlus} source="Meta Ads" />
+                          <KpiPremium
+                            size="sm"
+                            label="CPA"
                             value={
                               aggM.leads > 0 ? formatSpend(aggM.spend / aggM.leads) : "—"
                             }
                             icon={DollarSign}
+                            source="Meta Ads"
+                            deltaInvert
                           />
-                          <KpiStat title="Gasto" value={formatSpend(aggM.spend)} icon={DollarSign} />
+                          <KpiPremium size="sm" label="Gasto" value={formatSpend(aggM.spend)} icon={DollarSign} source="Meta Ads" />
                         </div>
                         <div className="grid gap-4 lg:grid-cols-2">
                           <CaptureDualDonuts
@@ -874,8 +1221,7 @@ export function Marketing() {
                   </TabsContent>
                 )}
               </Tabs>
-            </div>
-          </DashboardPanel>
+          </AnalyticsSection>
 
           {hasGoogle &&
             !metrics?.ok &&

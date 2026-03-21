@@ -77,7 +77,7 @@ export function OrganizationSwitcher() {
         <Button
           variant="outline"
           size="sm"
-          className="flex h-10 min-w-0 max-w-full gap-1.5 rounded-lg border-border/80 px-2 font-normal sm:h-9 sm:max-w-[min(100%,240px)]"
+          className="flex h-10 min-w-0 max-w-full gap-2 rounded-full border-border/70 bg-background/80 px-3 font-normal shadow-sm backdrop-blur-sm transition-colors hover:bg-background sm:h-9 sm:max-w-[min(100%,280px)]"
           disabled={loading}
         >
           {loading ? (

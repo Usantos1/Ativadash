@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { OrganizationSwitcher } from "@/components/layout/OrganizationSwitcher";
+import { AnalyticsShell } from "@/components/analytics/AnalyticsShell";
 
 export function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -68,7 +69,7 @@ export function MainLayout() {
   }, [sidebarOpen]);
 
   return (
-    <div className="min-h-dvh overflow-x-hidden bg-background">
+    <div className="min-h-dvh overflow-x-hidden bg-background bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,hsl(var(--primary)/0.06),transparent_50%)]">
       <Sidebar
         mobileOpen={sidebarOpen}
         onMobileClose={() => setSidebarOpen(false)}
@@ -77,11 +78,14 @@ export function MainLayout() {
         className={cn(
           /* Sem w-full: 100% + margin-left da sidebar estoura a viewport (scroll horizontal) */
           "min-h-dvh min-w-0 max-w-full transition-[margin] duration-200 supports-[padding:max(0px)]:pt-[env(safe-area-inset-top)]",
-          sidebarCollapsed ? "md:ml-14" : "md:ml-[220px]"
+          sidebarCollapsed ? "md:ml-14" : "md:ml-[228px]"
         )}
       >
-        <header className="sticky top-0 z-20 flex min-h-14 min-w-0 flex-wrap items-center gap-2 border-b border-border/50 bg-card/95 px-3 py-2 shadow-sm backdrop-blur-sm sm:h-16 sm:flex-nowrap sm:gap-3 sm:px-4 sm:py-0 md:gap-4">
+        <header className="sticky top-0 z-20 flex min-h-14 min-w-0 flex-wrap items-center gap-2 border-b border-border/60 bg-card/90 px-3 py-2 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-card/80 sm:h-[3.25rem] sm:flex-nowrap sm:gap-3 sm:px-4 sm:py-0 md:gap-4">
           <SidebarHeaderControl onMobileOpen={() => setSidebarOpen(true)} />
+          <div className="order-2 min-w-0 flex-1 sm:order-2 sm:max-w-md">
+            <OrganizationSwitcher />
+          </div>
           <div className="ml-auto flex shrink-0 items-center gap-1 sm:order-3 sm:ml-0">
             <Button
               variant="ghost"
@@ -101,7 +105,7 @@ export function MainLayout() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-10 w-10 rounded-full border border-border/60 sm:h-9 sm:w-9"
+                  className="h-10 w-10 rounded-full border border-border/50 bg-muted/30 shadow-sm sm:h-9 sm:w-9"
                   aria-label="Menu do usuário"
                 >
                   <User className="h-5 w-5 text-muted-foreground" />
@@ -143,12 +147,11 @@ export function MainLayout() {
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
           </div>
-          <div className="w-full min-w-0 basis-full sm:order-2 sm:w-auto sm:flex-1 sm:basis-auto">
-            <OrganizationSwitcher />
-          </div>
         </header>
-        <div className="min-w-0 max-w-full px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-6 md:py-6 md:pb-6">
-          <Outlet />
+        <div className="min-w-0 max-w-full px-3 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-5 md:px-8 md:py-6 md:pb-6">
+          <AnalyticsShell>
+            <Outlet />
+          </AnalyticsShell>
         </div>
       </main>
     </div>

@@ -35,20 +35,45 @@ type NavItem = {
   end?: boolean;
 };
 
-const mainNav: NavItem[] = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/marketing", label: "Marketing", icon: Megaphone, end: true },
-  { to: "/marketing/captacao", label: "Captação", icon: Target },
-  { to: "/marketing/conversao", label: "Conversão", icon: TrendingUp },
-  { to: "/marketing/receita", label: "Receita", icon: DollarSign },
-  { to: "/marketing/integracoes", label: "Integrações", icon: Plug },
-  { to: "/marketing/configuracoes", label: "Config. Marketing", icon: Wrench },
-  { to: "/clientes", label: "Clientes", icon: Users },
-  { to: "/projetos", label: "Projetos", icon: FolderKanban },
-  { to: "/lancamentos", label: "Lançamentos", icon: Rocket },
-  { to: "/usuarios", label: "Equipe", icon: Users2 },
-  { to: "/planos", label: "Planos", icon: CreditCard },
-  { to: "/configuracoes", label: "Configurações", icon: Settings },
+type NavGroup = { label: string; items: NavItem[] };
+
+const navGroups: NavGroup[] = [
+  {
+    label: "Visão geral",
+    items: [{ to: "/dashboard", label: "Dashboard", icon: LayoutDashboard }],
+  },
+  {
+    label: "Marketing",
+    items: [
+      { to: "/marketing", label: "Marketing", icon: Megaphone, end: true },
+      { to: "/marketing/captacao", label: "Captação", icon: Target },
+      { to: "/marketing/conversao", label: "Conversão", icon: TrendingUp },
+      { to: "/marketing/receita", label: "Receita", icon: DollarSign },
+    ],
+  },
+  {
+    label: "Conexões",
+    items: [
+      { to: "/marketing/integracoes", label: "Integrações", icon: Plug },
+      { to: "/marketing/configuracoes", label: "Config. Marketing", icon: Wrench },
+    ],
+  },
+  {
+    label: "Operação",
+    items: [
+      { to: "/clientes", label: "Clientes", icon: Users },
+      { to: "/projetos", label: "Projetos", icon: FolderKanban },
+      { to: "/lancamentos", label: "Lançamentos", icon: Rocket },
+      { to: "/usuarios", label: "Equipe", icon: Users2 },
+    ],
+  },
+  {
+    label: "Conta",
+    items: [
+      { to: "/planos", label: "Planos", icon: CreditCard },
+      { to: "/configuracoes", label: "Configurações", icon: Settings },
+    ],
+  },
 ];
 
 interface SidebarProps {
@@ -64,30 +89,53 @@ function NavBlock({
   onLinkClick?: () => void;
 }) {
   const platformAdmin = useAuthStore((s) => s.user?.platformAdmin);
-  const iconClass = "h-5 w-5 shrink-0";
+  const iconClass = "h-[18px] w-[18px] shrink-0";
+  const groups: NavGroup[] = platformAdmin
+    ? [
+        ...navGroups,
+        {
+          label: "Plataforma",
+          items: [{ to: "/plataforma", label: "Administração", icon: Shield }],
+        },
+      ]
+    : navGroups;
+
   const navItemClass = (active: boolean) =>
     cn(
-      "flex items-center gap-3 rounded-lg px-2.5 py-2.5 text-sm font-medium transition-colors min-h-[44px] md:min-h-0 md:py-2",
-      active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+      "group/nav flex items-center gap-3 rounded-lg py-2.5 text-[13px] font-medium transition-colors min-h-[44px] md:min-h-0 md:py-2",
+      showLabels ? "px-2.5" : "justify-center px-0",
+      active
+        ? "bg-primary/[0.12] text-primary shadow-[inset_3px_0_0_0_hsl(var(--primary))]"
+        : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
     );
 
-  const navItems = platformAdmin
-    ? [...mainNav, { to: "/plataforma", label: "Plataforma", icon: Shield } as NavItem]
-    : mainNav;
-
   return (
-    <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2 scrollbar-thin">
-      {navItems.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          end={item.end}
-          onClick={onLinkClick}
-          className={({ isActive: active }) => cn(navItemClass(active))}
-        >
-          <item.icon className={iconClass} />
-          {showLabels ? <span className="truncate">{item.label}</span> : null}
-        </NavLink>
+    <nav className="flex flex-1 flex-col gap-3 overflow-y-auto p-2 pt-1 scrollbar-thin">
+      {groups.map((group, gi) => (
+        <div key={group.label} className="min-w-0">
+          {showLabels ? (
+            <div className="mb-1 px-2.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
+              {group.label}
+            </div>
+          ) : gi > 0 ? (
+            <div className="mx-2 my-1 h-px bg-border/50" aria-hidden />
+          ) : null}
+          <div className="flex flex-col gap-0.5">
+            {group.items.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                onClick={onLinkClick}
+                title={!showLabels ? item.label : undefined}
+                className={({ isActive: active }) => cn(navItemClass(active))}
+              >
+                <item.icon className={iconClass} />
+                {showLabels ? <span className="truncate">{item.label}</span> : null}
+              </NavLink>
+            ))}
+          </div>
+        </div>
       ))}
     </nav>
   );
@@ -99,7 +147,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const desktopShowLabels = !collapsed;
 
   const desktopHeader = (
-    <div className="flex h-16 shrink-0 items-center justify-center border-b border-border/60 px-2">
+    <div className="flex h-[3.25rem] shrink-0 items-center justify-center border-b border-border/60 px-2">
       <NavLink
         to="/dashboard"
         className="flex justify-center py-2"
@@ -109,21 +157,21 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
         <img
           src="/logo-ativa-dash.png"
           alt="Ativa Dash"
-          className={cn("h-10 w-auto object-contain sm:h-11", !collapsed && "max-w-full sm:h-12")}
+          className={cn("h-9 w-auto object-contain sm:h-10", !collapsed && "max-w-full sm:h-11")}
         />
       </NavLink>
     </div>
   );
 
   const mobileHeader = (
-    <div className="flex h-16 shrink-0 items-center gap-2 border-b border-border/60 px-3">
+    <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border/60 px-3">
       <NavLink
         to="/dashboard"
         className="flex min-w-0 flex-1 justify-center"
         onClick={onMobileClose}
         aria-label="Início"
       >
-        <img src="/logo-ativa-dash.png" alt="Ativa Dash" className="h-10 w-auto max-w-[70%] object-contain" />
+        <img src="/logo-ativa-dash.png" alt="Ativa Dash" className="h-9 w-auto max-w-[70%] object-contain" />
       </NavLink>
       <Button
         type="button"
@@ -142,8 +190,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
     <>
       <aside
         className={cn(
-          "fixed left-0 top-0 z-40 hidden h-dvh max-h-dvh flex-col border-r border-border/60 bg-card transition-[width] duration-200 md:flex",
-          collapsed ? "w-14" : "w-[min(100vw-3rem,220px)]"
+          "fixed left-0 top-0 z-40 hidden h-dvh max-h-dvh flex-col border-r border-border/60 bg-card/98 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.12)] transition-[width] duration-200 dark:shadow-none md:flex",
+          collapsed ? "w-14" : "w-[min(100vw-3rem,228px)]"
         )}
       >
         {desktopHeader}
@@ -160,8 +208,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
       ) : null}
       <aside
         className={cn(
-          "fixed left-0 top-0 z-40 flex h-dvh max-h-dvh w-[min(280px,85vw)] flex-col border-r border-border/60 bg-card shadow-xl transition-transform duration-200 ease-out md:hidden",
-          mobileOpen ? "translate-x-0" : "-translate-x-full pointer-events-none"
+          "fixed left-0 top-0 z-40 flex h-dvh max-h-dvh w-[min(300px,88vw)] flex-col border-r border-border/60 bg-card shadow-xl transition-transform duration-200 ease-out md:hidden",
+          mobileOpen ? "translate-x-0" : "pointer-events-none -translate-x-full"
         )}
         aria-hidden={!mobileOpen}
       >

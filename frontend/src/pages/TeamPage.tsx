@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Users2 } from "lucide-react";
 import { ScrollRegion } from "@/components/ui/scroll-region";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AnalyticsPageHeader } from "@/components/analytics/AnalyticsPageHeader";
+import { AnalyticsSection } from "@/components/analytics/AnalyticsSection";
+import { KpiPremium } from "@/components/analytics/KpiPremium";
 import {
   fetchMembers,
   fetchPendingInvitations,
@@ -120,33 +124,41 @@ export function TeamPage() {
 
   return (
     <div className="min-w-0 max-w-full space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Equipe</h1>
-        <p className="text-sm text-muted-foreground">
-          Pessoas com <strong className="font-medium text-foreground">login</strong> que acessam{" "}
-          <strong className="font-medium text-foreground">{orgName ?? "esta empresa"}</strong>.{" "}
+      <AnalyticsPageHeader
+        title="Equipe"
+        subtitle={`Pessoas com login em ${orgName ?? "esta empresa"}. Diferente de clientes comerciais (cadastro no menu Clientes).`}
+        meta={
           <Link
             to="/configuracoes#como-funciona-conta"
             className="font-medium text-primary underline-offset-4 hover:underline"
           >
             Ver diferenças com Clientes
           </Link>
-          .
-        </p>
-      </div>
+        }
+      />
 
       {error && <p className="text-sm text-destructive">{error}</p>}
       {actionMsg && <p className="text-sm text-destructive">{actionMsg}</p>}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Convidar por e-mail</CardTitle>
-          <CardDescription>
-            Gera um link de cadastro. Limite do plano: membros diretos + convites pendentes (máx. {maxUsersLabel}).
-            {planNote}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      {!loading && orgCtx && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiPremium label="Membros listados" value={String(rows.length)} icon={Users2} />
+          <KpiPremium label="Acesso direto" value={String(directCount)} icon={Users2} />
+          <KpiPremium label="Convites pendentes" value={String(pendingCount)} icon={Users2} />
+          <KpiPremium
+            label="Limite do plano"
+            value={maxUsersLabel}
+            hint={`Usuários diretos + pendentes ≤ ${maxUsersLabel}.${planNote}`}
+            icon={Users2}
+          />
+        </div>
+      )}
+
+      <AnalyticsSection
+        title="Convidar por e-mail"
+        description={`Gera link de cadastro. Limite: membros diretos + convites pendentes (máx. ${maxUsersLabel}).${planNote}`}
+        dense
+      >
           <form onSubmit={handleInvite} className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
             <div className="min-w-[200px] flex-1 space-y-1.5">
               <Label htmlFor="invite-email">E-mail</Label>
@@ -173,26 +185,25 @@ export function TeamPage() {
                 <option value="admin">Administrador</option>
               </select>
             </div>
-            <Button type="submit" disabled={inviteBusy}>
+            <Button type="submit" disabled={inviteBusy} className="shrink-0">
               {inviteBusy ? "Enviando…" : "Gerar convite"}
             </Button>
           </form>
           {inviteLink && (
-            <p className="mt-3 break-all text-sm text-muted-foreground">
-              Link do convidado (encaminhe por WhatsApp/e-mail):{" "}
-              <span className="font-mono text-foreground">{inviteLink}</span>
-            </p>
+            <div
+              className="mt-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm dark:bg-emerald-950/30"
+              role="status"
+            >
+              <p className="font-medium text-emerald-900 dark:text-emerald-100">Convite criado</p>
+              <p className="mt-1 break-all font-mono text-xs text-foreground">{inviteLink}</p>
+              <p className="mt-2 text-xs text-muted-foreground">Encaminhe por WhatsApp ou e-mail.</p>
+            </div>
           )}
-        </CardContent>
-      </Card>
+      </AnalyticsSection>
 
       {invites.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Convites pendentes</CardTitle>
-            <CardDescription>{pendingCount} aguardando aceite</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
+        <AnalyticsSection title="Convites pendentes" description={`${pendingCount} aguardando aceite`} dense>
+          <div className="space-y-2 text-sm">
             {invites.map((inv) => (
               <div
                 key={inv.id}
@@ -207,24 +218,26 @@ export function TeamPage() {
                 </Button>
               </div>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </AnalyticsSection>
       )}
 
-      <Card className="min-w-0 max-w-full overflow-hidden">
-        <CardHeader>
-          <CardTitle>Membros com acesso</CardTitle>
-          <CardDescription>
-            {loading
-              ? "Carregando…"
-              : orgCtx
-                ? `${directCount} / ${maxUsersLabel} usuário(s) diretos nesta empresa + ${pendingCount} convite(s) pendente(s). Lista: ${rows.length} linha(s) (inclui acesso pela agência).`
-                : `${rows.length} pessoa(s)`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <AnalyticsSection
+        title="Membros com acesso"
+        description={
+          loading
+            ? "Carregando…"
+            : orgCtx
+              ? `${directCount} / ${maxUsersLabel} usuários diretos + ${pendingCount} convite(s). Lista: ${rows.length} (inclui acesso por agência).`
+              : `${rows.length} pessoa(s)`
+        }
+        dense
+      >
           {loading ? (
-            <p className="text-sm text-muted-foreground">Carregando…</p>
+            <div className="space-y-2">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
           ) : rows.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum membro listado.</p>
           ) : (
@@ -286,8 +299,7 @@ export function TeamPage() {
             Já tem conta? Peça um convite e, após entrar, use <strong className="text-foreground">Aceitar convite</strong>{" "}
             em Perfil se receber outro link.
           </p>
-        </CardContent>
-      </Card>
+      </AnalyticsSection>
     </div>
   );
 }

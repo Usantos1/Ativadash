@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ArrowLeft, Bell, Loader2, Save, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AnalyticsPageHeader } from "@/components/analytics/AnalyticsPageHeader";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -139,19 +140,26 @@ export function MarketingSettings() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <Button variant="ghost" size="sm" className="mb-2 -ml-2 gap-1 text-muted-foreground" asChild>
-          <Link to="/marketing">
-            <ArrowLeft className="h-4 w-4" />
-            Voltar ao Marketing
-          </Link>
-        </Button>
-        <h1 className="text-2xl font-semibold tracking-tight">Configurações de Marketing</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Metas de CPA e ROAS, limites e alertas inteligentes no painel (Dashboard e Marketing).
-        </p>
-      </div>
+    <div className="mx-auto max-w-4xl space-y-6">
+      <Button variant="ghost" size="sm" className="-ml-2 gap-1 text-muted-foreground" asChild>
+        <Link to="/marketing">
+          <ArrowLeft className="h-4 w-4" />
+          Voltar ao Marketing
+        </Link>
+      </Button>
+      <AnalyticsPageHeader
+        title="Configurações de Marketing"
+        subtitle="Metas de performance, sensibilidade dos alertas e critérios mínimos para avaliar CPA e ROAS. Os avisos aparecem no Dashboard e nas telas de Marketing."
+        meta={
+          <span>
+            WhatsApp: configure em{" "}
+            <Link to="/marketing/integracoes" className="font-medium text-primary underline-offset-4 hover:underline">
+              Integrações → WhatsApp (CRM)
+            </Link>
+            .
+          </span>
+        }
+      />
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {error && (

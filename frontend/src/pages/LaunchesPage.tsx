@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { CalendarDays, Plus, Pencil, Rocket, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -22,6 +21,10 @@ import {
   type ProjectRow,
   type LaunchRow,
 } from "@/lib/workspace-api";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AnalyticsPageHeader } from "@/components/analytics/AnalyticsPageHeader";
+import { AnalyticsSection } from "@/components/analytics/AnalyticsSection";
+import { KpiPremium } from "@/components/analytics/KpiPremium";
 
 function toDateInput(iso: string | null): string {
   if (!iso) return "";
@@ -39,6 +42,7 @@ export function LaunchesPage() {
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [rows, setRows] = useState<LaunchRow[]>([]);
   const [filterProjectId, setFilterProjectId] = useState<string>("__all__");
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -126,6 +130,25 @@ export function LaunchesPage() {
     }
   }
 
+  const projectById = useMemo(() => {
+    const m = new Map<string, ProjectRow>();
+    for (const p of projects) m.set(p.id, p);
+    return m;
+  }, [projects]);
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (r) =>
+        r.name.toLowerCase().includes(q) ||
+        r.project.name.toLowerCase().includes(q) ||
+        (projectById.get(r.projectId)?.clientAccount?.name ?? "").toLowerCase().includes(q)
+    );
+  }, [rows, search, projectById]);
+
+  const withPeriod = useMemo(() => rows.filter((r) => r.startDate || r.endDate).length, [rows]);
+
   async function handleDelete(row: LaunchRow) {
     if (!confirm(`Remover o lançamento "${row.name}"?`)) return;
     try {
@@ -139,27 +162,45 @@ export function LaunchesPage() {
 
   return (
     <div className="w-full space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Lançamentos</h1>
-          <p className="text-sm text-muted-foreground">
-            Campanhas ou períodos dentro de um projeto (útil para filtros no Marketing).
-          </p>
-        </div>
-        <Button onClick={openCreate} disabled={projects.length === 0}>
-          <Plus className="mr-2 h-4 w-4" />
-          Novo lançamento
-        </Button>
-      </div>
+      <AnalyticsPageHeader
+        title="Lançamentos"
+        subtitle="Janelas nomeadas dentro de um projeto — alimentam filtros inteligentes no Marketing quando o título coincide com campanhas."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-0 flex-1 sm:max-w-xs">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Buscar lançamento, projeto ou cliente…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="rounded-full pl-9"
+              />
+            </div>
+            <Button onClick={openCreate} disabled={projects.length === 0}>
+              <Plus className="mr-2 h-4 w-4" />
+              Novo lançamento
+            </Button>
+          </div>
+        }
+      />
 
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <span className="text-sm text-muted-foreground">Filtrar por projeto:</span>
+      {!loading && projects.length > 0 && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiPremium label="Lançamentos (filtro)" value={String(rows.length)} icon={Rocket} />
+          <KpiPremium label="Com período definido" value={String(withPeriod)} icon={CalendarDays} />
+          <KpiPremium label="Projetos ativos" value={String(projects.length)} icon={Rocket} />
+          <KpiPremium label="Resultado busca" value={String(filteredRows.length)} icon={Search} />
+        </div>
+      )}
+
+      <div className="flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-border/70 bg-card/60 px-3 py-2">
+        <span className="text-sm font-medium text-muted-foreground">Projeto:</span>
         <Select value={filterProjectId} onValueChange={setFilterProjectId}>
-          <SelectTrigger className="min-w-0 w-full max-w-[280px] sm:w-[220px]">
+          <SelectTrigger className="min-w-0 w-full max-w-[min(100%,320px)] sm:w-[240px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__all__">Todos</SelectItem>
+            <SelectItem value="__all__">Todos os projetos</SelectItem>
             {projects.map((p) => (
               <SelectItem key={p.id} value={p.id}>
                 {p.name}
@@ -175,67 +216,76 @@ export function LaunchesPage() {
         </p>
       )}
 
-      <Card className="min-w-0">
-        <CardHeader>
-          <CardTitle>Lista</CardTitle>
-          <CardDescription>
-            {loading ? "Carregando…" : `${rows.length} lançamento(s)`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {projects.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Crie um projeto antes de adicionar lançamentos.</p>
-          ) : loading ? (
-            <p className="text-sm text-muted-foreground">Carregando…</p>
-          ) : rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhum lançamento neste filtro.</p>
-          ) : (
-            <ScrollRegion className="scrollbar-thin">
-              <table className="w-full min-w-[560px] text-sm">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="pb-2 pr-4 font-medium">Nome</th>
-                    <th className="pb-2 pr-4 font-medium">Projeto</th>
-                    <th className="pb-2 pr-4 font-medium">Início</th>
-                    <th className="pb-2 pr-4 font-medium">Fim</th>
-                    <th className="pb-2 font-medium">Ações</th>
+      <AnalyticsSection
+        title="Carteira de lançamentos"
+        description={
+          projects.length === 0
+            ? "Crie um projeto para habilitar lançamentos."
+            : loading
+              ? "Carregando…"
+              : `${rows.length} lançamento(s) neste filtro de projeto.`
+        }
+        dense
+      >
+        {projects.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Crie um projeto antes de adicionar lançamentos.</p>
+        ) : loading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum lançamento neste filtro.</p>
+        ) : (
+          <ScrollRegion className="scrollbar-thin">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead>
+                <tr className="border-b text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <th className="pb-2 pr-4 font-medium">Lançamento</th>
+                  <th className="pb-2 pr-4 font-medium">Projeto</th>
+                  <th className="pb-2 pr-4 font-medium">Cliente</th>
+                  <th className="pb-2 pr-4 font-medium">Início</th>
+                  <th className="pb-2 pr-4 font-medium">Fim</th>
+                  <th className="pb-2 font-medium">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRows.map((row) => (
+                  <tr key={row.id} className="border-b border-border/50 transition-colors hover:bg-muted/30">
+                    <td className="py-3 pr-4 font-medium">{row.name}</td>
+                    <td className="py-3 pr-4 text-muted-foreground">{row.project.name}</td>
+                    <td className="py-3 pr-4 text-muted-foreground">
+                      {projectById.get(row.projectId)?.clientAccount?.name ?? "—"}
+                    </td>
+                    <td className="py-3 pr-4 text-muted-foreground">
+                      {row.startDate ? new Date(row.startDate).toLocaleDateString("pt-BR") : "—"}
+                    </td>
+                    <td className="py-3 pr-4 text-muted-foreground">
+                      {row.endDate ? new Date(row.endDate).toLocaleDateString("pt-BR") : "—"}
+                    </td>
+                    <td className="py-3">
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" aria-label="Editar" onClick={() => openEdit(row)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive"
+                          aria-label="Remover"
+                          onClick={() => handleDelete(row)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => (
-                    <tr key={row.id} className="border-b border-border/60">
-                      <td className="py-3 pr-4 font-medium">{row.name}</td>
-                      <td className="py-3 pr-4 text-muted-foreground">{row.project.name}</td>
-                      <td className="py-3 pr-4 text-muted-foreground">
-                        {row.startDate ? new Date(row.startDate).toLocaleDateString("pt-BR") : "—"}
-                      </td>
-                      <td className="py-3 pr-4 text-muted-foreground">
-                        {row.endDate ? new Date(row.endDate).toLocaleDateString("pt-BR") : "—"}
-                      </td>
-                      <td className="py-3">
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" aria-label="Editar" onClick={() => openEdit(row)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-destructive"
-                            aria-label="Remover"
-                            onClick={() => handleDelete(row)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </ScrollRegion>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </tbody>
+            </table>
+          </ScrollRegion>
+        )}
+      </AnalyticsSection>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent title={editing ? "Editar lançamento" : "Novo lançamento"}>
