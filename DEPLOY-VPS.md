@@ -356,6 +356,43 @@ Se aparecerem caracteres estranhos (símbolos quebrados no lugar de ç, ã, í, 
 
 ## Se algo deu errado (correções na VPS)
 
+**500 em rotas do app (`/planos`, `/dashboard`, etc.) com página “nginx/1.24.0”**
+
+Isso é **Nginx / arquivos estáticos**, não a API Node. O React só roda no navegador depois que o `index.html` é entregue. Causas frequentes:
+
+1. **Bloco `server` em HTTPS (443) sem `try_files` para SPA** — após o Certbot, às vezes só o `listen 80` ficou correto ou o `location /` do SSL não repete o fallback para `index.html`. Abra o arquivo ativo e confira **os dois** blocos (`listen 80` e `listen 443 ssl`):
+
+   ```nginx
+   root /ativadash/frontend/dist;
+   index index.html;
+   location / {
+       try_files $uri $uri/ /index.html;
+   }
+   ```
+
+2. **`root` apontando para pasta errada** — precisa ser o diretório que contém `index.html` (normalmente `.../frontend/dist`), não a raiz do repositório.
+
+3. **Deploy do front incompleto** — `index.html` ou pasta `assets/` faltando. Na VPS:
+
+   ```bash
+   ls -la /ativadash/frontend/dist/index.html
+   ls /ativadash/frontend/dist/assets | head
+   ```
+
+4. Ver o erro exato do Nginx:
+
+   ```bash
+   sudo tail -80 /var/log/nginx/error.log
+   ```
+
+   Teste local no servidor (ajuste o host se precisar):
+
+   ```bash
+   curl -sI -H "Host: app.ativadash.com" https://127.0.0.1/planos -k
+   ```
+
+   Esperado para SPA bem configurada: **200** ou **304** servindo HTML (não 500).
+
 **Prisma deu erro “URL must start with file:”**  
 O `schema.prisma` no servidor estava com `sqlite`. Atualize o repo e use Postgres:
 
