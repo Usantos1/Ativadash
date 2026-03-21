@@ -1,0 +1,18 @@
+# Banco local para desenvolvimento (Windows/macOS/Linux).
+# Uso: na raiz do repositório → docker compose up -d
+# Depois: cd backend && npx prisma migrate deploy
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ativadash
+      POSTGRES_PASSWORD: ativadash_local_dev
+      POSTGRES_DB: ativa_dash
+    volumes:
+      - ativadash_pg_data:/var/lib/postgresql/data
+
+volumes:
+  ativadash_pg_data:

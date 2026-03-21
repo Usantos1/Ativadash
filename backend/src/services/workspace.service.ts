@@ -193,8 +193,24 @@ export async function deleteLaunch(organizationId: string, id: string) {
   return true;
 }
 
-export async function listOrganizationMembers(organizationId: string) {
-  const rows = await prisma.membership.findMany({
+type MemberListItem = {
+  membershipId: string;
+  userId: string;
+  email: string;
+  name: string;
+  role: string;
+  joinedAt: string;
+  /** Membro direto da empresa vs acesso via agência (revenda) */
+  source: "direct" | "agency";
+};
+
+export async function listOrganizationMembers(organizationId: string): Promise<MemberListItem[]> {
+  const org = await prisma.organization.findFirst({
+    where: { id: organizationId, deletedAt: null },
+    select: { parentOrganizationId: true },
+  });
+
+  const directRows = await prisma.membership.findMany({
     where: { organizationId },
     include: {
       user: {
@@ -203,7 +219,8 @@ export async function listOrganizationMembers(organizationId: string) {
     },
     orderBy: { createdAt: "asc" },
   });
-  return rows
+
+  const direct: MemberListItem[] = directRows
     .filter((m) => !m.user.deletedAt)
     .map((m) => ({
       membershipId: m.id,
@@ -212,5 +229,39 @@ export async function listOrganizationMembers(organizationId: string) {
       name: m.user.name,
       role: m.role,
       joinedAt: m.createdAt.toISOString(),
+      source: "direct" as const,
     }));
+
+  const directUserIds = new Set(direct.map((d) => d.userId));
+
+  if (!org?.parentOrganizationId) {
+    return direct;
+  }
+
+  const agencyRows = await prisma.membership.findMany({
+    where: {
+      organizationId: org.parentOrganizationId,
+      role: { in: ["owner", "admin"] },
+    },
+    include: {
+      user: {
+        select: { id: true, email: true, name: true, deletedAt: true },
+      },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const agency: MemberListItem[] = agencyRows
+    .filter((m) => !m.user.deletedAt && !directUserIds.has(m.userId))
+    .map((m) => ({
+      membershipId: `via-agency:${m.id}`,
+      userId: m.user.id,
+      email: m.user.email,
+      name: m.user.name,
+      role: m.role,
+      joinedAt: m.createdAt.toISOString(),
+      source: "agency" as const,
+    }));
+
+  return [...direct, ...agency];
 }

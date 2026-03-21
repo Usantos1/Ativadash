@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate, Outlet } from "react-router-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Moon, Sun, User, Settings, LogOut } from "lucide-react";
-import { Sidebar, SidebarTrigger } from "@/components/layout/Sidebar";
+import { Sidebar, SidebarHeaderControl } from "@/components/layout/Sidebar";
 import { useUIStore } from "@/stores/ui-store";
 import { useAuthStore, type AuthMeResponse } from "@/stores/auth-store";
 import { api } from "@/lib/api";
@@ -80,7 +80,7 @@ export function MainLayout() {
         )}
       >
         <header className="sticky top-0 z-20 flex min-h-14 min-w-0 flex-wrap items-center gap-2 border-b border-border/50 bg-card/95 px-3 py-2 shadow-sm backdrop-blur-sm sm:h-16 sm:flex-nowrap sm:gap-3 sm:px-4 sm:py-0 md:gap-4">
-          <SidebarTrigger onOpen={() => setSidebarOpen(true)} />
+          <SidebarHeaderControl onMobileOpen={() => setSidebarOpen(true)} />
           <div className="ml-auto flex shrink-0 items-center gap-1 sm:order-3 sm:ml-0">
             <Button
               variant="ghost"

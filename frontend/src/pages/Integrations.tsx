@@ -36,6 +36,9 @@ interface IntegrationDef {
   available: boolean;
 }
 
+/** Plataformas com OAuth / métricas prontos no backend */
+const AVAILABLE_SLUGS = new Set<string>(["google-ads", "meta"]);
+
 const INTEGRATION_DEFS: IntegrationDef[] = [
   { id: "google-ads", name: "Google Ads", slug: "google-ads", available: true },
   { id: "meta", name: "Meta Ads", slug: "meta", logoSrc: "/logos/meta.svg", available: true },
@@ -158,16 +161,45 @@ export function Integrations() {
   const filtered = INTEGRATION_DEFS.filter((i) =>
     i.name.toLowerCase().includes(search.toLowerCase())
   );
+  const filteredNow = filtered.filter((d) => AVAILABLE_SLUGS.has(d.slug));
+  const filteredLater = filtered.filter((d) => !AVAILABLE_SLUGS.has(d.slug));
+
+  function renderCard(def: IntegrationDef) {
+    const connected = connectedBySlug.get(def.slug);
+    const connectedId = connected?.id;
+    const isConnectingGoogle = def.slug === "google-ads" && connecting;
+    const isConnectingMeta = def.slug === "meta" && connecting;
+    const connectingState = isConnectingGoogle || isConnectingMeta;
+    const onConnect =
+      def.slug === "google-ads" && !connected && !connectingState
+        ? handleConnectGoogleAds
+        : def.slug === "meta" && !connected && !connectingState
+          ? handleConnectMetaAds
+          : undefined;
+    return (
+      <IntegrationCard
+        key={def.id}
+        name={def.name}
+        logoSrc={def.logoSrc}
+        connected={!!connected}
+        lastSync={connected ? formatLastSync(connected.lastSyncAt) : undefined}
+        available={def.available}
+        connecting={connectingState}
+        onConnect={onConnect}
+        onDisconnect={connectedId ? () => handleDisconnect(connectedId) : undefined}
+      />
+    );
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 max-w-full space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            Integrações da sua Conta
+            Integrações
           </h1>
           <p className="text-muted-foreground">
-            Conecte plataformas para centralizar dados. Comece pelo Google Ads.
+            Google Ads e Meta Ads estão disponíveis. As demais entram em fases seguintes.
           </p>
         </div>
         <div className="relative w-full sm:w-64">
@@ -193,39 +225,49 @@ export function Integrations() {
         </div>
       )}
 
-      <div className="rounded-xl border border-border/80 bg-card p-6">
+      <div className="min-w-0 overflow-hidden rounded-xl border border-border/80 bg-card p-4 sm:p-6">
         {loading ? (
           <div className="flex justify-center py-12 text-muted-foreground">Carregando...</div>
         ) : (
           <>
-            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {filtered.map((def) => {
-                const connected = connectedBySlug.get(def.slug);
-                const connectedId = connected?.id;
-                const isConnectingGoogle = def.slug === "google-ads" && connecting;
-                const isConnectingMeta = def.slug === "meta" && connecting;
-                const connectingState = isConnectingGoogle || isConnectingMeta;
-                const onConnect =
-                  def.slug === "google-ads" && !connected && !connectingState
-                    ? handleConnectGoogleAds
-                    : def.slug === "meta" && !connected && !connectingState
-                      ? handleConnectMetaAds
-                      : undefined;
-                return (
-                  <IntegrationCard
-                    key={def.id}
-                    name={def.name}
-                    logoSrc={def.logoSrc}
-                    connected={!!connected}
-                    lastSync={connected ? formatLastSync(connected.lastSyncAt) : undefined}
-                    available={def.available}
-                    connecting={connectingState}
-                    onConnect={onConnect}
-                    onDisconnect={connectedId ? () => handleDisconnect(connectedId) : undefined}
-                    onConfigure={connectedId ? () => {} : undefined}
-                  />
-                );
-              })}
+            <div className="space-y-6">
+              {filteredNow.length > 0 && (
+                <div>
+                  <h2 className="mb-3 text-sm font-semibold text-foreground">Disponíveis agora</h2>
+                  <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
+                    {filteredNow.map(renderCard)}
+                  </div>
+                </div>
+              )}
+
+              {filteredLater.length > 0 && (
+                <details
+                  className="group rounded-lg border border-border/60 bg-muted/20"
+                  defaultOpen={filteredNow.length === 0}
+                >
+                  <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-foreground marker:content-none [&::-webkit-details-marker]:hidden">
+                    <span className="flex items-center justify-between gap-2">
+                      <span>
+                        Outras plataformas{" "}
+                        <span className="font-normal text-muted-foreground">
+                          (em breve · {filteredLater.length})
+                        </span>
+                      </span>
+                      <span className="text-xs text-muted-foreground group-open:hidden">Mostrar</span>
+                      <span className="hidden text-xs text-muted-foreground group-open:inline">Ocultar</span>
+                    </span>
+                  </summary>
+                  <div className="border-t border-border/60 p-4 pt-2">
+                    <p className="mb-4 text-xs text-muted-foreground">
+                      Roadmap: checkout, mensageria e webhooks. Nada aqui conecta ainda — evitamos
+                      poluir a tela com dezenas de cards.
+                    </p>
+                    <div className="grid min-w-0 grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+                      {filteredLater.map(renderCard)}
+                    </div>
+                  </div>
+                </details>
+              )}
             </div>
             {filtered.length === 0 && (
               <EmptyState

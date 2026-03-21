@@ -39,6 +39,8 @@ export type MemberRow = {
   name: string;
   role: string;
   joinedAt: string;
+  /** direct = membro da org; agency = admin/owner da agência com acesso à empresa cliente */
+  source?: "direct" | "agency";
 };
 
 export async function fetchClients(): Promise<ClientAccount[]> {

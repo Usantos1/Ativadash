@@ -35,7 +35,8 @@ export function TeamPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Usuários</h1>
         <p className="text-sm text-muted-foreground">
-          Pessoas com acesso à sua empresa neste sistema.
+          Membros desta empresa e, se for conta cliente de uma agência, administradores da agência com
+          acesso.
         </p>
       </div>
 
@@ -60,7 +61,7 @@ export function TeamPage() {
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="pb-2 pr-4 font-medium">Nome</th>
                     <th className="pb-2 pr-4 font-medium">E-mail</th>
-                    <th className="pb-2 font-medium">Papel</th>
+                    <th className="pb-2 font-medium">Papel / acesso</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -68,7 +69,12 @@ export function TeamPage() {
                     <tr key={row.membershipId} className="border-b border-border/60">
                       <td className="py-3 pr-4 font-medium">{row.name}</td>
                       <td className="py-3 pr-4 text-muted-foreground">{row.email}</td>
-                      <td className="py-3">{roleLabel[row.role] ?? row.role}</td>
+                      <td className="py-3">
+                        <span className="block">{roleLabel[row.role] ?? row.role}</span>
+                        {row.source === "agency" && (
+                          <span className="text-xs text-muted-foreground">Acesso pela agência (revenda)</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -76,7 +82,9 @@ export function TeamPage() {
             </ScrollRegion>
           )}
           <p className="mt-4 break-words text-xs text-muted-foreground">
-            Para convidar novos usuários, entre em contato com o suporte — em breve convites por e-mail.
+            Conta vinculada a uma agência e sem membros listados? Os administradores da agência aparecem
+            acima como &quot;Acesso pela agência&quot;. Para convites diretos nesta empresa, em breve
+            convite por e-mail.
           </p>
         </CardContent>
       </Card>

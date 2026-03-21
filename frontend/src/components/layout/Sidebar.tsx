@@ -88,37 +88,23 @@ function NavBlock({
 
 export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const collapsed = useUIStore((s) => s.sidebarCollapsed);
-  const toggleCollapsed = useUIStore((s) => s.toggleSidebarCollapsed);
 
   const desktopShowLabels = !collapsed;
 
   const desktopHeader = (
-    <div className="flex h-16 shrink-0 items-center justify-between border-b border-border/60 px-2">
-      {!collapsed ? (
-        <>
-          <div className="w-8 shrink-0" aria-hidden />
-          <NavLink to="/dashboard" className="flex min-w-0 flex-1 justify-center" title="Ativa Dash">
-            <img
-              src="/logo-ativa-dash.png"
-              alt="Ativa Dash"
-              className="h-10 w-auto max-w-full object-contain sm:h-12"
-            />
-          </NavLink>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0"
-            onClick={() => toggleCollapsed()}
-            aria-label="Recolher menu"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-        </>
-      ) : (
-        <NavLink to="/dashboard" className="flex w-full justify-center py-2" aria-label="Ativa Dash">
-          <img src="/logo-ativa-dash.png" alt="" className="h-10 w-auto object-contain sm:h-11" />
-        </NavLink>
-      )}
+    <div className="flex h-16 shrink-0 items-center justify-center border-b border-border/60 px-2">
+      <NavLink
+        to="/dashboard"
+        className="flex justify-center py-2"
+        title="Ativa Dash"
+        aria-label="Ativa Dash"
+      >
+        <img
+          src="/logo-ativa-dash.png"
+          alt="Ativa Dash"
+          className={cn("h-10 w-auto object-contain sm:h-11", !collapsed && "max-w-full sm:h-12")}
+        />
+      </NavLink>
     </div>
   );
 
@@ -145,21 +131,6 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
     </div>
   );
 
-  const desktopCollapseBar =
-    collapsed ? (
-      <div className="flex shrink-0 justify-center border-b border-border/60 py-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={() => toggleCollapsed()}
-          aria-label="Expandir menu"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-      </div>
-    ) : null;
-
   return (
     <>
       <aside
@@ -169,7 +140,6 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
         )}
       >
         {desktopHeader}
-        {desktopCollapseBar}
         <NavBlock showLabels={desktopShowLabels} />
       </aside>
       {mobileOpen ? (
@@ -195,11 +165,38 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   );
 }
 
-export function SidebarTrigger({ onOpen }: { onOpen: () => void }) {
+/** Mobile: abre o drawer. Desktop (md+): recolhe/expande a sidebar (mesmo lugar do antigo menu). */
+export function SidebarHeaderControl({ onMobileOpen }: { onMobileOpen: () => void }) {
+  const collapsed = useUIStore((s) => s.sidebarCollapsed);
+  const toggleCollapsed = useUIStore((s) => s.toggleSidebarCollapsed);
+
   return (
-    <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 md:h-9 md:w-9" onClick={onOpen} aria-label="Abrir menu">
-      <Menu className="h-5 w-5" />
-    </Button>
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-10 w-10 shrink-0 md:hidden"
+        onClick={onMobileOpen}
+        aria-label="Abrir menu"
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="hidden h-10 w-10 shrink-0 md:flex md:h-9 md:w-9"
+        onClick={() => toggleCollapsed()}
+        aria-label={collapsed ? "Expandir menu lateral" : "Recolher menu lateral"}
+      >
+        {collapsed ? (
+          <ChevronRight className="h-5 w-5" />
+        ) : (
+          <ChevronLeft className="h-5 w-5" />
+        )}
+      </Button>
+    </>
   );
 }
 
