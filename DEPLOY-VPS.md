@@ -370,16 +370,31 @@ Isso é **Nginx / arquivos estáticos**, não a API Node. O React só roda no na
    }
    ```
 
-2. **`root` apontando para pasta errada** — precisa ser o diretório que contém `index.html` (normalmente `.../frontend/dist`), não a raiz do repositório.
+2. **`root` do Nginx ≠ pasta onde você copiou o build** — o log costuma mostrar o caminho real, por exemplo:
 
-3. **Deploy do front incompleto** — `index.html` ou pasta `assets/` faltando. Na VPS:
+   `directory index of "/var/www/ativadash/frontend/dist/" is forbidden`
+
+   Enquanto o guia usa `/ativadash/frontend/dist`, na sua VPS o site pode estar com **`root /var/www/ativadash/frontend/dist`**. O `ls` tem que ser **no mesmo caminho** do `root` no arquivo do Nginx:
 
    ```bash
+   grep -R "root " /etc/nginx/sites-enabled/
+   ls -la /var/www/ativadash/frontend/dist/index.html
+   # ou, se o root for /ativadash/...:
    ls -la /ativadash/frontend/dist/index.html
-   ls /ativadash/frontend/dist/assets | head
    ```
 
-4. Ver o erro exato do Nginx:
+3. **`rewrite or internal redirection cycle` ao ir para `/index.html`** — o `try_files ... /index.html` cai num arquivo que **não existe** na pasta `root`. O Nginx tenta de novo e entra em ciclo → **500**. **Correção:** gerar o front no PC e enviar **`index.html` + pasta `assets/`** para o diretório exato do `root` (crie `mkdir -p` se precisar).
+
+4. **`connect() failed (111: Connection refused)` para `127.0.0.1:3000`** — a API Node **não está escutando**. Suba com PM2 (`pm2 start` / `pm2 restart ativadash-api`) e confira `curl http://127.0.0.1:3000/api/health`.
+
+5. **Deploy do front incompleto** — após copiar, na VPS:
+
+   ```bash
+   ls -la <MESMO_CAMINHO_DO_ROOT>/index.html
+   ls <MESMO_CAMINHO_DO_ROOT>/assets | head
+   ```
+
+6. Ver o erro exato do Nginx:
 
    ```bash
    sudo tail -80 /var/log/nginx/error.log
