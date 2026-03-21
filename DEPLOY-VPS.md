@@ -297,6 +297,54 @@ ls /ativadash/frontend/dist
 
 Deve ter `index.html` e pasta `assets/`.
 
+### Erro clássico ao copiar com `scp`
+
+- **Certo:** o conteúdo de `dist` fica **direto** na pasta do Nginx: nela devem existir `index.html` e `assets/` **no mesmo nível**.
+- **Errado:** criar `.../dist/dist/index.html` (pasta `dist` dentro de `dist`) ou enviar para um caminho diferente do `root` do Nginx (ex.: Nginx em `/var/www/...` e cópia em `/ativadash/...`).
+
+---
+
+## 10b. Build do frontend **na VPS** (recomendado se o 500 continua)
+
+Assim o `index.html` fica sempre no repo em `/ativadash` e você só precisa **alinhar o `root` do Nginx** a esse caminho (ou usar o exemplo em `deploy/nginx-app-spa.example.conf`).
+
+Na VPS (uma linha de cada vez):
+
+```bash
+cd /ativadash
+git pull origin main
+cd frontend
+npm ci
+export VITE_API_URL="https://api.ativadash.com"
+npm run build
+ls -la dist/index.html dist/assets | head
+```
+
+Confirme que o site do app aponta para **essa** pasta:
+
+```bash
+grep -R "server_name app.ativadash" /etc/nginx/sites-enabled/ -A 25 | grep -E "root |listen"
+```
+
+O `root` deve ser **`/ativadash/frontend/dist`** (com `;` no arquivo). Se estiver `/var/www/ativadash/frontend/dist`, **ou** mude o `root` no Nginx para `/ativadash/frontend/dist`, **ou** copie o build:
+
+```bash
+sudo mkdir -p /var/www/ativadash/frontend
+sudo rsync -a --delete /ativadash/frontend/dist/ /var/www/ativadash/frontend/dist/
+sudo chown -R www-data:www-data /var/www/ativadash/frontend/dist
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Checklist rápido (mostra o que o Nginx espera vs. o que existe no disco):
+
+```bash
+ROOT=$(grep -R "server_name app.ativadash.com" /etc/nginx/sites-enabled/ -A 40 | grep -E "^\s*root\s+" | head -1 | awk '{print $2}' | tr -d ';')
+echo "root do Nginx: $ROOT"
+test -f "$ROOT/index.html" && echo "OK: index.html existe" || echo "FALTA index.html — build ou root errado"
+```
+
+Exemplo de config mínima versionada no repositório: `deploy/nginx-app-spa.example.conf`.
+
 ---
 
 ## 11. Ajustar permissões (se precisar)
@@ -357,6 +405,8 @@ Se aparecerem caracteres estranhos (símbolos quebrados no lugar de ç, ã, í, 
 ## Se algo deu errado (correções na VPS)
 
 **500 em rotas do app (`/planos`, `/dashboard`, etc.) com página “nginx/1.24.0”**
+
+Se já tentou de tudo: faça o **build na VPS** e alinhe o `root` — ver **§ 10b** e o checklist com variável `ROOT` abaixo. Arquivo de referência: `deploy/nginx-app-spa.example.conf`.
 
 Isso é **Nginx / arquivos estáticos**, não a API Node. O React só roda no navegador depois que o `index.html` é entregue. Rotas como `/marketing/conversao`, `/planos` ou `/dashboard` **não existem no backend** — o servidor só precisa devolver o **mesmo** `index.html` para qualquer caminho (SPA); se faltar o arquivo ou o `root` estiver errado, **todas** essas URLs quebram com 500 ou ciclo no log.
 
