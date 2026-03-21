@@ -358,7 +358,9 @@ Se aparecerem caracteres estranhos (símbolos quebrados no lugar de ç, ã, í, 
 
 **500 em rotas do app (`/planos`, `/dashboard`, etc.) com página “nginx/1.24.0”**
 
-Isso é **Nginx / arquivos estáticos**, não a API Node. O React só roda no navegador depois que o `index.html` é entregue. Causas frequentes:
+Isso é **Nginx / arquivos estáticos**, não a API Node. O React só roda no navegador depois que o `index.html` é entregue. Rotas como `/marketing/conversao`, `/planos` ou `/dashboard` **não existem no backend** — o servidor só precisa devolver o **mesmo** `index.html` para qualquer caminho (SPA); se faltar o arquivo ou o `root` estiver errado, **todas** essas URLs quebram com 500 ou ciclo no log.
+
+Causas frequentes:
 
 1. **Bloco `server` em HTTPS (443) sem `try_files` para SPA** — após o Certbot, às vezes só o `listen 80` ficou correto ou o `location /` do SSL não repete o fallback para `index.html`. Abra o arquivo ativo e confira **os dois** blocos (`listen 80` e `listen 443 ssl`):
 
