@@ -131,7 +131,7 @@ const PRESET_LABEL: Record<MarketingPresetId, string> = {
   last_week: "Semana passada",
   this_month: "Este mês",
   last_month: "Mês passado",
-  maximum: "Máximo (~3 anos)",
+  maximum: "Máximo",
   custom: "Personalizado",
 };
 

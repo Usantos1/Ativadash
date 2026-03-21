@@ -326,7 +326,7 @@ export function Marketing() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Marketing</h1>
           <p className="text-sm text-muted-foreground">
-            Captação por lançamento · Meta + Google (estilo Dash Fácil)
+            Captação por lançamento · Meta e Google Ads
           </p>
         </div>
         {lastUpdated && (
