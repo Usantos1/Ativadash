@@ -34,6 +34,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { useMarketingMetrics } from "@/hooks/useMarketingMetrics";
 import { PerformanceAlerts } from "@/components/marketing/PerformanceAlerts";
 import { MarketingDateRangeDialog } from "@/components/marketing/MarketingDateRangeDialog";
+import { IndeterminateLoadingBar } from "@/components/ui/indeterminate-loading-bar";
 
 function greetingName(email: string | undefined): string {
   if (!email) return "Bem-vindo";
@@ -83,7 +84,7 @@ export function Dashboard() {
     (cmpMetaMetrics?.ok ? cmpMetaMetrics.summary.spend : 0);
 
   const hasAnyChannel = hasGoogle || hasMeta;
-  const dataLoading = (hasGoogle && metricsLoading && !metrics) || (hasMeta && metaMetricsLoading && !metaMetrics);
+  const dataLoading = (hasGoogle && metricsLoading) || (hasMeta && metaMetricsLoading);
   const googleOk = metrics?.ok;
   const metaOk = metaMetrics?.ok;
 
@@ -299,8 +300,10 @@ export function Dashboard() {
           </div>
         </div>
       ) : dataLoading ? (
-        <div className="flex min-h-[240px] items-center justify-center rounded-xl border border-border/80 bg-card">
-          <p className="text-sm text-muted-foreground">Carregando resumo…</p>
+        <div className="flex min-h-[240px] flex-col items-center justify-center gap-4 rounded-xl border border-border/80 bg-card px-8 py-10">
+          <div className="w-full max-w-md">
+            <IndeterminateLoadingBar label="Carregando resumo do período…" />
+          </div>
         </div>
       ) : (
         <div className="space-y-6">

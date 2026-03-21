@@ -23,6 +23,7 @@ import { useMarketingMetrics } from "@/hooks/useMarketingMetrics";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
 import { MarketingDateRangeDialog } from "@/components/marketing/MarketingDateRangeDialog";
+import { IndeterminateLoadingBar } from "@/components/ui/indeterminate-loading-bar";
 
 export type FunnelVariant = "captacao" | "conversao" | "receita";
 
@@ -221,8 +222,10 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
           className="min-h-[280px]"
         />
       ) : loadingBlock ? (
-        <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-border/80 bg-card">
-          <p className="text-muted-foreground">Carregando…</p>
+        <div className="flex min-h-[200px] flex-col items-center justify-center gap-4 rounded-xl border border-border/80 bg-card px-8 py-10">
+          <div className="w-full max-w-md">
+            <IndeterminateLoadingBar label="Carregando métricas…" />
+          </div>
         </div>
       ) : !hasData ? (
         <p className="rounded-xl border border-border/80 bg-card p-6 text-sm text-muted-foreground">

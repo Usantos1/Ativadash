@@ -65,6 +65,15 @@ export default {
         sans: ["Plus Jakarta Sans", "ui-sans-serif", "system-ui", "sans-serif"],
         mono: ["monospace"],
       },
+      keyframes: {
+        "loading-bar-slide": {
+          "0%": { transform: "translateX(-120%)" },
+          "100%": { transform: "translateX(320%)" },
+        },
+      },
+      animation: {
+        "loading-bar-slide": "loading-bar-slide 1.15s ease-in-out infinite",
+      },
     },
   },
   plugins: [require("tailwindcss-animate")],

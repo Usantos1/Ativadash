@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { MarketingDateRangeDialog } from "@/components/marketing/MarketingDateRangeDialog";
+import { IndeterminateLoadingBar } from "@/components/ui/indeterminate-loading-bar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AnalyticTable } from "@/components/marketing/AnalyticTable";
@@ -455,6 +456,12 @@ export function Marketing() {
         )}
       </DashboardPanel>
 
+      {(hasGoogle || hasMeta) && loadingAny && (
+        <div className="rounded-lg border border-primary/20 bg-primary/[0.06] px-4 py-3 shadow-sm">
+          <IndeterminateLoadingBar label="Carregando métricas na API (Google / Meta)…" />
+        </div>
+      )}
+
       {compareEnabled && (hasGoogle || hasMeta) && (
         <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground">
           {cmpLoading ? (
@@ -610,9 +617,9 @@ export function Marketing() {
 
                 {hasGoogle && (
                   <TabsContent value="google-ads" className="mt-4 space-y-5">
-                    {metricsLoading && !metrics ? (
-                      <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-border/80 bg-card">
-                        <p className="text-muted-foreground">Carregando métricas do Google Ads...</p>
+                    {metricsLoading ? (
+                      <div className="space-y-3 rounded-xl border border-border/80 bg-card px-6 py-8">
+                        <IndeterminateLoadingBar label="Carregando Google Ads…" />
                       </div>
                     ) : metricsError && !metrics ? (
                       <div className="rounded-xl border border-border/80 bg-card p-6">
@@ -714,9 +721,9 @@ export function Marketing() {
 
                 {hasMeta && (
                   <TabsContent value="meta-ads" className="mt-4 space-y-5">
-                    {metaMetricsLoading && !metaMetrics ? (
-                      <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-border/80 bg-card">
-                        <p className="text-muted-foreground">Carregando métricas do Meta Ads...</p>
+                    {metaMetricsLoading ? (
+                      <div className="space-y-3 rounded-xl border border-border/80 bg-card px-6 py-8">
+                        <IndeterminateLoadingBar label="Carregando Meta Ads…" />
                       </div>
                     ) : metaMetricsError && !metaMetrics ? (
                       <div className="rounded-xl border border-border/80 bg-card p-6">

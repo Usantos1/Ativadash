@@ -2,6 +2,7 @@ import {
   startOfDay,
   endOfDay,
   subDays,
+  subMonths,
   startOfWeek,
   startOfMonth,
   differenceInCalendarDays,
@@ -84,9 +85,9 @@ export function getPresetRange(id: MarketingPresetId): WallRange {
       return rangeWallToUtc(startLast, endLast);
     }
     case "maximum": {
-      const anchor = toZonedTime(new Date(Date.UTC(2018, 0, 1, 12, 0, 0)), MARKETING_TZ);
-      const start = startOfDay(anchor);
-      return rangeWallToUtc(start, todayStart);
+      /** Meta Insights costuma falhar ou estourar tempo com séries diárias de anos inteiros; ~36m é faixa estável. */
+      const oldest = startOfDay(subMonths(todayStart, 36));
+      return rangeWallToUtc(oldest, todayStart);
     }
     case "custom":
       return rangeWallToUtc(todayStart, todayStart);
@@ -130,7 +131,7 @@ const PRESET_LABEL: Record<MarketingPresetId, string> = {
   last_week: "Semana passada",
   this_month: "Este mês",
   last_month: "Mês passado",
-  maximum: "Máximo",
+  maximum: "Máximo (~3 anos)",
   custom: "Personalizado",
 };
 
