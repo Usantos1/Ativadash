@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
+import { ScrollRegion } from "@/components/ui/scroll-region";
 import {
   fetchClients,
   createClient,
@@ -101,7 +102,7 @@ export function ClientsPage() {
         </p>
       )}
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
           <CardTitle>Lista</CardTitle>
           <CardDescription>
@@ -116,8 +117,8 @@ export function ClientsPage() {
               Nenhum cliente ainda. Crie o primeiro para associar projetos.
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <ScrollRegion className="scrollbar-thin">
+              <table className="w-full min-w-[320px] text-sm">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="pb-2 pr-4 font-medium">Nome</th>
@@ -148,7 +149,7 @@ export function ClientsPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollRegion>
           )}
         </CardContent>
       </Card>

@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
+import { ScrollRegion } from "@/components/ui/scroll-region";
 import {
   fetchProjects,
   fetchLaunches,
@@ -151,10 +152,10 @@ export function LaunchesPage() {
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         <span className="text-sm text-muted-foreground">Filtrar por projeto:</span>
         <Select value={filterProjectId} onValueChange={setFilterProjectId}>
-          <SelectTrigger className="w-[220px]">
+          <SelectTrigger className="min-w-0 w-full max-w-[280px] sm:w-[220px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -174,7 +175,7 @@ export function LaunchesPage() {
         </p>
       )}
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
           <CardTitle>Lista</CardTitle>
           <CardDescription>
@@ -189,8 +190,8 @@ export function LaunchesPage() {
           ) : rows.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum lançamento neste filtro.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <ScrollRegion className="scrollbar-thin">
+              <table className="w-full min-w-[560px] text-sm">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="pb-2 pr-4 font-medium">Nome</th>
@@ -231,7 +232,7 @@ export function LaunchesPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollRegion>
           )}
         </CardContent>
       </Card>
@@ -242,7 +243,7 @@ export function LaunchesPage() {
             <div className="space-y-2">
               <Label>Projeto</Label>
               <Select value={projectId} onValueChange={setProjectId} disabled={!!editing}>
-                <SelectTrigger>
+                <SelectTrigger className="min-w-0 w-full">
                   <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
                 <SelectContent>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollRegion } from "@/components/ui/scroll-region";
 import { fetchMembers, type MemberRow } from "@/lib/workspace-api";
 
 const roleLabel: Record<string, string> = {
@@ -30,7 +31,7 @@ export function TeamPage() {
   }, [load]);
 
   return (
-    <div className="w-full space-y-6">
+    <div className="min-w-0 max-w-full space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Usuários</h1>
         <p className="text-sm text-muted-foreground">
@@ -40,7 +41,7 @@ export function TeamPage() {
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      <Card>
+      <Card className="min-w-0 max-w-full overflow-hidden">
         <CardHeader>
           <CardTitle>Equipe</CardTitle>
           <CardDescription>
@@ -53,8 +54,8 @@ export function TeamPage() {
           ) : rows.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum membro listado.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <ScrollRegion className="scrollbar-thin">
+              <table className="w-full min-w-[480px] text-sm">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="pb-2 pr-4 font-medium">Nome</th>
@@ -72,9 +73,9 @@ export function TeamPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollRegion>
           )}
-          <p className="mt-4 text-xs text-muted-foreground">
+          <p className="mt-4 break-words text-xs text-muted-foreground">
             Para convidar novos usuários, entre em contato com o suporte — em breve convites por e-mail.
           </p>
         </CardContent>

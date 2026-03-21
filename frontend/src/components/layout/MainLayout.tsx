@@ -57,27 +57,35 @@ export function MainLayout() {
     };
   }, [accessToken]);
 
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [sidebarOpen]);
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh overflow-x-hidden bg-background">
       <Sidebar
         mobileOpen={sidebarOpen}
         onMobileClose={() => setSidebarOpen(false)}
       />
       <main
         className={cn(
-          "min-h-screen w-full min-w-0 transition-[margin] duration-200",
+          /* Sem w-full: 100% + margin-left da sidebar estoura a viewport (scroll horizontal) */
+          "min-h-dvh min-w-0 max-w-full transition-[margin] duration-200 supports-[padding:max(0px)]:pt-[env(safe-area-inset-top)]",
           sidebarCollapsed ? "md:ml-14" : "md:ml-[220px]"
         )}
       >
-        <header className="sticky top-0 z-20 flex h-16 items-center gap-4 border-b border-border/50 bg-card/95 px-4 shadow-sm backdrop-blur-sm">
+        <header className="sticky top-0 z-20 flex min-h-14 min-w-0 flex-wrap items-center gap-2 border-b border-border/50 bg-card/95 px-3 py-2 shadow-sm backdrop-blur-sm sm:h-16 sm:flex-nowrap sm:gap-3 sm:px-4 sm:py-0 md:gap-4">
           <SidebarTrigger onOpen={() => setSidebarOpen(true)} />
-          <OrganizationSwitcher />
-          <div className="flex-1" />
-          <div className="flex items-center gap-1">
+          <div className="ml-auto flex shrink-0 items-center gap-1 sm:order-3 sm:ml-0">
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9"
+              className="h-10 w-10 sm:h-9 sm:w-9"
               onClick={toggleTheme}
               aria-label={theme === "dark" ? "Modo claro" : "Modo escuro"}
             >
@@ -92,7 +100,7 @@ export function MainLayout() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 rounded-full border border-border/60"
+                  className="h-10 w-10 rounded-full border border-border/60 sm:h-9 sm:w-9"
                   aria-label="Menu do usuário"
                 >
                   <User className="h-5 w-5 text-muted-foreground" />
@@ -103,6 +111,7 @@ export function MainLayout() {
                   className="min-w-[180px] rounded-lg border border-border bg-popover p-1 shadow-md"
                   sideOffset={6}
                   align="end"
+                  collisionPadding={12}
                 >
                   {user && (
                     <div className="mb-1 px-2 py-1.5 text-sm text-muted-foreground">
@@ -133,8 +142,11 @@ export function MainLayout() {
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
           </div>
+          <div className="w-full min-w-0 basis-full sm:order-2 sm:w-auto sm:flex-1 sm:basis-auto">
+            <OrganizationSwitcher />
+          </div>
         </header>
-        <div className="w-full min-w-0 p-4 md:p-6">
+        <div className="min-w-0 max-w-full px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-6 md:py-6 md:pb-6">
           <Outlet />
         </div>
       </main>

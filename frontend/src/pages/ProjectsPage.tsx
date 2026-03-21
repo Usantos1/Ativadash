@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
+import { ScrollRegion } from "@/components/ui/scroll-region";
 import {
   fetchClients,
   fetchProjects,
@@ -116,7 +117,7 @@ export function ProjectsPage() {
         </p>
       )}
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
           <CardTitle>Lista</CardTitle>
           <CardDescription>
@@ -129,8 +130,8 @@ export function ProjectsPage() {
           ) : rows.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum projeto. Crie um para associar lançamentos.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <ScrollRegion className="scrollbar-thin">
+              <table className="w-full min-w-[400px] text-sm">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="pb-2 pr-4 font-medium">Nome</th>
@@ -165,7 +166,7 @@ export function ProjectsPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollRegion>
           )}
         </CardContent>
       </Card>
@@ -185,7 +186,7 @@ export function ProjectsPage() {
             <div className="space-y-2">
               <Label>Cliente (opcional)</Label>
               <Select value={clientId} onValueChange={setClientId}>
-                <SelectTrigger>
+                <SelectTrigger className="min-w-0 w-full">
                   <SelectValue placeholder="Nenhum" />
                 </SelectTrigger>
                 <SelectContent>

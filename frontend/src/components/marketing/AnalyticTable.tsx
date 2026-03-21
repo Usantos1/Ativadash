@@ -5,6 +5,7 @@ import {
   type ColumnDef,
 } from "@tanstack/react-table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollRegion } from "@/components/ui/scroll-region";
 import { cn } from "@/lib/utils";
 
 // TanStack Table column defs from createColumnHelper use specific value types; we accept any for flexibility.
@@ -38,8 +39,8 @@ export function AnalyticTable<T>({
         </CardHeader>
       ) : null}
       <CardContent className="p-0">
-        <div className="overflow-x-auto scrollbar-thin">
-          <table className="w-full text-sm">
+        <ScrollRegion className="scrollbar-thin">
+          <table className="w-full min-w-[520px] text-sm">
             <thead>
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id} className="border-b border-border">
@@ -77,7 +78,7 @@ export function AnalyticTable<T>({
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollRegion>
       </CardContent>
     </Card>
   );

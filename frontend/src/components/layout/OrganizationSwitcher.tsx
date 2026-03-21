@@ -74,7 +74,7 @@ export function OrganizationSwitcher() {
         <Button
           variant="outline"
           size="sm"
-          className="hidden h-9 max-w-[220px] gap-1.5 rounded-lg border-border/80 px-2 font-normal md:flex"
+          className="flex h-10 min-w-0 max-w-full gap-1.5 rounded-lg border-border/80 px-2 font-normal sm:h-9 sm:max-w-[min(100%,240px)]"
           disabled={loading}
         >
           {loading ? (
@@ -88,9 +88,10 @@ export function OrganizationSwitcher() {
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="z-50 min-w-[240px] rounded-lg border border-border bg-popover p-1 shadow-md"
+          className="z-50 max-h-[min(70dvh,24rem)] min-w-[min(calc(100vw-2rem),280px)] overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-md"
           sideOffset={6}
           align="start"
+          collisionPadding={12}
         >
           <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Trocar empresa

@@ -80,7 +80,7 @@ export function Register() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4">
+    <div className="flex min-h-dvh items-center justify-center bg-muted/30 px-4 py-8 supports-[padding:max(0px)]:px-[max(1rem,env(safe-area-inset-left))] supports-[padding:max(0px)]:pr-[max(1rem,env(safe-area-inset-right))] supports-[padding:max(0px)]:pb-[max(2rem,env(safe-area-inset-bottom))] supports-[padding:max(0px)]:pt-[max(2rem,env(safe-area-inset-top))]">
       <div className="w-full max-w-[400px]">
         <div className="mb-8 flex justify-center">
           <Link to="/" className="flex items-center gap-2 font-semibold text-primary">

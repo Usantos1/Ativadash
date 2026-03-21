@@ -39,6 +39,7 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AnalyticTable } from "@/components/marketing/AnalyticTable";
+import { ScrollRegion } from "@/components/ui/scroll-region";
 import { DashboardPanel, KpiStat, SectionLabel } from "@/components/dashboard/DashboardPrimitives";
 import { formatCost, formatNumber, formatSpend } from "@/lib/metrics-format";
 import { cn } from "@/lib/utils";
@@ -158,7 +159,7 @@ export function Marketing() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <Select value="none" disabled>
-              <SelectTrigger className="h-9 w-[200px] rounded-md border-border/80 bg-background text-sm">
+              <SelectTrigger className="h-9 min-w-0 w-full max-w-[200px] rounded-md border-border/80 bg-background text-sm sm:w-[200px]">
                 <SelectValue placeholder="Lançamento" />
               </SelectTrigger>
               <SelectContent>
@@ -166,7 +167,7 @@ export function Marketing() {
               </SelectContent>
             </Select>
             <Select value={period} onValueChange={(v) => setPeriod(v as "7d" | "30d" | "90d")}>
-              <SelectTrigger className="h-9 w-[170px] rounded-md border-border/80 bg-background text-sm">
+              <SelectTrigger className="h-9 min-w-0 w-full max-w-[170px] rounded-md border-border/80 bg-background text-sm sm:w-[170px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -432,13 +433,13 @@ export function Marketing() {
                   </div>
                   <SectionLabel>Campanhas</SectionLabel>
                   {metrics.campaigns.length > 0 && (
-                    <Card className="rounded-xl">
+                    <Card className="min-w-0 rounded-xl">
                       <CardHeader>
                         <CardTitle>Por campanha (Google Ads)</CardTitle>
                       </CardHeader>
-                      <CardContent>
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
+                      <CardContent className="min-w-0">
+                        <ScrollRegion className="scrollbar-thin">
+                          <table className="w-full min-w-[640px] text-sm">
                             <thead>
                               <tr className="border-b text-left text-muted-foreground">
                                 <th className="pb-2 font-medium">Campanha</th>
@@ -462,7 +463,7 @@ export function Marketing() {
                               ))}
                             </tbody>
                           </table>
-                        </div>
+                        </ScrollRegion>
                       </CardContent>
                     </Card>
                   )}

@@ -147,7 +147,7 @@ export function Dashboard() {
           )}
           <div className="flex flex-wrap items-center gap-2">
             <Select value={period} onValueChange={(v) => setPeriod(v as "7d" | "30d" | "90d")}>
-              <SelectTrigger className="h-9 w-[170px] rounded-lg border-border/80 bg-background text-sm">
+              <SelectTrigger className="h-9 min-w-0 w-full max-w-[170px] rounded-lg border-border/80 bg-background text-sm sm:w-[170px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
