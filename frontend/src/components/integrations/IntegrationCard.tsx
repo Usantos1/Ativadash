@@ -49,7 +49,13 @@ function healthBadge(health: IntegrationHealth | undefined, connected: boolean) 
     disconnected: "bg-muted text-muted-foreground",
   } as const;
   const label =
-    h === "healthy" ? "Saudável" : h === "warning" ? "Atenção" : h === "idle" ? "Aguardando sync" : "Off";
+    h === "healthy"
+      ? "Saudável"
+      : h === "warning"
+        ? "Atenção"
+        : h === "idle"
+          ? "Aguardando sincronização"
+          : "Inativo";
   return (
     <span
       className={cn(

@@ -47,13 +47,38 @@ export type IntegrationId =
 
 type IntegrationCategory = "media" | "crm" | "checkout" | "webhooks" | "other";
 
-const CATEGORY_SECTION_TITLE: Record<IntegrationCategory, string> = {
-  media: "M?dia paga",
+/** Rotulo curto no card (categoria); acentos via escapes Unicode para encoding estavel */
+const CATEGORY_CARD_LABEL: Record<IntegrationCategory, string> = {
+  media: "M\u00eddia paga",
   crm: "CRM e mensageria",
   checkout: "Checkout, afiliados e pagamentos",
-  webhooks: "Webhooks e automa??o",
+  webhooks: "Webhooks e automa\u00e7\u00e3o",
   other: "Outras plataformas",
 };
+
+/** Titulos das secoes em breve na grade */
+const SECTION_TITLE_EMBREVE: Record<IntegrationCategory, string> = {
+  media: "M\u00eddia paga em breve",
+  crm: "CRM e mensageria em breve",
+  checkout: "Checkout, afiliados e pagamentos em breve",
+  webhooks: "Webhooks e automa\u00e7\u00f5es em breve",
+  other: "Outras plataformas em breve",
+};
+
+function sectionDescriptionEmBreve(cat: IntegrationCategory): string {
+  switch (cat) {
+    case "crm":
+      return IX.sectionCrmRoadmapDesc;
+    case "checkout":
+      return "Integra\u00e7\u00f5es em roadmap para checkout, plataformas de afiliados e meios de pagamento.";
+    case "webhooks":
+      return "Integra\u00e7\u00f5es em roadmap para webhooks e automa\u00e7\u00f5es.";
+    case "media":
+      return "Novas redes de m\u00eddia paga no roadmap.";
+    default:
+      return IX.sectionRoadmapGenerico;
+  }
+}
 
 interface IntegrationDef {
   id: IntegrationId;
@@ -466,9 +491,9 @@ export function Integrations() {
       setList((prev) =>
         prev.map((i) => (i.id === integrationId ? { ...i, clientAccountId } : i))
       );
-      setMessage({ type: "success", text: "V?nculo com cliente atualizado." });
+      setMessage({ type: "success", text: IX.vinculoClienteOk });
     } catch (e) {
-      setMessage({ type: "error", text: e instanceof Error ? e.message : "Erro ao salvar v?nculo." });
+      setMessage({ type: "error", text: e instanceof Error ? e.message : IX.vinculoClienteErro });
     }
   };
 
@@ -514,8 +539,9 @@ export function Integrations() {
     const clientFooter =
       connected && connectedId && (def.slug === "google-ads" || def.slug === "meta") ? (
         <label className="flex flex-col gap-1.5 font-medium text-foreground">
-          <span className="text-muted-foreground">Vincular cliente comercial</span>
+          <span className="text-muted-foreground">Cliente comercial vinculado</span>
           <select
+            aria-label="Cliente comercial vinculado ? integra??o"
             className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground"
             value={connected.clientAccountId ?? ""}
             onChange={(ev) => {
@@ -547,8 +573,8 @@ export function Integrations() {
             : def.slug === "webhooks"
               ? "HTTPS / payloads JSON"
               : def.category === "crm"
-                ? "Mensageria / CRM"
-                : "?";
+                ? "CRM / mensageria"
+                : IX.dataSourceEmBreve;
 
     return (
       <IntegrationCard
@@ -562,8 +588,8 @@ export function Integrations() {
         connecting={connectingState}
         onConnect={onConnect}
         onDisconnect={connectedId ? () => handleDisconnect(connectedId) : undefined}
-        categoryLabel={CATEGORY_SECTION_TITLE[def.category]}
-        typeLabel={def.available ? "Pronta para uso" : "Roadmap"}
+        categoryLabel={CATEGORY_CARD_LABEL[def.category]}
+        typeLabel={def.available ? "Pronta para uso" : "Em roadmap"}
         dataSourceLabel={dataSourceLabel}
         accountLabel={connected ? connected.platform : undefined}
         clientName={clientName}
@@ -580,7 +606,7 @@ export function Integrations() {
                 void refetchIntegrations();
                 setMessage({
                   type: "success",
-                  text: "Conex?o verificada ? lista atualizada. Confira a data de sincroniza??o no card.",
+                  text: IX.testarConexaoOk,
                 });
               }
             : undefined
@@ -593,9 +619,9 @@ export function Integrations() {
   return (
     <div className="min-w-0 max-w-full space-y-6">
       <AnalyticsPageHeader
-        eyebrow="Conex?es"
+        eyebrow={IX.eyebrowConexoes}
         title={IX.pageTitle}
-        subtitle={`${IX.introPublicidadeWhatsapp}WhatsApp (CRM).`}
+        subtitle={IX.pageSubtitle}
         actions={
           <div className="relative w-full min-w-0 sm:w-72">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -650,7 +676,7 @@ export function Integrations() {
               <>
                 <div className="space-y-6">
                   {filteredNow.length > 0 && (
-                    <AnalyticsSection title={IX.disponiveisAgora} description="OAuth e leitura de campanhas no per?odo." dense>
+                    <AnalyticsSection title={IX.disponiveisAgora} description={IX.sectionDisponiveisDesc} dense>
                       <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
                         {filteredNow.map(renderCard)}
                       </div>
@@ -663,12 +689,8 @@ export function Integrations() {
                     return (
                       <AnalyticsSection
                         key={cat}
-                        title={`${CATEGORY_SECTION_TITLE[cat]} ? em breve`}
-                        description={
-                          cat === "crm"
-                            ? `${IX.roadmapWhatsappAba}WhatsApp (CRM) ${IX.nestaPagina}`
-                            : "Integração prevista no roadmap ? entre em contato para priorizar."
-                        }
+                        title={SECTION_TITLE_EMBREVE[cat]}
+                        description={sectionDescriptionEmBreve(cat)}
                         dense
                       >
                         <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

@@ -1,5 +1,5 @@
 import { prisma } from "../utils/prisma.js";
-import type { Plan } from "@prisma/client";
+import type { Plan, SubscriptionLimitsOverride } from "@prisma/client";
 
 /** Limites quando a org nao tem plano (fallback tipo Starter). */
 const FALLBACK_LIMITS = {
@@ -25,17 +25,20 @@ export type PlanUsageDto = {
   dashboards: number;
   clientAccounts: number;
   childOrganizations: number;
+  projects: number;
+  launches: number;
 };
 
 export type OrganizationPlanContextDto = {
-  plan: { id: string; name: string; slug: string } | null;
+  plan: { id: string; name: string; slug: string; planType: string; active: boolean } | null;
   /** Plano aplicado aos limites (pode ser o da matriz se inheritPlanFromParent) */
   planSource: "own" | "parent";
   limits: EffectivePlanLimits;
+  limitsHaveOverrides: boolean;
   usage: PlanUsageDto;
 };
 
-function effectiveLimits(plan: Plan | null): EffectivePlanLimits {
+function effectiveLimitsFromPlan(plan: Plan | null): EffectivePlanLimits {
   if (!plan) {
     return {
       maxUsers: FALLBACK_LIMITS.maxUsers,
@@ -54,32 +57,77 @@ function effectiveLimits(plan: Plan | null): EffectivePlanLimits {
   };
 }
 
-type ResolvedPlan = { plan: Plan | null; planSource: "own" | "parent" };
+function mergeOverride(
+  base: EffectivePlanLimits,
+  override: SubscriptionLimitsOverride | null
+): EffectivePlanLimits {
+  if (!override) return base;
+  return {
+    maxUsers: override.maxUsers ?? base.maxUsers,
+    maxIntegrations: override.maxIntegrations ?? base.maxIntegrations,
+    maxDashboards: override.maxDashboards ?? base.maxDashboards,
+    maxClientAccounts: override.maxClientAccounts ?? base.maxClientAccounts,
+    maxChildOrganizations: override.maxChildOrganizations ?? base.maxChildOrganizations,
+  };
+}
 
-/** Plano efetivo para limites e exibição (herança da matriz). */
-export async function resolveEffectivePlan(organizationId: string): Promise<ResolvedPlan> {
+function overrideIsEmpty(o: SubscriptionLimitsOverride | null): boolean {
+  if (!o) return true;
+  return (
+    o.maxUsers == null &&
+    o.maxClientAccounts == null &&
+    o.maxIntegrations == null &&
+    o.maxDashboards == null &&
+    o.maxChildOrganizations == null
+  );
+}
+
+/** Org cuja assinatura e overrides definem o plano efetivo (matriz se filho herda). */
+export async function resolveBillingOrganizationId(organizationId: string): Promise<string> {
   const org = await prisma.organization.findFirst({
     where: { id: organizationId, deletedAt: null },
-    include: { plan: true },
+    select: { parentOrganizationId: true, inheritPlanFromParent: true },
   });
   if (!org) {
     throw new Error("Empresa não encontrada");
   }
   if (org.parentOrganizationId && org.inheritPlanFromParent) {
-    const parent = await prisma.organization.findFirst({
-      where: { id: org.parentOrganizationId, deletedAt: null },
-      include: { plan: true },
-    });
-    if (parent) {
-      return { plan: parent.plan, planSource: "parent" };
-    }
+    return await resolveBillingOrganizationId(org.parentOrganizationId);
   }
-  return { plan: org.plan, planSource: "own" };
+  return organizationId;
+}
+
+type ResolvedPlan = {
+  plan: Plan | null;
+  planSource: "own" | "parent";
+  billingOrganizationId: string;
+};
+
+/** Plano template (limites) efetivo + origem para exibição. */
+export async function resolveEffectivePlan(organizationId: string): Promise<ResolvedPlan> {
+  const billingOrganizationId = await resolveBillingOrganizationId(organizationId);
+  const billingOrg = await prisma.organization.findFirst({
+    where: { id: billingOrganizationId, deletedAt: null },
+    include: {
+      plan: true,
+      subscription: { include: { plan: true } },
+    },
+  });
+  if (!billingOrg) {
+    throw new Error("Empresa não encontrada");
+  }
+  const templatePlan = billingOrg.subscription?.plan ?? billingOrg.plan;
+  const planSource: "own" | "parent" = billingOrganizationId === organizationId ? "own" : "parent";
+  return { plan: templatePlan, planSource, billingOrganizationId };
 }
 
 export async function getEffectivePlanLimits(organizationId: string): Promise<EffectivePlanLimits> {
-  const { plan } = await resolveEffectivePlan(organizationId);
-  return effectiveLimits(plan);
+  const { plan, billingOrganizationId } = await resolveEffectivePlan(organizationId);
+  const base = effectiveLimitsFromPlan(plan);
+  const override = await prisma.subscriptionLimitsOverride.findUnique({
+    where: { organizationId: billingOrganizationId },
+  });
+  return mergeOverride(base, override);
 }
 
 async function countUsage(organizationId: string): Promise<PlanUsageDto> {
@@ -90,6 +138,8 @@ async function countUsage(organizationId: string): Promise<PlanUsageDto> {
     dashboards,
     clientAccounts,
     childOrganizations,
+    projects,
+    launches,
   ] = await Promise.all([
     prisma.membership.count({
       where: {
@@ -110,6 +160,12 @@ async function countUsage(organizationId: string): Promise<PlanUsageDto> {
     prisma.organization.count({
       where: { parentOrganizationId: organizationId, deletedAt: null },
     }),
+    prisma.project.count({
+      where: { organizationId, deletedAt: null },
+    }),
+    prisma.launch.count({
+      where: { project: { organizationId, deletedAt: null }, deletedAt: null },
+    }),
   ]);
 
   return {
@@ -119,17 +175,32 @@ async function countUsage(organizationId: string): Promise<PlanUsageDto> {
     dashboards,
     clientAccounts,
     childOrganizations,
+    projects,
+    launches,
   };
 }
 
 export async function getOrganizationPlanContext(organizationId: string): Promise<OrganizationPlanContextDto> {
-  const { plan, planSource } = await resolveEffectivePlan(organizationId);
-  const limits = effectiveLimits(plan);
+  const { plan, planSource, billingOrganizationId } = await resolveEffectivePlan(organizationId);
+  const base = effectiveLimitsFromPlan(plan);
+  const override = await prisma.subscriptionLimitsOverride.findUnique({
+    where: { organizationId: billingOrganizationId },
+  });
+  const limits = mergeOverride(base, override);
   const usage = await countUsage(organizationId);
   return {
-    plan: plan ? { id: plan.id, name: plan.name, slug: plan.slug } : null,
+    plan: plan
+      ? {
+          id: plan.id,
+          name: plan.name,
+          slug: plan.slug,
+          planType: plan.planType,
+          active: plan.active,
+        }
+      : null,
     planSource,
     limits,
+    limitsHaveOverrides: !overrideIsEmpty(override),
     usage,
   };
 }

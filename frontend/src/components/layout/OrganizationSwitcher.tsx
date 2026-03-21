@@ -2,7 +2,6 @@ import { useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Building2, Check, ChevronsUpDown, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 import { useAuthStore, type OrganizationSummary } from "@/stores/auth-store";
 import { switchWorkspaceOrganization } from "@/lib/organization-api";
 import { cn } from "@/lib/utils";
@@ -32,6 +31,46 @@ function collectOptions(
   return [...map.values()].sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
 }
 
+const shellBase = cn(
+  "flex h-9 max-w-full min-w-0 items-center gap-2 rounded-lg border border-border/70 bg-gradient-to-b from-background to-muted/[0.22] px-1.5 py-1 pr-2 shadow-sm ring-1 ring-black/[0.04] dark:ring-white/[0.05]"
+);
+
+const shellInteractive = cn(
+  shellBase,
+  "transition-[box-shadow,border-color,background-color] hover:border-border hover:shadow-md hover:ring-black/[0.06] dark:hover:ring-white/[0.07]"
+);
+
+function OrgFace({
+  name,
+  loading,
+  showChevron,
+}: {
+  name: string;
+  loading: boolean;
+  showChevron: boolean;
+}) {
+  return (
+    <>
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/[0.12] text-primary shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] dark:bg-primary/15">
+        {loading ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+        ) : (
+          <Building2 className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+        )}
+      </span>
+      <span className="min-w-0 flex-1 text-left leading-none">
+        <span className="block truncate text-[13px] font-semibold tracking-tight text-foreground">{name}</span>
+        <span className="mt-0.5 block truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/75">
+          Workspace
+        </span>
+      </span>
+      {showChevron ? (
+        <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" aria-hidden />
+      ) : null}
+    </>
+  );
+}
+
 export function OrganizationSwitcher() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
@@ -44,7 +83,8 @@ export function OrganizationSwitcher() {
 
   const currentOrgId = user.organizationId;
   const options = collectOptions(currentOrgId, memberships, managed);
-  if (options.length <= 1) return null;
+  const displayName = user.organization?.name ?? "Empresa";
+  const canSwitch = options.length > 1;
 
   async function onSelect(organizationId: string) {
     if (organizationId === currentOrgId || loading) return;
@@ -71,59 +111,67 @@ export function OrganizationSwitcher() {
     }
   }
 
+  if (!canSwitch) {
+    return (
+      <div
+        className={cn(shellBase, "cursor-default")}
+        title={displayName}
+        role="status"
+        aria-label={`Organização ativa: ${displayName}`}
+      >
+        <OrgFace name={displayName} loading={false} showChevron={false} />
+      </div>
+    );
+  }
+
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex h-10 min-w-0 max-w-full gap-2 rounded-xl border-border/60 bg-gradient-to-b from-background to-muted/15 px-3.5 font-medium shadow-sm ring-1 ring-black/[0.03] backdrop-blur-sm transition-all hover:border-border hover:shadow-md sm:h-9 sm:max-w-[min(100%,320px)] dark:ring-white/[0.05]"
-          disabled={loading}
-        >
-          {loading ? (
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-          ) : (
-            <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <button
+          type="button"
+          className={cn(
+            shellInteractive,
+            "w-full max-w-[min(100%,280px)] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           )}
-          <span className="truncate text-sm">{user.organization?.name ?? "Empresa"}</span>
-          <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
-        </Button>
+          disabled={loading}
+          aria-label="Trocar organização"
+        >
+          <OrgFace name={displayName} loading={loading} showChevron={!loading} />
+        </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
           className="z-50 max-h-[min(70dvh,24rem)] min-w-[min(calc(100vw-2rem),300px)] overflow-y-auto rounded-xl border border-border/80 bg-popover p-1 shadow-[var(--shadow-surface)]"
-          sideOffset={6}
+          sideOffset={8}
           align="start"
           collisionPadding={12}
         >
-          <div className="border-b border-border/60 px-2 py-2">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Trocar empresa
-            </div>
+          <div className="border-b border-border/60 px-2.5 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Trocar workspace</div>
             <p className="mt-1 text-[10px] leading-snug text-muted-foreground normal-case">
-              Cada item é um ambiente com dados e integrações próprios — diferente do menu Clientes (cadastro comercial).
+              Cada opção é um ambiente com dados e integrações próprios — distinto do cadastro comercial em Clientes.
             </p>
           </div>
           {options.map((opt) => (
             <DropdownMenu.Item
               key={opt.id}
               className={cn(
-                "flex cursor-pointer flex-col gap-0.5 rounded px-2 py-2 outline-none focus:bg-accent focus:text-accent-foreground",
-                opt.id === currentOrgId && "bg-muted/60"
+                "flex cursor-pointer flex-col gap-0.5 rounded-lg px-2 py-2 outline-none focus:bg-accent focus:text-accent-foreground",
+                opt.id === currentOrgId && "bg-muted/50"
               )}
               onSelect={() => onSelect(opt.id)}
             >
               <span className="flex items-center gap-2 text-sm font-medium">
                 {opt.id === currentOrgId ? (
-                  <Check className="h-3.5 w-3.5 text-primary" />
+                  <Check className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
                 ) : (
-                  <span className="w-3.5" />
+                  <span className="w-3.5 shrink-0" aria-hidden />
                 )}
-                {opt.label}
+                <span className="truncate">{opt.label}</span>
               </span>
-              {opt.subtitle && (
+              {opt.subtitle ? (
                 <span className="pl-5 text-[11px] text-muted-foreground">{opt.subtitle}</span>
-              )}
+              ) : null}
             </DropdownMenu.Item>
           ))}
         </DropdownMenu.Content>

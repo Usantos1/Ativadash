@@ -8,7 +8,11 @@ import {
 import {
   assertCanAddChildOrganization,
   getOrganizationPlanContext,
+  resolveBillingOrganizationId,
+  resolveEffectivePlan,
 } from "./plan-limits.service.js";
+import { mergePlanFeatures } from "../utils/plan-features.js";
+import { syncSubscriptionFromOrgPlan } from "./platform.service.js";
 
 export async function getOrganizationContext(organizationId: string, userId: string) {
   const allowed = await userHasEffectiveAccess(userId, organizationId);
@@ -25,14 +29,89 @@ export async function getOrganizationContext(organizationId: string, userId: str
     throw new Error("Empresa não encontrada");
   }
   const planContext = await getOrganizationPlanContext(organizationId);
+  const billingId = await resolveBillingOrganizationId(organizationId);
+  const { plan: templatePlan } = await resolveEffectivePlan(organizationId);
+
+  const sub = await prisma.subscription.findUnique({
+    where: { organizationId: billingId },
+    include: { plan: true },
+  });
+
+  const billingOrg = await prisma.organization.findUnique({
+    where: { id: billingId },
+    select: { id: true, name: true, slug: true, createdAt: true },
+  });
+
+  let subscription: {
+    billingMode: string;
+    status: string;
+    startedAt: string;
+    renewsAt: string | null;
+    endedAt: string | null;
+    notes: string | null;
+    plan: {
+      id: string;
+      name: string;
+      slug: string;
+      planType: string;
+      active: boolean;
+    };
+    billingOrganization: { id: string; name: string } | null;
+    inherited: boolean;
+  } | null = null;
+
+  if (sub) {
+    subscription = {
+      billingMode: sub.billingMode,
+      status: sub.status,
+      startedAt: sub.startedAt.toISOString(),
+      renewsAt: sub.renewsAt?.toISOString() ?? null,
+      endedAt: sub.endedAt?.toISOString() ?? null,
+      notes: sub.notes,
+      plan: {
+        id: sub.plan.id,
+        name: sub.plan.name,
+        slug: sub.plan.slug,
+        planType: sub.plan.planType,
+        active: sub.plan.active,
+      },
+      billingOrganization: billingOrg ? { id: billingOrg.id, name: billingOrg.name } : null,
+      inherited: planContext.planSource === "parent",
+    };
+  } else if (templatePlan) {
+    subscription = {
+      billingMode: "custom",
+      status: "active",
+      startedAt: (billingOrg?.createdAt ?? new Date()).toISOString(),
+      renewsAt: null,
+      endedAt: null,
+      notes: null,
+      plan: {
+        id: templatePlan.id,
+        name: templatePlan.name,
+        slug: templatePlan.slug,
+        planType: templatePlan.planType,
+        active: templatePlan.active,
+      },
+      billingOrganization: billingOrg ? { id: billingOrg.id, name: billingOrg.name } : null,
+      inherited: planContext.planSource === "parent",
+    };
+  }
+
+  const enabledFeatures = mergePlanFeatures(templatePlan);
+
   return {
     id: org.id,
     name: org.name,
     slug: org.slug,
     parentOrganization: org.parentOrganization,
     plan: planContext.plan,
+    planSource: planContext.planSource,
     limits: planContext.limits,
+    limitsHaveOverrides: planContext.limitsHaveOverrides,
     usage: planContext.usage,
+    subscription,
+    enabledFeatures,
   };
 }
 
@@ -81,6 +160,9 @@ export async function createChildOrganization(
       planId,
     },
   });
+  if (!inherit && planId) {
+    await syncSubscriptionFromOrgPlan(org.id);
+  }
   return {
     id: org.id,
     name: org.name,
@@ -123,6 +205,9 @@ export async function updateOrganizationPlanSettings(
     data: patch,
     select: { id: true, name: true, slug: true, inheritPlanFromParent: true, planId: true },
   });
+  if (patch.planId !== undefined) {
+    await syncSubscriptionFromOrgPlan(organizationId);
+  }
   return updated;
 }
 

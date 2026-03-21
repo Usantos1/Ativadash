@@ -147,17 +147,17 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const desktopShowLabels = !collapsed;
 
   const desktopHeader = (
-    <div className="flex h-[3.25rem] shrink-0 items-center justify-center border-b border-border/50 bg-card/50 px-2">
+    <div className="flex h-12 shrink-0 items-center justify-center border-b border-border/60 bg-card/55 px-2 backdrop-blur-[2px]">
       <NavLink
         to="/dashboard"
-        className="flex justify-center py-2"
+        className="flex justify-center py-1.5"
         title="Ativa Dash"
         aria-label="Ativa Dash"
       >
         <img
           src="/logo-ativa-dash.png"
           alt="Ativa Dash"
-          className={cn("h-9 w-auto object-contain sm:h-10", !collapsed && "max-w-full sm:h-11")}
+          className={cn("h-8 w-auto object-contain", !collapsed && "max-w-full sm:h-9")}
         />
       </NavLink>
     </div>
@@ -231,24 +231,24 @@ export function SidebarHeaderControl({ onMobileOpen }: { onMobileOpen: () => voi
         type="button"
         variant="ghost"
         size="icon"
-        className="h-10 w-10 shrink-0 md:hidden"
+        className="h-9 w-9 shrink-0 rounded-lg md:hidden"
         onClick={onMobileOpen}
         aria-label="Abrir menu"
       >
-        <Menu className="h-5 w-5" />
+        <Menu className="h-[1.125rem] w-[1.125rem]" />
       </Button>
       <Button
         type="button"
         variant="ghost"
         size="icon"
-        className="hidden h-10 w-10 shrink-0 md:flex md:h-9 md:w-9"
+        className="hidden h-9 w-9 shrink-0 rounded-lg md:flex"
         onClick={() => toggleCollapsed()}
         aria-label={collapsed ? "Expandir menu lateral" : "Recolher menu lateral"}
       >
         {collapsed ? (
-          <ChevronRight className="h-5 w-5" />
+          <ChevronRight className="h-[1.125rem] w-[1.125rem]" />
         ) : (
-          <ChevronLeft className="h-5 w-5" />
+          <ChevronLeft className="h-[1.125rem] w-[1.125rem]" />
         )}
       </Button>
     </>

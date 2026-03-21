@@ -47,6 +47,9 @@ model Organization {
   updatedAt DateTime @updatedAt
   deletedAt DateTime?
 
+  subscription      Subscription?
+  limitsOverride    SubscriptionLimitsOverride?
+
   memberships   Membership[]
   clients       ClientAccount[]
   projects      Project[]
@@ -133,6 +136,13 @@ model Plan {
   id          String   @id @default(cuid())
   name        String
   slug        String   @unique
+  /// Nota interna (admin); não exibir como marketing no app
+  descriptionInternal String? @db.Text
+  active      Boolean  @default(true)
+  /// standard | enterprise | trial | internal | custom
+  planType    String   @default("standard")
+  /// Flags de recurso (marketing, alertas, webhooks, etc.)
+  features    Json     @default("{}")
   maxIntegrations Int   @default(5)
   maxDashboards   Int   @default(10)
   /// Usuarios com login (membership direta nesta org). null = ilimitado
@@ -145,6 +155,41 @@ model Plan {
   updatedAt   DateTime @updatedAt
 
   organizations Organization[]
+  subscriptions Subscription[]
+}
+
+/// Assinatura operacional: vínculo org ↔ plano faturado / contratado
+model Subscription {
+  id               String   @id @default(cuid())
+  organizationId   String   @unique
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  planId           String
+  plan             Plan     @relation(fields: [planId], references: [id], onDelete: Restrict)
+  /// monthly | quarterly | annual | trial | custom
+  billingMode      String   @default("custom")
+  /// active | trialing | past_due | canceled
+  status           String   @default("active")
+  startedAt        DateTime @default(now())
+  renewsAt         DateTime?
+  endedAt          DateTime?
+  notes            String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+/// Limites efetivos customizados por tenant (sobrepõe limites do plano quando preenchido)
+model SubscriptionLimitsOverride {
+  id                    String   @id @default(cuid())
+  organizationId      String   @unique
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  maxUsers              Int?
+  maxClientAccounts     Int?
+  maxIntegrations       Int?
+  maxDashboards         Int?
+  maxChildOrganizations Int?
+  notes                 String?  @db.Text
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 model Membership {
