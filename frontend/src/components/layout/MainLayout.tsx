@@ -81,9 +81,9 @@ export function MainLayout() {
           sidebarCollapsed ? "md:ml-14" : "md:ml-[228px]"
         )}
       >
-        <header className="sticky top-0 z-20 flex min-h-14 min-w-0 flex-wrap items-center gap-2 border-b border-border/60 bg-card/90 px-3 py-2 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-card/80 sm:h-[3.25rem] sm:flex-nowrap sm:gap-3 sm:px-4 sm:py-0 md:gap-4">
+        <header className="sticky top-0 z-20 flex min-h-14 min-w-0 flex-wrap items-center gap-2 border-b border-border/50 bg-card/85 px-3 py-2 shadow-[var(--shadow-surface-sm)] backdrop-blur-xl supports-[backdrop-filter]:bg-card/75 sm:h-[3.25rem] sm:flex-nowrap sm:gap-3 sm:px-5 sm:py-0 md:gap-4">
           <SidebarHeaderControl onMobileOpen={() => setSidebarOpen(true)} />
-          <div className="order-2 min-w-0 flex-1 sm:order-2 sm:max-w-md">
+          <div className="order-2 min-w-0 flex-1 sm:order-2 sm:max-w-lg">
             <OrganizationSwitcher />
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-1 sm:order-3 sm:ml-0">
@@ -105,10 +105,10 @@ export function MainLayout() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-10 w-10 rounded-full border border-border/50 bg-muted/30 shadow-sm sm:h-9 sm:w-9"
+                  className="h-10 w-10 rounded-full border border-border/60 bg-gradient-to-b from-muted/40 to-muted/20 shadow-sm ring-1 ring-black/[0.04] sm:h-9 sm:w-9 dark:ring-white/[0.06]"
                   aria-label="Menu do usuário"
                 >
-                  <User className="h-5 w-5 text-muted-foreground" />
+                  <User className="h-[1.15rem] w-[1.15rem] text-muted-foreground" />
                 </Button>
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>

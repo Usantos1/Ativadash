@@ -74,6 +74,10 @@ export default {
       animation: {
         "loading-bar-slide": "loading-bar-slide 1.15s ease-in-out infinite",
       },
+      boxShadow: {
+        surface: "var(--shadow-surface)",
+        "surface-sm": "var(--shadow-surface-sm)",
+      },
     },
   },
   plugins: [require("tailwindcss-animate")],

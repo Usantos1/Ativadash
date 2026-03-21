@@ -102,11 +102,11 @@ function NavBlock({
 
   const navItemClass = (active: boolean) =>
     cn(
-      "group/nav flex items-center gap-3 rounded-lg py-2.5 text-[13px] font-medium transition-colors min-h-[44px] md:min-h-0 md:py-2",
+      "group/nav flex items-center gap-3 rounded-xl py-2.5 text-[13px] font-medium transition-all duration-150 min-h-[44px] md:min-h-0 md:py-2",
       showLabels ? "px-2.5" : "justify-center px-0",
       active
-        ? "bg-primary/[0.12] text-primary shadow-[inset_3px_0_0_0_hsl(var(--primary))]"
-        : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+        ? "bg-primary/[0.14] font-semibold text-primary shadow-[inset_3px_0_0_0_hsl(var(--primary)),0_1px_0_rgba(255,255,255,0.06)] dark:shadow-[inset_3px_0_0_0_hsl(var(--primary))]"
+        : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
     );
 
   return (
@@ -114,7 +114,7 @@ function NavBlock({
       {groups.map((group, gi) => (
         <div key={group.label} className="min-w-0">
           {showLabels ? (
-            <div className="mb-1 px-2.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
+            <div className="mb-1.5 px-2.5 pt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/90">
               {group.label}
             </div>
           ) : gi > 0 ? (
@@ -147,7 +147,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const desktopShowLabels = !collapsed;
 
   const desktopHeader = (
-    <div className="flex h-[3.25rem] shrink-0 items-center justify-center border-b border-border/60 px-2">
+    <div className="flex h-[3.25rem] shrink-0 items-center justify-center border-b border-border/50 bg-card/50 px-2">
       <NavLink
         to="/dashboard"
         className="flex justify-center py-2"
@@ -190,7 +190,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
     <>
       <aside
         className={cn(
-          "fixed left-0 top-0 z-40 hidden h-dvh max-h-dvh flex-col border-r border-border/60 bg-card/98 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.12)] transition-[width] duration-200 dark:shadow-none md:flex",
+          "fixed left-0 top-0 z-40 hidden h-dvh max-h-dvh flex-col border-r border-border/50 bg-gradient-to-b from-card via-card to-muted/[0.35] shadow-[4px_0_32px_-16px_rgba(15,23,42,0.14)] transition-[width] duration-200 dark:from-card dark:via-card dark:to-card/90 dark:shadow-none md:flex",
           collapsed ? "w-14" : "w-[min(100vw-3rem,228px)]"
         )}
       >
@@ -208,7 +208,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
       ) : null}
       <aside
         className={cn(
-          "fixed left-0 top-0 z-40 flex h-dvh max-h-dvh w-[min(300px,88vw)] flex-col border-r border-border/60 bg-card shadow-xl transition-transform duration-200 ease-out md:hidden",
+          "fixed left-0 top-0 z-40 flex h-dvh max-h-dvh w-[min(300px,88vw)] flex-col border-r border-border/50 bg-gradient-to-b from-card to-muted/20 shadow-2xl transition-transform duration-200 ease-out md:hidden",
           mobileOpen ? "translate-x-0" : "pointer-events-none -translate-x-full"
         )}
         aria-hidden={!mobileOpen}

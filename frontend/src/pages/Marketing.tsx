@@ -33,9 +33,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { AnalyticTable } from "@/components/marketing/AnalyticTable";
 import { ScrollRegion } from "@/components/ui/scroll-region";
 import { SectionLabel } from "@/components/dashboard/DashboardPrimitives";
-import { AnalyticsPageHeader } from "@/components/analytics/AnalyticsPageHeader";
 import { KpiPremium } from "@/components/analytics/KpiPremium";
 import { AnalyticsSection } from "@/components/analytics/AnalyticsSection";
+import {
+  PageHeaderPremium,
+  FilterBarPremium,
+  KpiCardPremium,
+  DataTablePremium,
+  StatusBadge,
+} from "@/components/premium";
 import { CaptureTrendComposedChart } from "@/components/marketing/CaptureTrendComposedChart";
 import { CaptureDualDonuts } from "@/components/marketing/CaptureDualDonuts";
 import { formatCost, formatNumber, formatSpend } from "@/lib/metrics-format";
@@ -407,7 +413,8 @@ export function Marketing() {
 
   return (
     <div className="w-full space-y-6">
-      <AnalyticsPageHeader
+      <PageHeaderPremium
+        eyebrow="Captação & performance"
         title="Marketing"
         subtitle="Visão executiva de investimento, captação e retorno — consolidado por lançamento, temperatura de tráfego e período."
         meta={
@@ -422,77 +429,28 @@ export function Marketing() {
               </span>
             ) : null}
             {compareEnabled ? (
-              <span className="rounded-md bg-primary/10 px-2 py-0.5 font-medium text-primary">
+              <span className="rounded-md border border-primary/20 bg-primary/[0.08] px-2 py-0.5 text-[11px] font-semibold text-primary">
                 Comparando com período anterior
               </span>
             ) : null}
-            <span>Fonte dos dados: {dataSourceLabel}</span>
+            <span>
+              Fonte: <span className="font-medium text-foreground">{dataSourceLabel}</span>
+            </span>
+            {hasGoogle || hasMeta ? (
+              <StatusBadge tone={dataHealthy && !loadingAny ? "healthy" : "alert"} dot>
+                {loadingAny ? "Sincronizando" : dataHealthy ? "Dados disponíveis" : "Checar integrações"}
+              </StatusBadge>
+            ) : null}
           </>
         }
-      />
-
-      <div className="rounded-xl border border-border/70 bg-card/90 p-4 shadow-sm backdrop-blur-sm">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex min-w-0 max-w-full items-center gap-2 sm:max-w-[min(100%,360px)]">
-              <Select value={launchId} onValueChange={setLaunchId}>
-                <SelectTrigger className="h-9 min-w-0 flex-1 rounded-lg border-border/80 bg-background text-sm shadow-sm">
-                  <SelectValue placeholder="Lançamento" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os lançamentos</SelectItem>
-                  {launches.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>
-                      {l.name} · {l.project.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {launchId !== "all" && selectedLaunch && (
-                <span
-                  className={cn(
-                    "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                    dataHealthy && !loadingAny
-                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
-                      : "bg-amber-500/15 text-amber-800 dark:text-amber-400"
-                  )}
-                >
-                  {dataHealthy && !loadingAny ? "OK" : "…"}
-                </span>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border/60 bg-muted/40 p-0.5">
-              {tempBtn("geral", "Geral")}
-              {tempBtn("frio", "Frio")}
-              {tempBtn("quente", "Quente")}
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 max-w-full justify-start gap-2 rounded-lg border-border/80 bg-background shadow-sm sm:max-w-[300px]"
-              onClick={() => setPickerOpen(true)}
-            >
-              <CalendarRange className="h-3.5 w-3.5 shrink-0 opacity-70" />
-              <span className="truncate text-left font-medium">{dateRangeLabel}</span>
-            </Button>
-            <MarketingDateRangeDialog
-              open={pickerOpen}
-              onOpenChange={setPickerOpen}
-              initial={dateRange}
-              initialLabel={dateRangeLabel}
-              initialPresetId={presetId}
-              initialCompare={compareEnabled}
-              onApply={applyDateFilter}
-            />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {hasGoogle || hasMeta ? (
-              <>
+        actions={
+          hasGoogle || hasMeta ? (
+            <div className="flex flex-col gap-2 sm:items-end">
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 rounded-lg border-border/80 shadow-sm"
+                  className="h-9 rounded-lg border-border/70 bg-background/80 shadow-sm"
                   disabled={metricsLoading || metaMetricsLoading}
                   onClick={() => refreshAll()}
                 >
@@ -504,7 +462,7 @@ export function Marketing() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 rounded-lg border-border/80 shadow-sm"
+                  className="h-9 rounded-lg border-border/70 bg-background/80 shadow-sm"
                   type="button"
                   onClick={() => navigate("/lancamentos")}
                 >
@@ -521,58 +479,151 @@ export function Marketing() {
                   <Share2 className="mr-1.5 h-3.5 w-3.5" />
                   Compartilhar
                 </Button>
-                {shareHint ? <span className="text-xs text-muted-foreground">{shareHint}</span> : null}
-                <Button variant="outline" size="sm" className="h-9 rounded-lg border-border/80 shadow-sm" asChild>
+                <Button variant="default" size="sm" className="h-9 rounded-lg shadow-sm" asChild>
                   <Link to="/marketing/configuracoes">Metas e alertas</Link>
                 </Button>
-              </>
-            ) : (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Clock className="h-3.5 w-3.5" />
-                Conecte integrações para ver dados
-              </span>
-            )}
+              </div>
+              {shareHint ? <span className="text-right text-xs text-muted-foreground">{shareHint}</span> : null}
+            </div>
+          ) : null
+        }
+      />
+
+      <FilterBarPremium
+        label="Contexto e período"
+        footer={
+          launchId !== "all" && selectedLaunch ? (
+            <>
+              Filtro por lançamento: campanhas cujo nome contém tokens de “{selectedLaunch.name}”. Ajuste títulos no
+              Google/Meta ou o nome do lançamento para alinhar.
+            </>
+          ) : undefined
+        }
+      >
+        <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 max-w-full items-center gap-2 sm:max-w-[min(100%,380px)]">
+              <Select value={launchId} onValueChange={setLaunchId}>
+                <SelectTrigger className="h-9 min-w-0 flex-1 rounded-lg border-border/70 bg-background text-sm shadow-sm">
+                  <SelectValue placeholder="Lançamento" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os lançamentos</SelectItem>
+                  {launches.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.name} · {l.project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {launchId !== "all" && selectedLaunch ? (
+                <StatusBadge tone={dataHealthy && !loadingAny ? "connected" : "alert"} dot>
+                  {dataHealthy && !loadingAny ? "Contexto OK" : "Aguardando"}
+                </StatusBadge>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-1 rounded-xl border border-border/55 bg-muted/30 p-1 shadow-inner">
+              {tempBtn("geral", "Geral")}
+              {tempBtn("frio", "Frio")}
+              {tempBtn("quente", "Quente")}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 max-w-full justify-start gap-2 rounded-lg border-border/70 bg-background shadow-sm sm:max-w-[300px]"
+              onClick={() => setPickerOpen(true)}
+            >
+              <CalendarRange className="h-3.5 w-3.5 shrink-0 opacity-70" />
+              <span className="truncate text-left font-medium">{dateRangeLabel}</span>
+            </Button>
+            <MarketingDateRangeDialog
+              open={pickerOpen}
+              onOpenChange={setPickerOpen}
+              initial={dateRange}
+              initialLabel={dateRangeLabel}
+              initialPresetId={presetId}
+              initialCompare={compareEnabled}
+              onApply={applyDateFilter}
+            />
           </div>
+          {!(hasGoogle || hasMeta) ? (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Clock className="h-3.5 w-3.5 shrink-0" />
+              Conecte integrações para liberar métricas nesta página.
+            </span>
+          ) : (
+            <span className="text-[11px] text-muted-foreground">
+              Deltas de KPI aparecem ao ativar comparação no calendário.
+            </span>
+          )}
         </div>
-        {launchId !== "all" && selectedLaunch && (
-          <p className="mt-3 border-t border-border/50 pt-3 text-[11px] leading-relaxed text-muted-foreground">
-            Filtro por lançamento: campanhas cujo nome contém tokens de “{selectedLaunch.name}”. Ajuste títulos no
-            Google/Meta ou o nome do lançamento para alinhar.
-          </p>
-        )}
-      </div>
+      </FilterBarPremium>
 
       {(hasGoogle || hasMeta) && loadingAny && (
-        <div className="rounded-lg border border-primary/20 bg-primary/[0.06] px-4 py-3 shadow-sm">
+        <div className="rounded-xl border border-primary/25 bg-primary/[0.07] px-4 py-3 shadow-[var(--shadow-surface-sm)]">
           <IndeterminateLoadingBar label="Carregando métricas na API (Google / Meta)…" />
         </div>
       )}
 
-      {compareEnabled && (hasGoogle || hasMeta) && (
-        <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground">
-          {cmpLoading ? (
-            <span>Carregando comparação com o período anterior de mesmo tamanho…</span>
-          ) : prevSpendBrl <= 0 && currentSpendBrl <= 0 ? (
-            <span>Comparação ativa — sem gasto registrado no período atual nem no anterior.</span>
-          ) : (
-            <span>
-              <strong className="font-medium text-foreground">Comparação:</strong> gasto no período anterior{" "}
-              <span className="font-medium text-foreground">{formatSpend(prevSpendBrl)}</span>
-              {currentSpendBrl > 0 && prevSpendBrl > 0 && (
-                <>
-                  {" "}
-                  (
-                  {currentSpendBrl >= prevSpendBrl ? "+" : ""}
-                  {(((currentSpendBrl - prevSpendBrl) / prevSpendBrl) * 100).toFixed(1)}% em relação ao período
-                  anterior)
-                </>
-              )}
-            </span>
-          )}
-        </div>
+      {(hasGoogle || hasMeta) && (
+        <AnalyticsSection
+          eyebrow="Governança"
+          title="Período, metas e alertas"
+          description="Leitura rápida do que importa para decisão: comparação, gap de meta e sinais automáticos."
+          dense
+        >
+          <div className="space-y-4">
+            {compareEnabled ? (
+              <div className="rounded-xl border border-border/50 bg-muted/20 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+                {cmpLoading ? (
+                  <span>Carregando comparação com o período anterior de mesmo tamanho…</span>
+                ) : prevSpendBrl <= 0 && currentSpendBrl <= 0 ? (
+                  <span>Comparação ativa — sem gasto registrado no período atual nem no anterior.</span>
+                ) : (
+                  <span>
+                    <strong className="font-semibold text-foreground">Comparação:</strong> gasto no período anterior{" "}
+                    <span className="font-semibold tabular-nums text-foreground">{formatSpend(prevSpendBrl)}</span>
+                    {currentSpendBrl > 0 && prevSpendBrl > 0 && (
+                      <>
+                        {" "}
+                        (
+                        {currentSpendBrl >= prevSpendBrl ? "+" : ""}
+                        {(((currentSpendBrl - prevSpendBrl) / prevSpendBrl) * 100).toFixed(1)}% vs. período anterior)
+                      </>
+                    )}
+                  </span>
+                )}
+              </div>
+            ) : null}
+            <div className="grid gap-4 lg:grid-cols-12 lg:items-start">
+              <div className="grid gap-3 sm:grid-cols-2 lg:col-span-5">
+                <KpiCardPremium
+                  variant="compact"
+                  label="Falta para meta de leads"
+                  value={faltaMetaLeads != null ? formatNumber(faltaMetaLeads) : "—"}
+                  icon={TrendingUp}
+                  hint={
+                    leadGoalTarget != null
+                      ? `Meta: ${formatNumber(leadGoalTarget)} leads (Goals).`
+                      : "Defina meta em Metas e alertas / Goals."
+                  }
+                />
+                <KpiCardPremium
+                  variant="compact"
+                  label="Falta investir (estim.)"
+                  value={faltaInvestir != null ? formatSpend(faltaInvestir) : "—"}
+                  icon={DollarSign}
+                  hint="Meta de leads × CPA alvo − gasto (configurações)."
+                />
+              </div>
+              <div className="lg:col-span-7">
+                <PerformanceAlerts alerts={insightData?.alerts} loading={insightLoading} />
+              </div>
+            </div>
+          </div>
+        </AnalyticsSection>
       )}
-
-      <PerformanceAlerts alerts={insightData?.alerts} loading={insightLoading} />
 
       {!hasGoogle && !hasMeta ? (
         <EmptyState
@@ -586,231 +637,230 @@ export function Marketing() {
       ) : (
         <div className="space-y-6">
           {(metrics?.ok || metaMetrics?.ok) && (
-            <AnalyticsSection
-              title="Indicadores executivos"
-              description="KPIs consolidados no período, filtros de lançamento e temperatura aplicados. Deltas aparecem ao ativar comparação no calendário."
-              dense
-            >
-              <div className="space-y-5">
-                <div>
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Linha 1 · resultado e retorno
-                  </p>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-                    <KpiPremium
-                      label="Investimento"
-                      value={formatSpend(filteredSpend)}
-                      icon={DollarSign}
-                      source={dataSourceLabel}
-                      delta={relDelta(filteredSpend, prevFilteredSpend, compareEnabled)}
-                    />
-                    <KpiPremium
-                      label="Leads"
-                      value={formatNumber(Math.round(leadsReais))}
-                      icon={UserPlus}
-                      source={dataSourceLabel}
-                      delta={relDelta(leadsReais, prevLeadsReais, compareEnabled)}
-                      hint="Conversões Google + leads Meta no filtro."
-                    />
-                    <KpiPremium
-                      label="Leads qualificados (est.)"
-                      value={formatNumber(Math.round(mqlNumerator))}
-                      icon={Target}
-                      source={dataSourceLabel}
-                      delta={relDelta(mqlNumerator, cmpAggG.conversions + cmpAggM.purchases, compareEnabled)}
-                      hint={`${mqlPct.toFixed(1)}% do volume com sinal de lead/venda (modelo interno).`}
-                    />
-                    <KpiPremium
-                      label="Vendas (Meta)"
-                      value={formatNumber(aggM.purchases)}
-                      icon={TrendingUp}
-                      source="Meta Ads"
-                      delta={relDelta(aggM.purchases, cmpAggM.purchases, compareEnabled)}
-                      hint="Compras no pixel; Google permanece em conversões na aba da plataforma."
-                    />
-                    <KpiPremium
-                      label="Faturamento atribuído"
-                      value={formatSpend(attributedRevenue)}
-                      icon={BarChart3}
-                      source={dataSourceLabel}
-                      delta={relDelta(attributedRevenue, prevAttributedRevenue, compareEnabled)}
-                      hint="Valor de conversão Google + valor de compra Meta."
-                    />
-                    <KpiPremium
-                      label="ROAS"
-                      value={roasBlend != null ? `${roasBlend.toFixed(2)}x` : "—"}
-                      icon={TrendingUp}
-                      source={dataSourceLabel}
-                      delta={
-                        roasBlend != null && prevRoasBlend != null
-                          ? relDelta(roasBlend, prevRoasBlend, compareEnabled)
-                          : undefined
-                      }
-                    />
-                    <KpiPremium
-                      label="CPA (tráfego)"
-                      value={leadsReais > 0 ? formatSpend(cpaTrafego) : "—"}
-                      icon={DollarSign}
-                      source={dataSourceLabel}
-                      delta={
-                        leadsReais > 0 && prevLeadsReais > 0 && prevCpaTrafego != null
-                          ? relDelta(cpaTrafego, prevCpaTrafego, compareEnabled)
-                          : undefined
-                      }
-                      deltaInvert
-                      hint="Investimento ÷ leads totais."
-                    />
-                    <KpiPremium
-                      label="Ticket médio"
-                      value={ticketMedio != null ? formatSpend(ticketMedio) : "—"}
-                      icon={DollarSign}
-                      source="Receita ÷ vendas Meta"
-                      hint={aggM.purchases === 0 ? "Sem vendas Meta no período." : undefined}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Linha 2 · eficiência e metas
-                  </p>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-                    <KpiPremium
-                      size="sm"
-                      label="CTR"
-                      value={ctrT != null ? `${ctrT.toFixed(2)}%` : "—"}
-                      icon={MousePointer}
-                      source={dataSourceLabel}
-                      delta={
-                        ctrT != null && prevCtrT != null
-                          ? relDelta(ctrT, prevCtrT, compareEnabled)
-                          : undefined
-                      }
-                    />
-                    <KpiPremium
-                      size="sm"
-                      label="CPC"
-                      value={cpcT != null ? formatSpend(cpcT) : "—"}
-                      icon={MousePointer}
-                      source={dataSourceLabel}
-                      delta={
-                        cpcT != null && prevCpcT != null
-                          ? relDelta(cpcT, prevCpcT, compareEnabled)
-                          : undefined
-                      }
-                      deltaInvert
-                    />
-                    <KpiPremium
-                      size="sm"
-                      label="CPM"
-                      value={cpmT != null ? formatSpend(cpmT) : "—"}
-                      icon={Eye}
-                      source={dataSourceLabel}
-                      delta={
-                        cpmT != null && prevCpmT != null
-                          ? relDelta(cpmT, prevCpmT, compareEnabled)
-                          : undefined
-                      }
-                      deltaInvert
-                    />
-                    <KpiPremium
-                      size="sm"
-                      label="Conv. lead → venda"
-                      value={leadToSalePct != null ? `${leadToSalePct.toFixed(2)}%` : "—"}
-                      icon={Target}
-                      source="Meta"
-                      hint="Vendas Meta ÷ leads Meta."
-                    />
-                    <KpiPremium
-                      size="sm"
-                      label="Clique → lead"
-                      value={surveyRatePct != null ? `${surveyRatePct.toFixed(2)}%` : "—"}
-                      icon={Filter}
-                      source="Proxy funil"
-                      hint="Leads totais ÷ cliques até integrar página/checkout."
-                    />
-                    <KpiPremium
-                      size="sm"
-                      label="Checkout → compra"
-                      value="—"
-                      icon={BarChart3}
-                      source="—"
-                      hint="Conecte checkout/pagamentos para preencher."
-                    />
-                    <KpiPremium
-                      size="sm"
-                      label="Taxa de resposta"
-                      value="—"
-                      icon={Clock}
-                      source="CRM"
-                      hint="Disponível quando houver integração de equipe/comercial."
-                    />
-                    <KpiPremium
-                      size="sm"
-                      label="Custo / resultado qualif."
-                      value={cplQualified != null ? formatSpend(cplQualified) : "—"}
-                      icon={DollarSign}
-                      source={dataSourceLabel}
-                      deltaInvert
-                      hint="Investimento ÷ (conv. Google + vendas Meta)."
-                    />
-                  </div>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <KpiPremium
-                    size="sm"
-                    label="Falta para meta de leads"
-                    value={faltaMetaLeads != null ? formatNumber(faltaMetaLeads) : "—"}
+            <>
+              <AnalyticsSection
+                eyebrow="Faixa executiva"
+                title="Resultado e retorno"
+                description="KPIs principais no período — lançamento e temperatura já aplicados nos dados abaixo."
+                dense
+              >
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+                  <KpiCardPremium
+                    variant="primary"
+                    label="Investimento"
+                    value={formatSpend(filteredSpend)}
+                    icon={DollarSign}
+                    source={dataSourceLabel}
+                    delta={relDelta(filteredSpend, prevFilteredSpend, compareEnabled)}
+                  />
+                  <KpiCardPremium
+                    variant="primary"
+                    label="Leads"
+                    value={formatNumber(Math.round(leadsReais))}
+                    icon={UserPlus}
+                    source={dataSourceLabel}
+                    delta={relDelta(leadsReais, prevLeadsReais, compareEnabled)}
+                    hint="Conversões Google + leads Meta no filtro."
+                  />
+                  <KpiCardPremium
+                    variant="primary"
+                    label="Leads qualificados (est.)"
+                    value={formatNumber(Math.round(mqlNumerator))}
+                    icon={Target}
+                    source={dataSourceLabel}
+                    delta={relDelta(mqlNumerator, cmpAggG.conversions + cmpAggM.purchases, compareEnabled)}
+                    hint={`${mqlPct.toFixed(1)}% do volume com sinal de lead/venda (modelo interno).`}
+                  />
+                  <KpiCardPremium
+                    variant="primary"
+                    label="Vendas (Meta)"
+                    value={formatNumber(aggM.purchases)}
                     icon={TrendingUp}
-                    hint={
-                      leadGoalTarget != null
-                        ? `Meta: ${formatNumber(leadGoalTarget)} leads (Goals).`
-                        : "Defina meta em Metas e alertas / Goals."
+                    source="Meta Ads"
+                    delta={relDelta(aggM.purchases, cmpAggM.purchases, compareEnabled)}
+                    hint="Compras no pixel; Google permanece em conversões na aba da plataforma."
+                  />
+                  <KpiCardPremium
+                    variant="primary"
+                    label="Faturamento atribuído"
+                    value={formatSpend(attributedRevenue)}
+                    icon={BarChart3}
+                    source={dataSourceLabel}
+                    delta={relDelta(attributedRevenue, prevAttributedRevenue, compareEnabled)}
+                    hint="Valor de conversão Google + valor de compra Meta."
+                  />
+                  <KpiCardPremium
+                    variant="primary"
+                    label="ROAS"
+                    value={roasBlend != null ? `${roasBlend.toFixed(2)}x` : "—"}
+                    icon={TrendingUp}
+                    source={dataSourceLabel}
+                    delta={
+                      roasBlend != null && prevRoasBlend != null
+                        ? relDelta(roasBlend, prevRoasBlend, compareEnabled)
+                        : undefined
                     }
                   />
-                  <KpiPremium
-                    size="sm"
-                    label="Falta investir (estim.)"
-                    value={faltaInvestir != null ? formatSpend(faltaInvestir) : "—"}
+                  <KpiCardPremium
+                    variant="primary"
+                    label="CPA (tráfego)"
+                    value={leadsReais > 0 ? formatSpend(cpaTrafego) : "—"}
                     icon={DollarSign}
-                    hint="Meta de leads × CPA alvo − gasto (configurações)."
+                    source={dataSourceLabel}
+                    delta={
+                      leadsReais > 0 && prevLeadsReais > 0 && prevCpaTrafego != null
+                        ? relDelta(cpaTrafego, prevCpaTrafego, compareEnabled)
+                        : undefined
+                    }
+                    deltaInvert
+                    hint="Investimento ÷ leads totais."
+                  />
+                  <KpiCardPremium
+                    variant="primary"
+                    label="Ticket médio"
+                    value={ticketMedio != null ? formatSpend(ticketMedio) : "—"}
+                    icon={DollarSign}
+                    source="Receita ÷ vendas Meta"
+                    hint={aggM.purchases === 0 ? "Sem vendas Meta no período." : undefined}
                   />
                 </div>
+              </AnalyticsSection>
 
-                <div>
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Distribuição por faixa (CTR ponderado)
-                  </p>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    {(
-                      [
-                        ["A", "Ótimos", grades.A],
-                        ["B", "Bons", grades.B],
-                        ["C", "Ok / fracos", grades.C],
-                        ["D", "Atenção", grades.D],
-                      ] as const
-                    ).map(([k, label, pct]) => (
-                      <div
-                        key={k}
-                        className="rounded-lg border border-border/80 bg-muted/15 px-3 py-2.5 text-center transition-colors hover:bg-muted/25"
-                      >
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          Faixa {k}
-                        </p>
-                        <p className="text-[11px] text-muted-foreground">{label}</p>
-                        <p className="mt-1 text-xl font-semibold tabular-nums">{pct.toFixed(0)}%</p>
-                      </div>
-                    ))}
-                  </div>
+              <AnalyticsSection
+                eyebrow="Faixa operacional"
+                title="Eficiência de mídia e funil"
+                description="Métricas de qualidade de tráfego e conversões parciais — use para diagnosticar gargalos antes do resultado."
+                dense
+              >
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+                  <KpiCardPremium
+                    variant="compact"
+                    label="CTR"
+                    value={ctrT != null ? `${ctrT.toFixed(2)}%` : "—"}
+                    icon={MousePointer}
+                    source={dataSourceLabel}
+                    delta={
+                      ctrT != null && prevCtrT != null ? relDelta(ctrT, prevCtrT, compareEnabled) : undefined
+                    }
+                  />
+                  <KpiCardPremium
+                    variant="compact"
+                    label="CPC"
+                    value={cpcT != null ? formatSpend(cpcT) : "—"}
+                    icon={MousePointer}
+                    source={dataSourceLabel}
+                    delta={
+                      cpcT != null && prevCpcT != null ? relDelta(cpcT, prevCpcT, compareEnabled) : undefined
+                    }
+                    deltaInvert
+                  />
+                  <KpiCardPremium
+                    variant="compact"
+                    label="CPM"
+                    value={cpmT != null ? formatSpend(cpmT) : "—"}
+                    icon={Eye}
+                    source={dataSourceLabel}
+                    delta={
+                      cpmT != null && prevCpmT != null ? relDelta(cpmT, prevCpmT, compareEnabled) : undefined
+                    }
+                    deltaInvert
+                  />
+                  <KpiCardPremium
+                    variant="compact"
+                    label="Conv. lead → venda"
+                    value={leadToSalePct != null ? `${leadToSalePct.toFixed(2)}%` : "—"}
+                    icon={Target}
+                    source="Meta"
+                    hint="Vendas Meta ÷ leads Meta."
+                  />
+                  <KpiCardPremium
+                    variant="compact"
+                    label="Clique → lead"
+                    value={surveyRatePct != null ? `${surveyRatePct.toFixed(2)}%` : "—"}
+                    icon={Filter}
+                    source="Proxy funil"
+                    hint="Leads totais ÷ cliques até integrar página/checkout."
+                  />
+                  <KpiCardPremium
+                    variant="compact"
+                    label="Checkout → compra"
+                    value="—"
+                    icon={BarChart3}
+                    source="—"
+                    hint="Conecte checkout/pagamentos para preencher."
+                  />
+                  <KpiCardPremium
+                    variant="compact"
+                    label="Taxa de resposta"
+                    value="—"
+                    icon={Clock}
+                    source="CRM"
+                    hint="Disponível quando houver integração de equipe/comercial."
+                  />
+                  <KpiCardPremium
+                    variant="compact"
+                    label="Custo / resultado qualif."
+                    value={cplQualified != null ? formatSpend(cplQualified) : "—"}
+                    icon={DollarSign}
+                    source={dataSourceLabel}
+                    deltaInvert
+                    hint="Investimento ÷ (conv. Google + vendas Meta)."
+                  />
                 </div>
+              </AnalyticsSection>
 
+              <AnalyticsSection
+                eyebrow="Score"
+                title="Distribuição por faixa (CTR ponderado)"
+                description="Quanto do investimento filtrado cai em campanhas bem ranqueadas por CTR — útil para priorizar otimização criativa e de segmentação."
+                dense
+              >
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {(
+                    [
+                      ["A", "Ótimos", grades.A, "border-l-emerald-500/85"],
+                      ["B", "Bons", grades.B, "border-l-sky-500/80"],
+                      ["C", "Ok / fracos", grades.C, "border-l-amber-500/75"],
+                      ["D", "Atenção", grades.D, "border-l-rose-500/80"],
+                    ] as const
+                  ).map(([k, label, pct, accent]) => (
+                    <div
+                      key={k}
+                      className={cn(
+                        "rounded-xl border border-border/55 border-l-[3px] bg-gradient-to-br from-card to-muted/20 p-3 shadow-sm transition-shadow hover:shadow-[var(--shadow-surface-sm)]",
+                        accent
+                      )}
+                    >
+                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                        Faixa {k}
+                      </p>
+                      <p className="mt-0.5 text-xs font-semibold text-foreground">{label}</p>
+                      <p className="mt-3 text-2xl font-bold tabular-nums tracking-tight text-foreground">
+                        {pct.toFixed(0)}%
+                      </p>
+                      <p className="mt-1 text-[10px] leading-snug text-muted-foreground">Participação ponderada</p>
+                    </div>
+                  ))}
+                </div>
+              </AnalyticsSection>
+
+              <AnalyticsSection
+                eyebrow="Profundidade"
+                title="Séries diárias e temperatura do tráfego"
+                description="Evolução do gasto com CPA e leads; ao lado, participação quente vs frio em leads e investimento."
+                dense
+              >
                 <div className="grid gap-6 xl:grid-cols-12">
-                  <div className="space-y-4 xl:col-span-7">
-                    <CaptureTrendComposedChart data={mergedChartData} />
+                  <div className="space-y-3 xl:col-span-7">
+                    <CaptureTrendComposedChart
+                      embedded
+                      data={mergedChartData}
+                      description="Barras: gasto diário. Linhas: CPA (R$) e leads — eixos independentes para leitura executiva."
+                    />
                   </div>
                   <div className="xl:col-span-5">
                     <CaptureDualDonuts
+                      embedded
                       hotLeads={hotCold.hotLeads}
                       coldLeads={hotCold.coldLeads}
                       hotSpend={hotCold.hotSpend}
@@ -818,8 +868,8 @@ export function Marketing() {
                     />
                   </div>
                 </div>
-              </div>
-            </AnalyticsSection>
+              </AnalyticsSection>
+            </>
           )}
 
           {(metrics?.ok || metaMetrics?.ok) && unifiedCampaignRows.length > 0 && (
@@ -829,21 +879,21 @@ export function Marketing() {
               dense
             >
               <ScrollRegion className="scrollbar-thin">
-                <table className="w-full min-w-[920px] text-sm">
+                <DataTablePremium zebra className="min-w-[920px] text-[13px]">
                   <thead>
-                    <tr className="border-b border-border/70 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      <th className="pb-3 pr-3 font-medium">Canal</th>
-                      <th className="pb-3 pr-3 font-medium">Campanha</th>
-                      <th className="pb-3 pr-3 text-right font-medium">Investimento</th>
-                      <th className="pb-3 pr-3 text-right font-medium">Impr.</th>
-                      <th className="pb-3 pr-3 text-right font-medium">Cliques</th>
-                      <th className="pb-3 pr-3 text-right font-medium">CTR</th>
-                      <th className="pb-3 pr-3 text-right font-medium">CPC</th>
-                      <th className="pb-3 pr-3 text-right font-medium">Leads / conv.</th>
-                      <th className="pb-3 pr-3 text-right font-medium">Vendas</th>
-                      <th className="pb-3 pr-3 text-right font-medium">Receita</th>
-                      <th className="pb-3 text-right font-medium">CPA</th>
-                      <th className="pb-3 text-right font-medium">ROAS</th>
+                    <tr>
+                      <th className="text-left">Canal</th>
+                      <th className="text-left">Campanha</th>
+                      <th className="text-right">Investimento</th>
+                      <th className="text-right">Impr.</th>
+                      <th className="text-right">Cliques</th>
+                      <th className="text-right">CTR</th>
+                      <th className="text-right">CPC</th>
+                      <th className="text-right">Leads / conv.</th>
+                      <th className="text-right">Vendas</th>
+                      <th className="text-right">Receita</th>
+                      <th className="text-right">CPA</th>
+                      <th className="text-right">ROAS</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -854,48 +904,43 @@ export function Marketing() {
                       const cpa = leadish > 0 ? row.spend / leadish : null;
                       const roasRow = row.spend > 0 && row.revenue > 0 ? row.revenue / row.spend : null;
                       return (
-                        <tr
-                          key={`${row.channel}-${row.campaignName}-${i}`}
-                          className="border-b border-border/40 transition-colors hover:bg-muted/30"
-                        >
-                          <td className="py-2.5 pr-3">
+                        <tr key={`${row.channel}-${row.campaignName}-${i}`}>
+                          <td className="text-left">
                             <span
                               className={cn(
-                                "inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                                "inline-flex rounded-md border border-border/50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
                                 row.channel === "Meta"
-                                  ? "bg-primary/15 text-primary"
-                                  : "bg-muted text-muted-foreground"
+                                  ? "border-primary/25 bg-primary/12 text-primary"
+                                  : "bg-muted/60 text-muted-foreground"
                               )}
                             >
                               {row.channel}
                             </span>
                           </td>
-                          <td className="max-w-[220px] truncate py-2.5 pr-3 font-medium" title={row.campaignName}>
+                          <td className="max-w-[240px] truncate font-medium text-foreground" title={row.campaignName}>
                             {row.campaignName || "—"}
                           </td>
-                          <td className="py-2.5 pr-3 text-right tabular-nums">{formatSpend(row.spend)}</td>
-                          <td className="py-2.5 pr-3 text-right tabular-nums">{formatNumber(row.impressions)}</td>
-                          <td className="py-2.5 pr-3 text-right tabular-nums">{formatNumber(row.clicks)}</td>
-                          <td className="py-2.5 pr-3 text-right tabular-nums">
-                            {ctr != null ? `${ctr.toFixed(2)}%` : "—"}
+                          <td className="text-right tabular-nums font-medium">{formatSpend(row.spend)}</td>
+                          <td className="text-right tabular-nums text-muted-foreground">
+                            {formatNumber(row.impressions)}
                           </td>
-                          <td className="py-2.5 pr-3 text-right tabular-nums">
-                            {cpc != null ? formatSpend(cpc) : "—"}
+                          <td className="text-right tabular-nums text-muted-foreground">
+                            {formatNumber(row.clicks)}
                           </td>
-                          <td className="py-2.5 pr-3 text-right tabular-nums">{formatNumber(row.leads)}</td>
-                          <td className="py-2.5 pr-3 text-right tabular-nums">{formatNumber(row.sales)}</td>
-                          <td className="py-2.5 pr-3 text-right tabular-nums">{formatSpend(row.revenue)}</td>
-                          <td className="py-2.5 text-right tabular-nums">
-                            {cpa != null ? formatSpend(cpa) : "—"}
-                          </td>
-                          <td className="py-2.5 text-right tabular-nums">
+                          <td className="text-right tabular-nums">{ctr != null ? `${ctr.toFixed(2)}%` : "—"}</td>
+                          <td className="text-right tabular-nums">{cpc != null ? formatSpend(cpc) : "—"}</td>
+                          <td className="text-right tabular-nums">{formatNumber(row.leads)}</td>
+                          <td className="text-right tabular-nums">{formatNumber(row.sales)}</td>
+                          <td className="text-right tabular-nums">{formatSpend(row.revenue)}</td>
+                          <td className="text-right tabular-nums">{cpa != null ? formatSpend(cpa) : "—"}</td>
+                          <td className="text-right tabular-nums font-medium">
                             {roasRow != null ? `${roasRow.toFixed(2)}x` : "—"}
                           </td>
                         </tr>
                       );
                     })}
                   </tbody>
-                </table>
+                </DataTablePremium>
               </ScrollRegion>
             </AnalyticsSection>
           )}
@@ -906,17 +951,17 @@ export function Marketing() {
             dense
           >
             <Tabs defaultValue="consolidado" className="w-full">
-              <TabsList className="mb-4 flex h-auto min-h-10 w-full flex-wrap gap-1 rounded-lg border border-border/80 bg-muted/40 p-1">
+              <TabsList className="mb-5 flex h-auto min-h-11 w-full flex-wrap gap-1 rounded-xl border border-border/55 bg-muted/25 p-1.5 shadow-inner">
                 <TabsTrigger
                   value="consolidado"
-                  className="rounded-md text-xs font-semibold uppercase tracking-wide data-[state=active]:shadow-sm"
+                  className="rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wide text-muted-foreground transition-all data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-[var(--shadow-surface-sm)]"
                 >
                   Resumo
                 </TabsTrigger>
                 {hasMeta && (
                   <TabsTrigger
                     value="meta-ads"
-                    className="rounded-md text-xs font-semibold uppercase tracking-wide data-[state=active]:shadow-sm"
+                    className="rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wide text-muted-foreground transition-all data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-[var(--shadow-surface-sm)]"
                   >
                     Meta Ads
                   </TabsTrigger>
@@ -924,32 +969,62 @@ export function Marketing() {
                 {hasGoogle && (
                   <TabsTrigger
                     value="google-ads"
-                    className="rounded-md text-xs font-semibold uppercase tracking-wide data-[state=active]:shadow-sm"
+                    className="rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wide text-muted-foreground transition-all data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-[var(--shadow-surface-sm)]"
                   >
                     Google Ads
                   </TabsTrigger>
                 )}
               </TabsList>
 
-              <TabsContent value="consolidado" className="mt-0 space-y-4">
+              <TabsContent value="consolidado" className="mt-0 space-y-5">
                 <p className="text-sm leading-relaxed text-muted-foreground">
-                  Use a aba de cada rede para métricas completas e gráficos específicos. A tabela consolidada acima
-                  reúne ambas para leitura única.
+                  Visão sintética do filtro atual. As abas por rede trazem gráficos nativos, funis e tabelas completas; a
+                  tabela consolidada acima permanece a referência única Meta + Google.
                 </p>
                 <div className="grid gap-4 lg:grid-cols-2">
                   {hasMeta && metaMetrics?.ok && (
-                    <div className="rounded-lg border border-border/70 bg-muted/10 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Meta Ads</p>
-                      <p className="mt-2 text-2xl font-semibold tabular-nums">{formatSpend(aggM.spend)}</p>
-                      <p className="text-xs text-muted-foreground">Gasto filtrado · {formatNumber(aggM.leads)} leads</p>
+                    <div className="rounded-xl border border-border/55 bg-gradient-to-br from-card to-primary/[0.04] p-5 shadow-[var(--shadow-surface-sm)]">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-primary">Meta Ads</p>
+                        <StatusBadge tone="connected" dot>
+                          Filtrado
+                        </StatusBadge>
+                      </div>
+                      <p className="mt-3 text-3xl font-bold tabular-nums tracking-tight">{formatSpend(aggM.spend)}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {formatNumber(aggM.leads)} leads · {formatNumber(aggM.purchases)} vendas · CTR{" "}
+                        {aggM.impressions > 0 ? ((aggM.clicks / aggM.impressions) * 100).toFixed(2) : "0.00"}%
+                      </p>
+                      <p className="mt-3 border-t border-border/40 pt-3 text-[11px] text-muted-foreground">
+                        Participação no gasto filtrado:{" "}
+                        <span className="font-semibold text-foreground">
+                          {filteredSpend > 0 ? `${((aggM.spend / filteredSpend) * 100).toFixed(1)}%` : "—"}
+                        </span>
+                      </p>
                     </div>
                   )}
                   {hasGoogle && metrics?.ok && (
-                    <div className="rounded-lg border border-border/70 bg-muted/10 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Google Ads</p>
-                      <p className="mt-2 text-2xl font-semibold tabular-nums">{formatCost(aggG.costMicros)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Gasto filtrado · {formatNumber(aggG.conversions)} conversões
+                    <div className="rounded-xl border border-border/55 bg-gradient-to-br from-card to-muted/30 p-5 shadow-[var(--shadow-surface-sm)]">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                          Google Ads
+                        </p>
+                        <StatusBadge tone="neutral" dot>
+                          Filtrado
+                        </StatusBadge>
+                      </div>
+                      <p className="mt-3 text-3xl font-bold tabular-nums tracking-tight">{formatCost(aggG.costMicros)}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {formatNumber(aggG.conversions)} conversões · valor {formatSpend(aggG.conversionsValue ?? 0)} ·
+                        CTR {aggG.impressions > 0 ? ((aggG.clicks / aggG.impressions) * 100).toFixed(2) : "0.00"}%
+                      </p>
+                      <p className="mt-3 border-t border-border/40 pt-3 text-[11px] text-muted-foreground">
+                        Participação no gasto filtrado:{" "}
+                        <span className="font-semibold text-foreground">
+                          {filteredSpend > 0
+                            ? `${(((aggG.costMicros / 1_000_000) / filteredSpend) * 100).toFixed(1)}%`
+                            : "—"}
+                        </span>
                       </p>
                     </div>
                   )}

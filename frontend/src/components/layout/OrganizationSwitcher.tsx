@@ -77,7 +77,7 @@ export function OrganizationSwitcher() {
         <Button
           variant="outline"
           size="sm"
-          className="flex h-10 min-w-0 max-w-full gap-2 rounded-full border-border/70 bg-background/80 px-3 font-normal shadow-sm backdrop-blur-sm transition-colors hover:bg-background sm:h-9 sm:max-w-[min(100%,280px)]"
+          className="flex h-10 min-w-0 max-w-full gap-2 rounded-xl border-border/60 bg-gradient-to-b from-background to-muted/15 px-3.5 font-medium shadow-sm ring-1 ring-black/[0.03] backdrop-blur-sm transition-all hover:border-border hover:shadow-md sm:h-9 sm:max-w-[min(100%,320px)] dark:ring-white/[0.05]"
           disabled={loading}
         >
           {loading ? (
@@ -91,7 +91,7 @@ export function OrganizationSwitcher() {
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="z-50 max-h-[min(70dvh,24rem)] min-w-[min(calc(100vw-2rem),280px)] overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-md"
+          className="z-50 max-h-[min(70dvh,24rem)] min-w-[min(calc(100vw-2rem),300px)] overflow-y-auto rounded-xl border border-border/80 bg-popover p-1 shadow-[var(--shadow-surface)]"
           sideOffset={6}
           align="start"
           collisionPadding={12}
