@@ -12,7 +12,6 @@ import {
   Filter,
   CalendarRange,
   UserPlus,
-  ShoppingBag,
   TrendingUp,
   Pencil,
 } from "lucide-react";
