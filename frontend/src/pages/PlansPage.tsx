@@ -9,7 +9,7 @@ const plans = [
     name: "Essencial",
     price: "Sob consulta",
     description: "Ideal para quem está começando a centralizar métricas.",
-    features: ["Dashboard e Marketing", "Integrações Meta + Google", "Uma empresa por conta"],
+    features: ["Dashboard e Marketing", "Integrações Meta + Google", "Um ambiente (organização) isolado"],
   },
   {
     name: "Profissional",

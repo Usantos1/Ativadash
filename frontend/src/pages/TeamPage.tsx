@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollRegion } from "@/components/ui/scroll-region";
 import { fetchMembers, type MemberRow } from "@/lib/workspace-api";
+import { useAuthStore } from "@/stores/auth-store";
 
 const roleLabel: Record<string, string> = {
   owner: "Proprietário",
@@ -10,6 +12,7 @@ const roleLabel: Record<string, string> = {
 };
 
 export function TeamPage() {
+  const orgName = useAuthStore((s) => s.user?.organization?.name);
   const [rows, setRows] = useState<MemberRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,10 +36,19 @@ export function TeamPage() {
   return (
     <div className="min-w-0 max-w-full space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Usuários</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Equipe</h1>
         <p className="text-sm text-muted-foreground">
-          Membros desta empresa e, se for conta cliente de uma agência, administradores da agência com
-          acesso.
+          Pessoas com <strong className="font-medium text-foreground">login</strong> que acessam{" "}
+          <strong className="font-medium text-foreground">{orgName ?? "esta empresa"}</strong> (a que está ativa no
+          topo). A contagem abaixo <strong className="text-foreground">não</strong> é quantidade de clientes do menu
+          Clientes.{" "}
+          <Link
+            to="/configuracoes#como-funciona-conta"
+            className="font-medium text-primary underline-offset-4 hover:underline"
+          >
+            Ver diferenças
+          </Link>
+          .
         </p>
       </div>
 
@@ -44,9 +56,9 @@ export function TeamPage() {
 
       <Card className="min-w-0 max-w-full overflow-hidden">
         <CardHeader>
-          <CardTitle>Equipe</CardTitle>
+          <CardTitle>Membros com acesso</CardTitle>
           <CardDescription>
-            {loading ? "Carregando…" : `${rows.length} usuário(s)`}
+            {loading ? "Carregando…" : `${rows.length} pessoa(s) com acesso a esta organização`}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -82,9 +94,8 @@ export function TeamPage() {
             </ScrollRegion>
           )}
           <p className="mt-4 break-words text-xs text-muted-foreground">
-            Conta vinculada a uma agência e sem membros listados? Os administradores da agência aparecem
-            acima como &quot;Acesso pela agência&quot;. Para convites diretos nesta empresa, em breve
-            convite por e-mail.
+            Em contas criadas por agência, administradores da agência podem aparecer como &quot;Acesso pela agência&quot;.
+            Convites por e-mail para novos membros: em breve.
           </p>
         </CardContent>
       </Card>

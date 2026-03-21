@@ -171,6 +171,7 @@ Cole:
 server {
     listen 80;
     server_name api.ativadash.com;
+    charset utf-8;
     location / {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
@@ -194,6 +195,7 @@ Cole:
 server {
     listen 80;
     server_name app.ativadash.com;
+    charset utf-8;
     root /ativadash/frontend/dist;
     index index.html;
     location / {
@@ -242,6 +244,7 @@ Cole (ajuste o caminho se o projeto estiver em outro lugar):
 server {
     listen 80;
     server_name ativadash.com www.ativadash.com;
+    charset utf-8;
     root /ativadash/landing;
     index index.html;
     location / {
@@ -304,6 +307,13 @@ Se o Nginx reclamar de permissão ao servir os arquivos:
 chown -R www-data:www-data /ativadash/frontend/dist
 chmod -R 755 /ativadash/frontend/dist
 ```
+
+### Acentuação (UTF-8) na interface
+
+Se aparecerem caracteres estranhos (símbolos quebrados no lugar de ç, ã, í, etc.):
+
+- Inclua `charset utf-8;` em cada bloco `server { }` do Nginx (já consta nos exemplos deste guia), depois `nginx -t && systemctl reload nginx`.
+- Garanta que o código no repositório está em **UTF-8** (há `.editorconfig` na raiz do projeto) e gere de novo o `frontend/dist` antes de enviar à VPS.
 
 ---
 

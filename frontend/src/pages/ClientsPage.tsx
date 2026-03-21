@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -84,10 +85,18 @@ export function ClientsPage() {
     <div className="w-full space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Clientes</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Clientes comerciais</h1>
           <p className="text-sm text-muted-foreground">
-            Cadastro comercial da <strong className="font-medium text-foreground">empresa ativa</strong> no menu
-            (cada organização vê só os seus). Use para organizar projetos e lançamentos.
+            Lista de <strong className="font-medium text-foreground">contas ou marcas</strong> que você atende{" "}
+            <em>dentro da empresa ativa</em> (troca no topo). Serve para agrupar projetos e lançamentos.{" "}
+            <strong className="text-foreground">Não</strong> é número de usuários nem empresa de revenda —{" "}
+            <Link
+              to="/configuracoes#como-funciona-conta"
+              className="font-medium text-primary underline-offset-4 hover:underline"
+            >
+              ver resumo em Configurações
+            </Link>
+            .
           </p>
         </div>
         <Button onClick={openCreate}>

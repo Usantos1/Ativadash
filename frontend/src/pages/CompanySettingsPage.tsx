@@ -101,8 +101,17 @@ export function CompanySettingsPage() {
         </Button>
         <h1 className="text-2xl font-semibold tracking-tight">Empresa e revenda</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Cada empresa vê apenas seus próprios dados (integrações, marketing, clientes e projetos). Use empresas
-          filiais para clientes da sua agência.
+          A <strong className="font-medium text-foreground">empresa ativa</strong> é o ambiente isolado (integrações,
+          marketing, menu Clientes, projetos). Agências podem criar <strong className="font-medium text-foreground">empresas filhas</strong>{" "}
+          abaixo — cada filha é outro ambiente completo, diferente dos registros do menu{" "}
+          <strong className="font-medium text-foreground">Clientes</strong>.{" "}
+          <Link
+            to="/configuracoes#como-funciona-conta"
+            className="font-medium text-primary underline-offset-4 hover:underline"
+          >
+            Resumo do modelo
+          </Link>
+          .
         </p>
       </div>
 
@@ -158,11 +167,11 @@ export function CompanySettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Revenda · empresas cliente</CardTitle>
+          <CardTitle className="text-lg">Revenda · nova organização por cliente final</CardTitle>
           <CardDescription>
-            Crie uma empresa filha para cada cliente final. Depois, use{" "}
-            <strong className="text-foreground">Trocar empresa</strong> no topo da tela para acessar o ambiente
-            isolado dele (integrações e métricas separadas).
+            Cada item aqui vira uma <strong className="text-foreground">empresa separada no seletor do topo</strong>, com
+            Google/Meta e dados próprios. Isso não substitui o menu <strong className="text-foreground">Clientes</strong>, que
+            continua sendo cadastro comercial <em>dentro</em> de cada ambiente.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

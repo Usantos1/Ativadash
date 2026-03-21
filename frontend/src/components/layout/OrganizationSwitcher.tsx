@@ -25,7 +25,7 @@ function collectOptions(
       map.set(o.id, {
         id: o.id,
         label: o.name,
-        subtitle: "Empresa cliente (revenda)",
+        subtitle: "Organização filha · revenda",
       });
     }
   }
@@ -93,8 +93,13 @@ export function OrganizationSwitcher() {
           align="start"
           collisionPadding={12}
         >
-          <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Trocar empresa
+          <div className="border-b border-border/60 px-2 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Trocar empresa
+            </div>
+            <p className="mt-1 text-[10px] leading-snug text-muted-foreground normal-case">
+              Cada item é um ambiente com dados e integrações próprios — diferente do menu Clientes (cadastro comercial).
+            </p>
           </div>
           {options.map((opt) => (
             <DropdownMenu.Item

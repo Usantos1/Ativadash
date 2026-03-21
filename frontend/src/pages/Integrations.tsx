@@ -230,14 +230,16 @@ function AtivaCrmIntegrationPanel({
               type="password"
               autoComplete="off"
               placeholder={
-                tokenConfigured ? "???????? (deixe em branco para manter)" : "Cole o token da conexão WhatsApp"
+                tokenConfigured
+                  ? "Opcional (deixe em branco para manter o token atual)"
+                  : "Cole o token da conexão WhatsApp"
               }
               value={tokenInput}
               onChange={(e) => setTokenInput(e.target.value)}
               className="min-w-0 font-mono text-sm"
             />
             <p className="text-xs text-muted-foreground">
-              Obtenha o token em:{" "}
+              Obtenha o token em{" "}
               <a
                 href={ATIVA_CRM_CONNECTIONS_URL}
                 target="_blank"
@@ -245,9 +247,9 @@ function AtivaCrmIntegrationPanel({
                 className="font-medium text-primary underline-offset-4 hover:underline"
               >
                 app.ativacrm.com/connections
-              </a>{" "}
-              ? menu <strong className="font-medium text-foreground">Conexões</strong> ? editar WhatsApp ? campo{" "}
-              <strong className="font-medium text-foreground">Token</strong>.
+              </a>
+              : abra o menu <strong className="font-medium text-foreground">Conexões</strong>, edite a conexão do
+              WhatsApp e copie o valor do campo <strong className="font-medium text-foreground">Token</strong>.
             </p>
           </div>
 
@@ -262,7 +264,9 @@ function AtivaCrmIntegrationPanel({
               onChange={(e) => setPhone(e.target.value)}
               className="min-w-0 max-w-md"
             />
-            <p className="text-xs text-muted-foreground">Número que receberá os avisos (formato internacional 55?).</p>
+            <p className="text-xs text-muted-foreground">
+              Número que receberá os avisos (Brasil: comece com 55, ex.: 5511999999999).
+            </p>
           </div>
 
           <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/80 bg-muted/20 p-3">
@@ -471,7 +475,7 @@ export function Integrations() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Integrações</h1>
           <p className="text-muted-foreground">
-            Publicidade (Google e Meta) e alertas por WhatsApp via Ativa CRM ? aba{" "}
+            Publicidade (Google e Meta) e alertas por WhatsApp via Ativa CRM ? use a aba{" "}
             <strong className="font-medium text-foreground">WhatsApp (CRM)</strong>.
           </p>
         </div>

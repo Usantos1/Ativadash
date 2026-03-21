@@ -1,6 +1,8 @@
-import { Link } from "react-router-dom";
+import { useEffect } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { Megaphone, Plug, User, Users, Building2 } from "lucide-react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AccountModelExplainer } from "@/components/help/AccountModelExplainer";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
 
@@ -8,7 +10,7 @@ const links = [
   {
     to: "/configuracoes/empresa",
     title: "Empresa e revenda",
-    description: "Nome da empresa, isolamento de dados e empresas cliente (agência).",
+    description: "Nome do ambiente ativo, isolamento de dados e (agências) empresas filhas por cliente.",
     icon: Building2,
   },
   {
@@ -31,23 +33,33 @@ const links = [
   },
   {
     to: "/usuarios",
-    title: "Usuários da empresa",
-    description: "Quem tem acesso à organização.",
+    title: "Equipe (usuários)",
+    description: "Quem tem login e acessa a empresa que está ativa no momento — não é lista de clientes comerciais.",
     icon: Users,
   },
 ];
 
 export function SettingsHubPage() {
   const org = useAuthStore((s) => s.user?.organization);
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.hash === "#como-funciona-conta") {
+      document.getElementById("como-funciona-conta")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [location.hash, location.pathname]);
 
   return (
     <div className="mx-auto min-w-0 max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Configurações</h1>
         <p className="text-sm text-muted-foreground">
-          Central de ajustes da conta e do marketing.
+          Central de ajustes da conta e do marketing. Em dúvida sobre empresa, usuários e clientes? Leia o quadro
+          abaixo.
         </p>
       </div>
+
+      <AccountModelExplainer />
 
       {org && (
         <Card className="border-primary/20 bg-primary/5">

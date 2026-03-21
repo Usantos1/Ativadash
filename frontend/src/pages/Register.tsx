@@ -94,7 +94,9 @@ export function Register() {
           <CardHeader className="space-y-1 text-center">
             <CardTitle className="text-2xl">Criar conta</CardTitle>
             <CardDescription>
-              Preencha os dados para começar a usar o Ativa Dash
+              Você cria seu usuário e <strong className="font-medium text-foreground">uma empresa</strong> (espaço de
+              trabalho). Depois, no painel, o menu <strong className="font-medium text-foreground">Clientes</strong> é
+              só para organizar contas comerciais — não confunde com criar outra empresa.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -118,10 +120,10 @@ export function Register() {
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="organizationName">Empresa</Label>
+                <Label htmlFor="organizationName">Nome da empresa (organização)</Label>
                 <Input
                   id="organizationName"
-                  placeholder="Nome da sua empresa ou equipe"
+                  placeholder="Ex.: Minha agência, Minha marca, Nome do time"
                   autoComplete="organization"
                   {...register("organizationName")}
                   className={cn(errors.organizationName && "border-destructive")}
@@ -130,7 +132,9 @@ export function Register() {
                   <p className="text-sm text-destructive">{errors.organizationName.message}</p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  Sua conta será vinculada a esta empresa no sistema.
+                  Cria o <strong className="font-medium text-foreground">ambiente</strong> onde ficam integrações,
+                  métricas e cadastros. O menu <strong className="font-medium text-foreground">Clientes</strong> (depois
+                  do login) serve para outra coisa: contas comerciais dentro deste ambiente.
                 </p>
               </div>
               <div className="space-y-2">
