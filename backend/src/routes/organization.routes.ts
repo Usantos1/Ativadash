@@ -8,7 +8,9 @@ router.use(authMiddleware);
 
 router.get("/", orgController.getCurrentOrganization);
 router.patch("/", orgController.patchCurrentOrganization);
+router.get("/children/portfolio", orgController.listChildrenPortfolioHandler);
 router.get("/children", orgController.listManagedOrganizations);
 router.post("/children", orgController.createManagedOrganization);
+router.patch("/plan-settings", orgController.patchOrganizationPlanSettingsHandler);
 
 export default router;

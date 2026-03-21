@@ -6,4 +6,11 @@ export const patchOrganizationSchema = z.object({
 
 export const createChildOrganizationSchema = z.object({
   name: z.string().min(2, "Nome muito curto").max(120, "Nome muito longo"),
+  inheritPlanFromParent: z.boolean().optional(),
+  planId: z.string().min(1).optional().nullable(),
+});
+
+export const organizationPlanSettingsSchema = z.object({
+  inheritPlanFromParent: z.boolean().optional(),
+  planId: z.string().min(1).optional().nullable(),
 });

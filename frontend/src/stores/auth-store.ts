@@ -21,6 +21,8 @@ export interface User {
   organizationId: string;
   /** Preenchido no login/cadastro e em GET /auth/me */
   organization?: OrganizationSummary;
+  /** Gestão global (PLATFORM_ADMIN_EMAILS no servidor) */
+  platformAdmin?: boolean;
 }
 
 /** Resposta de GET /auth/me */
@@ -28,6 +30,7 @@ export type AuthMeResponse = User & {
   organization: OrganizationSummary;
   memberships: MembershipSummary[];
   managedOrganizations: OrganizationSummary[];
+  platformAdmin?: boolean;
 };
 
 type AuthPatch = Partial<{

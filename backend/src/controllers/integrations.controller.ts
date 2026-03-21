@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { z } from "zod";
 import {
   getGoogleAdsAuthUrl,
   exchangeGoogleAdsCode,
@@ -6,8 +7,13 @@ import {
   exchangeMetaAdsCode,
   listIntegrations,
   disconnectIntegration,
+  updateIntegrationClientAccount,
 } from "../services/integrations.service.js";
 import { env } from "../config/env.js";
+
+const patchIntegrationClientSchema = z.object({
+  clientAccountId: z.string().min(1).nullable().optional(),
+});
 
 type AuthRequest = Request & { user: { organizationId: string } };
 
@@ -139,5 +145,36 @@ export async function disconnectHandler(req: Request, res: Response) {
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: "Erro ao desvincular" });
+  }
+}
+
+export async function patchIntegrationClientHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const { id } = req.params;
+  if (!user?.organizationId || !id) {
+    return res.status(400).json({ message: "Dados inválidos" });
+  }
+  const parsed = patchIntegrationClientSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Dados inválidos" });
+  }
+  if (parsed.data.clientAccountId === undefined) {
+    return res.status(400).json({ message: "Informe clientAccountId ou null para limpar" });
+  }
+  try {
+    const row = await updateIntegrationClientAccount(
+      id,
+      user.organizationId,
+      parsed.data.clientAccountId
+    );
+    if (!row) {
+      return res.status(404).json({ message: "Integração não encontrada" });
+    }
+    return res.json({
+      id: row.id,
+      clientAccountId: row.clientAccountId,
+    });
+  } catch (e) {
+    return res.status(400).json({ message: e instanceof Error ? e.message : "Erro ao atualizar" });
   }
 }

@@ -23,7 +23,15 @@ import {
   updateProjectSchema,
   createLaunchSchema,
   updateLaunchSchema,
+  createInvitationSchema,
+  updateMemberRoleSchema,
 } from "../validators/workspace.validator.js";
+import {
+  createInvitation,
+  listPendingInvitations,
+  revokeInvitation,
+} from "../services/invitations.service.js";
+import { updateMemberRole, removeMember } from "../services/members.service.js";
 
 type AuthRequest = Request & { user: JwtPayload };
 
@@ -186,8 +194,14 @@ export async function launchesUpdate(req: Request, res: Response) {
     return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Dados inválidos" });
   }
   const body = parsed.data;
-  const data: { name?: string; startDate?: Date | null; endDate?: Date | null } = {};
+  const data: {
+    name?: string;
+    startDate?: Date | null;
+    endDate?: Date | null;
+    checklistJson?: string | null;
+  } = {};
   if (body.name !== undefined) data.name = body.name;
+  if (body.checklistJson !== undefined) data.checklistJson = body.checklistJson;
   try {
     if (body.startDate !== undefined) data.startDate = parseDateInput(body.startDate) ?? null;
     if (body.endDate !== undefined) data.endDate = parseDateInput(body.endDate) ?? null;
@@ -222,4 +236,71 @@ export async function membersList(req: Request, res: Response) {
   const { organizationId } = (req as AuthRequest).user;
   const list = await listOrganizationMembers(organizationId);
   return res.json(list);
+}
+
+export async function invitationsCreate(req: Request, res: Response) {
+  const { organizationId, userId } = (req as AuthRequest).user;
+  const parsed = createInvitationSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Dados inválidos" });
+  }
+  try {
+    const out = await createInvitation(
+      organizationId,
+      userId,
+      parsed.data.email,
+      parsed.data.role ?? "member"
+    );
+    return res.status(201).json(out);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Erro ao convidar";
+    const code = msg.includes("Limite") || msg.includes("plano") ? 403 : 400;
+    return res.status(code).json({ message: msg });
+  }
+}
+
+export async function invitationsList(req: Request, res: Response) {
+  const { organizationId, userId } = (req as AuthRequest).user;
+  try {
+    const list = await listPendingInvitations(organizationId, userId);
+    return res.json(list);
+  } catch (e) {
+    return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
+  }
+}
+
+export async function invitationsRevoke(req: Request, res: Response) {
+  const { organizationId, userId } = (req as AuthRequest).user;
+  const { id } = req.params;
+  try {
+    const ok = await revokeInvitation(organizationId, userId, id);
+    if (!ok) return res.status(404).json({ message: "Convite não encontrado" });
+    return res.status(204).send();
+  } catch (e) {
+    return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
+  }
+}
+
+export async function membersPatchRole(req: Request, res: Response) {
+  const { organizationId, userId } = (req as AuthRequest).user;
+  const { userId: targetUserId } = req.params;
+  const parsed = updateMemberRoleSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Dados inválidos" });
+  }
+  const result = await updateMemberRole(organizationId, userId, targetUserId, parsed.data.role);
+  if (!result.ok) {
+    return res.status(400).json({ message: result.message });
+  }
+  return res.json({ success: true });
+}
+
+export async function membersRemove(req: Request, res: Response) {
+  const { organizationId, userId } = (req as AuthRequest).user;
+  const { userId: targetUserId } = req.params;
+  const result = await removeMember(organizationId, userId, targetUserId);
+  if (!result.ok) {
+    return res.status(400).json({ message: result.message });
+  }
+  return res.status(204).send();
 }

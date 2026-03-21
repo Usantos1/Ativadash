@@ -6,9 +6,12 @@ const router = Router();
 
 router.post("/login", authController.login);
 router.post("/register", authController.register);
+router.get("/invite-preview", authController.invitePreview);
+router.post("/register-with-invite", authController.registerWithInvite);
 router.post("/forgot-password", authController.forgotPassword);
 router.post("/refresh", authController.refresh);
 router.get("/me", authMiddleware, authController.me);
+router.post("/accept-invite", authMiddleware, authController.acceptInviteLoggedIn);
 router.post("/switch-organization", authMiddleware, authController.switchOrganization);
 router.patch("/profile", authMiddleware, authController.patchProfile);
 

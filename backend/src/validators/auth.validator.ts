@@ -29,8 +29,20 @@ export const switchOrganizationSchema = z.object({
   organizationId: z.string().min(1, "Empresa inválida"),
 });
 
+export const registerWithInviteSchema = z.object({
+  token: z.string().min(16, "Token inválido"),
+  name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
+  password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+});
+
+export const acceptInviteTokenSchema = z.object({
+  token: z.string().min(16, "Token inválido"),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;
 export type SwitchOrganizationInput = z.infer<typeof switchOrganizationSchema>;
+export type RegisterWithInviteInput = z.infer<typeof registerWithInviteSchema>;
+export type AcceptInviteTokenInput = z.infer<typeof acceptInviteTokenSchema>;

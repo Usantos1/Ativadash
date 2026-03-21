@@ -11,6 +11,7 @@ export type PlanLimits = {
 
 export type PlanUsage = {
   directMembers: number;
+  pendingInvitations?: number;
   integrations: number;
   dashboards: number;
   clientAccounts: number;
@@ -29,6 +30,8 @@ export type OrganizationContext = {
   slug: string;
   parentOrganization: OrganizationSummary | null;
   plan: { id: string; name: string; slug: string } | null;
+  /** own = plano próprio; parent = limites herdados da matriz */
+  planSource?: "own" | "parent";
   limits: PlanLimits;
   usage: PlanUsage;
 };
@@ -47,9 +50,37 @@ export async function fetchManagedOrganizations(): Promise<OrganizationSummary[]
 }
 
 export async function createManagedOrganization(
-  name: string
-): Promise<{ organization: OrganizationSummary }> {
-  return api.post<{ organization: OrganizationSummary }>("/organization/children", { name });
+  name: string,
+  options?: { inheritPlanFromParent?: boolean; planId?: string | null }
+): Promise<{ organization: OrganizationSummary & { inheritPlanFromParent?: boolean; planId?: string | null } }> {
+  return api.post("/organization/children", {
+    name,
+    ...(options?.inheritPlanFromParent !== undefined
+      ? { inheritPlanFromParent: options.inheritPlanFromParent }
+      : {}),
+    ...(options?.planId !== undefined ? { planId: options.planId } : {}),
+  });
+}
+
+export async function fetchChildrenPortfolio(): Promise<{
+  organizations: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    inheritPlanFromParent: boolean;
+    connectedIntegrations: number;
+    lastIntegrationSyncAt: string | null;
+    createdAt: string;
+  }>;
+}> {
+  return api.get("/organization/children/portfolio");
+}
+
+export async function patchOrganizationPlanSettings(body: {
+  inheritPlanFromParent?: boolean;
+  planId?: string | null;
+}): Promise<{ organization: { id: string; inheritPlanFromParent: boolean; planId: string | null } }> {
+  return api.patch("/organization/plan-settings", body);
 }
 
 export type SwitchOrganizationResponse = {

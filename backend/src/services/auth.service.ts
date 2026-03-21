@@ -5,6 +5,7 @@ import { env } from "../config/env.js";
 import { slugifyOrganizationName, uniqueOrganizationSlug } from "../utils/org-slug.js";
 import type { LoginInput, RegisterInput } from "../validators/auth.validator.js";
 import type { JwtPayload } from "../middlewares/auth.middleware.js";
+import { isPlatformAdminEmail } from "../utils/platform-admin.js";
 
 const SALT_ROUNDS = 10;
 
@@ -27,6 +28,8 @@ export type MembershipSummaryDto = {
 export type AuthProfileExtendedDto = AuthUserDto & {
   memberships: MembershipSummaryDto[];
   managedOrganizations: AuthOrganizationDto[];
+  /** true se o e-mail está em PLATFORM_ADMIN_EMAILS (gestão global). */
+  platformAdmin: boolean;
 };
 
 async function organizationToDto(organizationId: string): Promise<AuthOrganizationDto> {
@@ -164,6 +167,27 @@ export async function assertDirectOrgAdmin(userId: string, organizationId: strin
   });
   if (!m || !["owner", "admin"].includes(m.role)) {
     throw new Error("Sem permissão para gerenciar empresas vinculadas");
+  }
+}
+
+/** Convites / equipe na org: admin ou owner direto, ou admin/owner da matriz (revenda). */
+export async function assertOrgAdminOrParentAgency(userId: string, organizationId: string): Promise<void> {
+  const direct = await prisma.membership.findUnique({
+    where: { userId_organizationId: { userId, organizationId } },
+  });
+  if (direct && ["owner", "admin"].includes(direct.role)) return;
+
+  const org = await prisma.organization.findFirst({
+    where: { id: organizationId, deletedAt: null },
+  });
+  if (!org?.parentOrganizationId) {
+    throw new Error("Sem permissão para gerenciar equipe desta empresa");
+  }
+  const pm = await prisma.membership.findUnique({
+    where: { userId_organizationId: { userId, organizationId: org.parentOrganizationId } },
+  });
+  if (!pm || !["owner", "admin"].includes(pm.role)) {
+    throw new Error("Sem permissão para gerenciar equipe desta empresa");
   }
 }
 
@@ -415,6 +439,7 @@ export async function getAuthProfileExtended(
     ...profile,
     memberships,
     managedOrganizations,
+    platformAdmin: isPlatformAdminEmail(profile.email),
   };
 }
 
@@ -434,4 +459,30 @@ async function saveRefreshToken(userId: string, token: string) {
   await prisma.refreshToken.create({
     data: { token, userId, expiresAt },
   });
+}
+
+/** Login completo após convite ou fluxos que já criaram membership. */
+export async function finalizeSessionForUser(userId: string, organizationId: string) {
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
+  });
+  if (!user) {
+    throw new Error("Usuário não encontrado");
+  }
+  const allowed = await userHasEffectiveAccess(userId, organizationId);
+  if (!allowed) {
+    throw new Error("Sem acesso a esta empresa");
+  }
+  const { accessToken, refreshToken } = await createTokens(user.id, user.email, organizationId);
+  await saveRefreshToken(userId, refreshToken);
+  const userDto = await buildAuthUserDto(userId, user.email, user.name, organizationId);
+  const memberships = await listMembershipSummaries(userId);
+  const managedOrganizations = await listManagedOrganizationsForActiveContext(userId, organizationId);
+  return {
+    user: userDto,
+    memberships,
+    managedOrganizations,
+    accessToken,
+    refreshToken,
+  };
 }

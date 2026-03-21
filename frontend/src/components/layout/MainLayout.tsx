@@ -44,6 +44,7 @@ export function MainLayout() {
             name: profile.name,
             organizationId: profile.organizationId,
             organization: profile.organization,
+            platformAdmin: profile.platformAdmin,
           },
           memberships: profile.memberships,
           managedOrganizations: profile.managedOrganizations,

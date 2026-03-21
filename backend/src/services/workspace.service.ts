@@ -157,7 +157,7 @@ export async function createLaunch(
 export async function updateLaunch(
   organizationId: string,
   id: string,
-  data: { name?: string; startDate?: Date | null; endDate?: Date | null }
+  data: { name?: string; startDate?: Date | null; endDate?: Date | null; checklistJson?: string | null }
 ) {
   const row = await prisma.launch.findFirst({
     where: {
@@ -174,6 +174,7 @@ export async function updateLaunch(
       ...(data.name !== undefined ? { name: data.name.trim() } : {}),
       ...(data.startDate !== undefined ? { startDate: data.startDate } : {}),
       ...(data.endDate !== undefined ? { endDate: data.endDate } : {}),
+      ...(data.checklistJson !== undefined ? { checklistJson: data.checklistJson } : {}),
     },
     include: { project: { select: { id: true, name: true } } },
   });

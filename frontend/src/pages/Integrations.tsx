@@ -13,8 +13,10 @@ import {
   getGoogleAdsAuthUrl,
   getMetaAdsAuthUrl,
   disconnectIntegration as disconnectApi,
+  patchIntegrationClientAccount,
   type IntegrationFromApi,
 } from "@/lib/integrations-api";
+import { fetchClients, type ClientAccount } from "@/lib/workspace-api";
 import {
   fetchMarketingSettings,
   saveMarketingSettings,
@@ -334,6 +336,7 @@ export function Integrations() {
   const [connecting, setConnecting] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [laterSectionOpen, setLaterSectionOpen] = useState(false);
+  const [clients, setClients] = useState<ClientAccount[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -347,6 +350,13 @@ export function Integrations() {
         if (!cancelled) setLoading(false);
       }
     })();
+    fetchClients()
+      .then((c) => {
+        if (!cancelled) setClients(c);
+      })
+      .catch(() => {
+        if (!cancelled) setClients([]);
+      });
     return () => {
       cancelled = true;
     };
@@ -417,6 +427,19 @@ export function Integrations() {
     }
   };
 
+  const handleClientLink = async (integrationId: string, clientAccountId: string | null) => {
+    setMessage(null);
+    try {
+      await patchIntegrationClientAccount(integrationId, clientAccountId);
+      setList((prev) =>
+        prev.map((i) => (i.id === integrationId ? { ...i, clientAccountId } : i))
+      );
+      setMessage({ type: "success", text: "V?nculo com cliente atualizado." });
+    } catch (e) {
+      setMessage({ type: "error", text: e instanceof Error ? e.message : "Erro ao salvar vínculo." });
+    }
+  };
+
   const handleDisconnect = async (id: string) => {
     setMessage(null);
     try {
@@ -450,6 +473,28 @@ export function Integrations() {
         : def.slug === "meta" && !connected && !connectingState
           ? handleConnectMetaAds
           : undefined;
+    const clientFooter =
+      connected && connectedId && (def.slug === "google-ads" || def.slug === "meta") ? (
+        <label className="flex flex-col gap-1 text-muted-foreground">
+          <span>Cliente comercial (menu Clientes)</span>
+          <select
+            className="h-9 w-full rounded-md border border-input bg-background px-2 text-foreground"
+            value={connected.clientAccountId ?? ""}
+            onChange={(ev) => {
+              const v = ev.target.value;
+              void handleClientLink(connectedId, v === "" ? null : v);
+            }}
+          >
+            <option value="">Nenhum</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : undefined;
+
     return (
       <IntegrationCard
         key={def.id}
@@ -461,6 +506,7 @@ export function Integrations() {
         connecting={connectingState}
         onConnect={onConnect}
         onDisconnect={connectedId ? () => handleDisconnect(connectedId) : undefined}
+        footer={clientFooter}
       />
     );
   }

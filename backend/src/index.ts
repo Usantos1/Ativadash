@@ -8,6 +8,7 @@ import integrationsRoutes from "./routes/integrations.routes.js";
 import marketingRoutes from "./routes/marketing.routes.js";
 import workspaceRoutes from "./routes/workspace.routes.js";
 import organizationRoutes from "./routes/organization.routes.js";
+import platformRoutes from "./routes/platform.routes.js";
 
 const app = express();
 
@@ -17,7 +18,7 @@ if (env.TRUST_PROXY) {
 
 app.use(
   cors({
-    origin: env.FRONTEND_URL,
+    origin: env.CORS_ORIGIN,
     credentials: true,
   })
 );
@@ -40,6 +41,7 @@ app.use("/api/integrations", integrationsRoutes);
 app.use("/api/marketing", marketingRoutes);
 app.use("/api/workspace", workspaceRoutes);
 app.use("/api/organization", organizationRoutes);
+app.use("/api/platform", platformRoutes);
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", service: "ativa-dash-api" });

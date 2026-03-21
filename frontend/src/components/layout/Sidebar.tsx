@@ -1,6 +1,7 @@
 import type React from "react";
 import { NavLink } from "react-router-dom";
 import { useUIStore } from "@/stores/ui-store";
+import { useAuthStore } from "@/stores/auth-store";
 import {
   LayoutDashboard,
   Megaphone,
@@ -19,6 +20,7 @@ import {
   X,
   Users2,
   CreditCard,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -61,6 +63,7 @@ function NavBlock({
   showLabels: boolean;
   onLinkClick?: () => void;
 }) {
+  const platformAdmin = useAuthStore((s) => s.user?.platformAdmin);
   const iconClass = "h-5 w-5 shrink-0";
   const navItemClass = (active: boolean) =>
     cn(
@@ -68,9 +71,13 @@ function NavBlock({
       active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
     );
 
+  const navItems = platformAdmin
+    ? [...mainNav, { to: "/plataforma", label: "Plataforma", icon: Shield } as NavItem]
+    : mainNav;
+
   return (
     <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2 scrollbar-thin">
-      {mainNav.map((item) => (
+      {navItems.map((item) => (
         <NavLink
           key={item.to}
           to={item.to}

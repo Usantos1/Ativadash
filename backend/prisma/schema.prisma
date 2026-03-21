@@ -19,6 +19,7 @@ model User {
 
   memberships Membership[]
   refreshTokens RefreshToken[]
+  invitationsSent Invitation[] @relation("InvitationInvitedBy")
 }
 
 model RefreshToken {
@@ -38,6 +39,8 @@ model Organization {
   parentOrganizationId String?
   parentOrganization     Organization?  @relation("OrgHierarchy", fields: [parentOrganizationId], references: [id], onDelete: SetNull)
   childOrganizations     Organization[] @relation("OrgHierarchy")
+  /// Se true (padrão), limites de plano seguem o plano da organização mãe
+  inheritPlanFromParent Boolean @default(true)
   planId    String?
   plan      Plan?    @relation(fields: [planId], references: [id])
   createdAt DateTime @default(now())
@@ -51,8 +54,43 @@ model Organization {
   dashboards         Dashboard[]
   goals              Goal[]
   marketingSettings  MarketingSettings?
+  invitations   Invitation[]
+  metricsSnapshots MetricsSnapshot[]
 
   @@index([parentOrganizationId])
+}
+
+/// Convite por e-mail para novo membro da organização
+model Invitation {
+  id             String   @id @default(cuid())
+  email          String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role           String   @default("member")
+  token          String   @unique
+  invitedByUserId String
+  invitedBy      User     @relation("InvitationInvitedBy", fields: [invitedByUserId], references: [id], onDelete: Cascade)
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([email])
+}
+
+/// Cache opcional de métricas (sincronização / worker)
+model MetricsSnapshot {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  source         String
+  rangeKey       String
+  payload        String   @db.Text
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+
+  @@unique([organizationId, source, rangeKey])
+  @@index([organizationId])
 }
 
 /// Metas e alertas de performance de marketing por organização
@@ -134,6 +172,7 @@ model ClientAccount {
   deletedAt      DateTime?
 
   projects Project[]
+  integrations Integration[]
 
   @@index([organizationId])
 }
@@ -161,6 +200,8 @@ model Launch {
   name      String
   startDate DateTime?
   endDate   DateTime?
+  /// Checklist JSON (fases de lançamento) — opcional
+  checklistJson String? @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   deletedAt DateTime?
@@ -172,6 +213,9 @@ model Integration {
   id             String   @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Cliente comercial (menu Clientes) — agrupamento operacional
+  clientAccountId String?
+  clientAccount   ClientAccount? @relation(fields: [clientAccountId], references: [id], onDelete: SetNull)
   platform       String
   slug           String
   status         String   @default("pending")
@@ -183,6 +227,7 @@ model Integration {
   @@unique([organizationId, slug])
   @@index([organizationId])
   @@index([organizationId, slug])
+  @@index([clientAccountId])
 }
 
 model Dashboard {

@@ -296,6 +296,7 @@ export async function fetchMetaAdsMetrics(
       clicks?: string;
       spend?: string;
       campaign_name?: string;
+      campaign_id?: string;
       actions?: ActionEntry[];
       action_values?: ActionEntry[];
     };
@@ -323,11 +324,16 @@ export async function fetchMetaAdsMetrics(
         totalPurchaseValue += pVal;
       }
 
-      const campaignPath = `/act_${accountId}/insights?fields=campaign_name,impressions,clicks,spend,actions,action_values&time_range=${encodeURIComponent(timeRange)}&level=campaign&limit=500`;
-      const campaigns = await graphGetAllPages<InsightRow>(campaignPath, config.access_token, appSecret);
+      const campaignPath = `/act_${accountId}/insights?fields=campaign_id,campaign_name,impressions,clicks,spend,actions,action_values&time_range=${encodeURIComponent(timeRange)}&level=campaign&limit=500`;
+      const campaigns = await graphGetAllPages<InsightRow & { campaign_id?: string }>(
+        campaignPath,
+        config.access_token,
+        appSecret
+      );
       for (const c of campaigns) {
         const name = c.campaign_name ?? "—";
-        const existing = campaignMap.get(name);
+        const key = (c as { campaign_id?: string }).campaign_id ?? name;
+        const existing = campaignMap.get(key);
         const imp = parseInt(c.impressions ?? "0", 10) || 0;
         const clk = parseInt(c.clicks ?? "0", 10) || 0;
         const sp = parseFloat(c.spend ?? "0") || 0;
@@ -341,8 +347,10 @@ export async function fetchMetaAdsMetrics(
           existing.purchases += purchases;
           existing.purchaseValue = (existing.purchaseValue ?? 0) + pVal;
         } else {
-          campaignMap.set(name, {
+          const cid = (c as InsightRow).campaign_id;
+          campaignMap.set(key, {
             campaignName: name,
+            campaignId: cid,
             impressions: imp,
             clicks: clk,
             spend: sp,
@@ -404,5 +412,277 @@ export async function fetchMetaAdsMetrics(
     const msg = e instanceof Error ? e.message : "Erro ao buscar métricas do Meta Ads.";
     console.error("Meta Ads metrics:", msg);
     return { ok: false, message: msg };
+  }
+}
+
+async function graphPost(
+  path: string,
+  accessToken: string,
+  appSecret: string,
+  body: Record<string, string>
+): Promise<unknown> {
+  const proof = appSecretProof(accessToken, appSecret);
+  const params = new URLSearchParams({
+    ...body,
+    access_token: accessToken,
+    appsecret_proof: proof,
+  });
+  const url = path.startsWith("http") ? path : `${GRAPH_BASE}${path}`;
+  const res = await fetch(url, { method: "POST", body: params });
+  const text = await res.text();
+  if (!res.ok) {
+    try {
+      const json = JSON.parse(text) as { error?: { message?: string } };
+      throw new Error(json?.error?.message ?? text.slice(0, 200));
+    } catch (e) {
+      if (e instanceof Error && e.message !== text) throw e;
+      throw new Error(`Graph API ${res.status}: ${text.slice(0, 200)}`);
+    }
+  }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return { raw: text };
+  }
+}
+
+export type MetaAdsetRow = {
+  adsetName: string;
+  adsetId?: string;
+  campaignName?: string;
+  impressions: number;
+  clicks: number;
+  spend: number;
+  leads: number;
+  purchases: number;
+};
+
+export type MetaAdRow = {
+  adName: string;
+  adId?: string;
+  adsetName?: string;
+  campaignName?: string;
+  impressions: number;
+  clicks: number;
+  spend: number;
+  leads: number;
+  purchases: number;
+};
+
+export type MetaDemographicRow = {
+  age?: string;
+  gender?: string;
+  impressions: number;
+  clicks: number;
+  spend: number;
+};
+
+export type MetaDeepResult<T> = { ok: true; rows: T[] } | { ok: false; message: string };
+
+export async function fetchMetaAdsetMetrics(
+  organizationId: string,
+  range: { start: string; end: string }
+): Promise<MetaDeepResult<MetaAdsetRow>> {
+  const config = await getMetaAdsConfig(organizationId);
+  if (!config?.access_token) {
+    return { ok: false, message: "Meta Ads não conectado." };
+  }
+  const appSecret = env.META_APP_SECRET;
+  if (!appSecret) {
+    return { ok: false, message: "META_APP_SECRET não configurado no servidor." };
+  }
+  const timeRange = JSON.stringify({ since: range.start, until: range.end });
+  try {
+    const adAccountsRes = await graphGet<{ data: { id: string }[] }>(
+      `/me/adaccounts?fields=id`,
+      config.access_token,
+      appSecret
+    );
+    const accounts = adAccountsRes.data ?? [];
+    const map = new Map<string, MetaAdsetRow>();
+    type R = {
+      adset_id?: string;
+      adset_name?: string;
+      campaign_name?: string;
+      impressions?: string;
+      clicks?: string;
+      spend?: string;
+      actions?: ActionEntry[];
+    };
+    for (const account of accounts) {
+      const accountId = account.id.replace("act_", "");
+      const path = `/act_${accountId}/insights?fields=adset_id,adset_name,campaign_name,impressions,clicks,spend,actions&time_range=${encodeURIComponent(timeRange)}&level=adset&limit=500`;
+      const rows = await graphGetAllPages<R>(path, config.access_token, appSecret);
+      for (const c of rows) {
+        const key = c.adset_id ?? c.adset_name ?? Math.random().toString();
+        const imp = parseInt(c.impressions ?? "0", 10) || 0;
+        const clk = parseInt(c.clicks ?? "0", 10) || 0;
+        const sp = parseFloat(c.spend ?? "0") || 0;
+        const { leads, purchases } = aggregateActions(c.actions);
+        const existing = map.get(key);
+        if (existing) {
+          existing.impressions += imp;
+          existing.clicks += clk;
+          existing.spend += sp;
+          existing.leads += leads;
+          existing.purchases += purchases;
+        } else {
+          map.set(key, {
+            adsetName: c.adset_name ?? "—",
+            adsetId: c.adset_id,
+            campaignName: c.campaign_name,
+            impressions: imp,
+            clicks: clk,
+            spend: sp,
+            leads,
+            purchases,
+          });
+        }
+      }
+    }
+    return { ok: true, rows: Array.from(map.values()) };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, message: msg };
+  }
+}
+
+export async function fetchMetaAdLevelMetrics(
+  organizationId: string,
+  range: { start: string; end: string }
+): Promise<MetaDeepResult<MetaAdRow>> {
+  const config = await getMetaAdsConfig(organizationId);
+  if (!config?.access_token) {
+    return { ok: false, message: "Meta Ads não conectado." };
+  }
+  const appSecret = env.META_APP_SECRET;
+  if (!appSecret) {
+    return { ok: false, message: "META_APP_SECRET não configurado no servidor." };
+  }
+  const timeRange = JSON.stringify({ since: range.start, until: range.end });
+  try {
+    const adAccountsRes = await graphGet<{ data: { id: string }[] }>(
+      `/me/adaccounts?fields=id`,
+      config.access_token,
+      appSecret
+    );
+    const accounts = adAccountsRes.data ?? [];
+    const map = new Map<string, MetaAdRow>();
+    type R = {
+      ad_id?: string;
+      ad_name?: string;
+      adset_name?: string;
+      campaign_name?: string;
+      impressions?: string;
+      clicks?: string;
+      spend?: string;
+      actions?: ActionEntry[];
+    };
+    for (const account of accounts) {
+      const accountId = account.id.replace("act_", "");
+      const path = `/act_${accountId}/insights?fields=ad_id,ad_name,adset_name,campaign_name,impressions,clicks,spend,actions&time_range=${encodeURIComponent(timeRange)}&level=ad&limit=500`;
+      const rows = await graphGetAllPages<R>(path, config.access_token, appSecret);
+      for (const c of rows) {
+        const key = c.ad_id ?? c.ad_name ?? Math.random().toString();
+        const imp = parseInt(c.impressions ?? "0", 10) || 0;
+        const clk = parseInt(c.clicks ?? "0", 10) || 0;
+        const sp = parseFloat(c.spend ?? "0") || 0;
+        const { leads, purchases } = aggregateActions(c.actions);
+        const existing = map.get(key);
+        if (existing) {
+          existing.impressions += imp;
+          existing.clicks += clk;
+          existing.spend += sp;
+          existing.leads += leads;
+          existing.purchases += purchases;
+        } else {
+          map.set(key, {
+            adName: c.ad_name ?? "—",
+            adId: c.ad_id,
+            adsetName: c.adset_name,
+            campaignName: c.campaign_name,
+            impressions: imp,
+            clicks: clk,
+            spend: sp,
+            leads,
+            purchases,
+          });
+        }
+      }
+    }
+    return { ok: true, rows: Array.from(map.values()) };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, message: msg };
+  }
+}
+
+export async function fetchMetaAgeGenderBreakdown(
+  organizationId: string,
+  range: { start: string; end: string }
+): Promise<MetaDeepResult<MetaDemographicRow>> {
+  const config = await getMetaAdsConfig(organizationId);
+  if (!config?.access_token) {
+    return { ok: false, message: "Meta Ads não conectado." };
+  }
+  const appSecret = env.META_APP_SECRET;
+  if (!appSecret) {
+    return { ok: false, message: "META_APP_SECRET não configurado no servidor." };
+  }
+  const timeRange = JSON.stringify({ since: range.start, until: range.end });
+  try {
+    const adAccountsRes = await graphGet<{ data: { id: string }[] }>(
+      `/me/adaccounts?fields=id`,
+      config.access_token,
+      appSecret
+    );
+    const accounts = adAccountsRes.data ?? [];
+    const out: MetaDemographicRow[] = [];
+    type R = {
+      age?: string;
+      gender?: string;
+      impressions?: string;
+      clicks?: string;
+      spend?: string;
+    };
+    for (const account of accounts) {
+      const accountId = account.id.replace("act_", "");
+      const path = `/act_${accountId}/insights?fields=impressions,clicks,spend&breakdowns=age,gender&time_range=${encodeURIComponent(timeRange)}&level=campaign&limit=500`;
+      const rows = await graphGetAllPages<R>(path, config.access_token, appSecret);
+      for (const c of rows) {
+        out.push({
+          age: c.age,
+          gender: c.gender,
+          impressions: parseInt(c.impressions ?? "0", 10) || 0,
+          clicks: parseInt(c.clicks ?? "0", 10) || 0,
+          spend: parseFloat(c.spend ?? "0") || 0,
+        });
+      }
+    }
+    return { ok: true, rows: out };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, message: msg };
+  }
+}
+
+export async function updateMetaCampaignStatus(
+  organizationId: string,
+  metaCampaignId: string,
+  status: "PAUSED" | "ACTIVE"
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const config = await getMetaAdsConfig(organizationId);
+  if (!config?.access_token) {
+    return { ok: false, message: "Meta Ads não conectado." };
+  }
+  const appSecret = env.META_APP_SECRET;
+  if (!appSecret) {
+    return { ok: false, message: "META_APP_SECRET não configurado." };
+  }
+  try {
+    await graphPost(`/${metaCampaignId}`, config.access_token, appSecret, { status });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
 }

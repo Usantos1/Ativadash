@@ -189,9 +189,33 @@ export async function listIntegrations(organizationId: string) {
     platform: i.platform,
     slug: i.slug,
     status: i.status,
+    clientAccountId: i.clientAccountId,
     lastSyncAt: i.lastSyncAt?.toISOString() ?? null,
     createdAt: i.createdAt.toISOString(),
   }));
+}
+
+export async function updateIntegrationClientAccount(
+  integrationId: string,
+  organizationId: string,
+  clientAccountId: string | null
+) {
+  if (clientAccountId) {
+    const client = await prisma.clientAccount.findFirst({
+      where: { id: clientAccountId, organizationId, deletedAt: null },
+    });
+    if (!client) {
+      throw new Error("Cliente comercial não encontrado nesta empresa");
+    }
+  }
+  const integ = await prisma.integration.findFirst({
+    where: { id: integrationId, organizationId },
+  });
+  if (!integ) return null;
+  return prisma.integration.update({
+    where: { id: integrationId },
+    data: { clientAccountId },
+  });
 }
 
 export async function disconnectIntegration(integrationId: string, organizationId: string) {

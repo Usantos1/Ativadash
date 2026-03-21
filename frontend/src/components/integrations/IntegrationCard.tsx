@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Check, Link2Off } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,8 @@ interface IntegrationCardProps {
   onConnect?: () => void;
   onDisconnect?: () => void;
   onConfigure?: () => void;
+  /** Rodapé extra (ex.: vínculo com cliente comercial) */
+  footer?: ReactNode;
 }
 
 export function IntegrationCard({
@@ -26,6 +29,7 @@ export function IntegrationCard({
   onConnect,
   onDisconnect,
   onConfigure,
+  footer,
 }: IntegrationCardProps) {
   return (
     <Card
@@ -53,6 +57,7 @@ export function IntegrationCard({
             {lastSync}
           </p>
         )}
+        {footer && <div className="mt-2 w-full text-left text-xs">{footer}</div>}
         <div className="flex flex-wrap items-center justify-center gap-2">
           {connected ? (
             <>

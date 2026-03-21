@@ -320,3 +320,207 @@ export async function fetchGoogleAdsMetrics(
     return { ok: false, message: `Erro ao buscar dados do Google Ads: ${msg}` };
   }
 }
+
+async function googleSearchStreamResults(
+  accessToken: string,
+  developerToken: string,
+  customerId: string,
+  query: string
+): Promise<unknown[]> {
+  const res = await fetch(
+    `https://googleads.googleapis.com/${API_VERSION}/customers/${customerId}/googleAds:searchStream`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "developer-token": developerToken,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query }),
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`SearchStream: ${res.status} ${text}`);
+  }
+  const raw = await res.json();
+  const batches = Array.isArray(raw) ? raw : [raw];
+  const results: unknown[] = [];
+  for (const batch of batches) {
+    const r = (batch as { results?: unknown[] }).results ?? [];
+    results.push(...r);
+  }
+  return results;
+}
+
+async function resolveGoogleAdsCustomer(
+  organizationId: string
+): Promise<
+  | { ok: true; accessToken: string; customerId: string }
+  | { ok: false; message: string }
+> {
+  const config = await getGoogleAdsConfig(organizationId);
+  if (!config) {
+    return { ok: false, message: "Google Ads não conectado para esta organização." };
+  }
+  if (!env.GOOGLE_ADS_DEVELOPER_TOKEN) {
+    return {
+      ok: false,
+      message: "Developer Token do Google Ads não configurado (GOOGLE_ADS_DEVELOPER_TOKEN).",
+    };
+  }
+  let accessToken = config.access_token;
+  const now = Date.now();
+  const margin = 5 * 60 * 1000;
+  if (config.expiry_date && now >= config.expiry_date - margin) {
+    try {
+      accessToken = await refreshAndSaveGoogleAdsToken(organizationId, config);
+    } catch (e) {
+      return {
+        ok: false,
+        message: e instanceof Error ? e.message : "Falha ao renovar token do Google Ads.",
+      };
+    }
+  }
+  try {
+    const customerIds = await listAccessibleCustomers(accessToken);
+    if (customerIds.length === 0) {
+      return { ok: true, accessToken, customerId: "" };
+    }
+    return { ok: true, accessToken, customerId: customerIds[0] };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export type GoogleAdsAdGroupRow = {
+  campaignName: string;
+  adGroupName: string;
+  impressions: number;
+  clicks: number;
+  costMicros: number;
+  conversions: number;
+  conversionsValue: number;
+};
+
+export type GoogleAdsSearchTermRow = {
+  searchTerm: string;
+  impressions: number;
+  clicks: number;
+  costMicros: number;
+};
+
+export type GoogleAdsDeepResult<T> = { ok: true; rows: T[] } | { ok: false; message: string };
+
+export async function fetchGoogleAdsAdGroupMetrics(
+  organizationId: string,
+  range: { start: string; end: string }
+): Promise<GoogleAdsDeepResult<GoogleAdsAdGroupRow>> {
+  const ctx = await resolveGoogleAdsCustomer(organizationId);
+  if (!ctx.ok) return ctx;
+  if (!ctx.customerId) return { ok: true, rows: [] };
+  const query = `
+    SELECT
+      campaign.name,
+      ad_group.name,
+      metrics.impressions,
+      metrics.clicks,
+      metrics.cost_micros,
+      metrics.conversions,
+      metrics.conversions_value
+    FROM ad_group
+    WHERE segments.date BETWEEN '${range.start}' AND '${range.end}'
+      AND ad_group.status = 'ENABLED'
+  `.trim();
+  try {
+    const results = await googleSearchStreamResults(
+      ctx.accessToken,
+      env.GOOGLE_ADS_DEVELOPER_TOKEN,
+      ctx.customerId,
+      query
+    );
+    type Row = {
+      campaign?: { name?: string };
+      adGroup?: { name?: string };
+      metrics?: Record<string, string | number | undefined>;
+    };
+    const rows: GoogleAdsAdGroupRow[] = [];
+    for (const raw of results) {
+      const row = raw as Row;
+      const m = row.metrics ?? {};
+      rows.push({
+        campaignName: row.campaign?.name ?? "",
+        adGroupName: row.adGroup?.name ?? "",
+        impressions: Number(m.impressions ?? 0),
+        clicks: Number(m.clicks ?? 0),
+        costMicros: Number(m.costMicros ?? (m as Record<string, unknown>).cost_micros ?? 0),
+        conversions: Number(m.conversions ?? 0),
+        conversionsValue: Number(
+          (m as Record<string, unknown>).conversionsValue ??
+            (m as Record<string, unknown>).conversions_value ??
+            0
+        ),
+      });
+    }
+    return { ok: true, rows };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function fetchGoogleAdsSearchTerms(
+  organizationId: string,
+  range: { start: string; end: string }
+): Promise<GoogleAdsDeepResult<GoogleAdsSearchTermRow>> {
+  const ctx = await resolveGoogleAdsCustomer(organizationId);
+  if (!ctx.ok) return ctx;
+  if (!ctx.customerId) return { ok: true, rows: [] };
+  const query = `
+    SELECT
+      search_term_view.search_term,
+      metrics.impressions,
+      metrics.clicks,
+      metrics.cost_micros
+    FROM search_term_view
+    WHERE segments.date BETWEEN '${range.start}' AND '${range.end}'
+  `.trim();
+  try {
+    const results = await googleSearchStreamResults(
+      ctx.accessToken,
+      env.GOOGLE_ADS_DEVELOPER_TOKEN,
+      ctx.customerId,
+      query
+    );
+    type Row = {
+      searchTermView?: { searchTerm?: string };
+      metrics?: Record<string, string | number | undefined>;
+    };
+    const rows: GoogleAdsSearchTermRow[] = [];
+    for (const raw of results) {
+      const row = raw as Row;
+      const m = row.metrics ?? {};
+      rows.push({
+        searchTerm: row.searchTermView?.searchTerm ?? "",
+        impressions: Number(m.impressions ?? 0),
+        clicks: Number(m.clicks ?? 0),
+        costMicros: Number(m.costMicros ?? (m as Record<string, unknown>).cost_micros ?? 0),
+      });
+    }
+    return { ok: true, rows };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Mutação no Google Ads exige biblioteca oficial ou REST v15+ com credenciais complexas — retorno explícito para roadmap. */
+export async function mutateGoogleCampaignStatus(
+  _organizationId: string,
+  _campaignResourceName: string,
+  _enabled: boolean
+): Promise<{ ok: false; message: string }> {
+  return {
+    ok: false,
+    message:
+      "Pausar campanhas no Google Ads via API ainda não está habilitado nesta versão (use o Google Ads Editor ou a interface).",
+  };
+}

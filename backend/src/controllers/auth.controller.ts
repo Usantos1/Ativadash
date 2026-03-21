@@ -13,7 +13,14 @@ import {
   forgotPasswordSchema,
   refreshTokenSchema,
   switchOrganizationSchema,
+  registerWithInviteSchema,
+  acceptInviteTokenSchema,
 } from "../validators/auth.validator.js";
+import {
+  getInvitationPreviewByToken,
+  acceptInvitationNewUser,
+  acceptInvitationExistingUser,
+} from "../services/invitations.service.js";
 import { updateProfileSchema } from "../validators/workspace.validator.js";
 
 export async function login(req: Request, res: Response) {
@@ -121,5 +128,60 @@ export async function patchProfile(req: Request, res: Response) {
     return res.json(user);
   } catch {
     return res.status(500).json({ message: "Erro ao atualizar perfil" });
+  }
+}
+
+export async function invitePreview(req: Request, res: Response) {
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  if (!token) {
+    return res.status(400).json({ message: "Token obrigatório" });
+  }
+  const preview = await getInvitationPreviewByToken(token);
+  if (!preview) {
+    return res.status(404).json({ message: "Convite inválido ou expirado" });
+  }
+  return res.json(preview);
+}
+
+export async function registerWithInvite(req: Request, res: Response) {
+  const parsed = registerWithInviteSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: parsed.error.errors[0]?.message ?? "Dados inválidos",
+    });
+  }
+  try {
+    const result = await acceptInvitationNewUser(
+      parsed.data.token,
+      parsed.data.name,
+      parsed.data.password
+    );
+    return res.status(201).json(result);
+  } catch (e) {
+    return res.status(400).json({
+      message: e instanceof Error ? e.message : "Não foi possível concluir o cadastro",
+    });
+  }
+}
+
+export async function acceptInviteLoggedIn(req: Request, res: Response) {
+  const jwtUser = (req as Request & { user: { userId: string; email: string } }).user;
+  const parsed = acceptInviteTokenSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: parsed.error.errors[0]?.message ?? "Dados inválidos",
+    });
+  }
+  try {
+    const result = await acceptInvitationExistingUser(
+      parsed.data.token,
+      jwtUser.userId,
+      jwtUser.email
+    );
+    return res.json(result);
+  } catch (e) {
+    return res.status(400).json({
+      message: e instanceof Error ? e.message : "Não foi possível aceitar o convite",
+    });
   }
 }

@@ -1,4 +1,5 @@
 import { api } from "./api";
+import type { AuthMeResponse } from "@/stores/auth-store";
 
 export type ClientAccount = {
   id: string;
@@ -109,6 +110,46 @@ export async function deleteLaunch(id: string): Promise<void> {
 
 export async function fetchMembers(): Promise<MemberRow[]> {
   return api.get<MemberRow[]>("/workspace/members");
+}
+
+export type InvitationRow = {
+  id: string;
+  email: string;
+  role: string;
+  expiresAt: string;
+  createdAt: string;
+};
+
+export async function fetchPendingInvitations(): Promise<InvitationRow[]> {
+  return api.get<InvitationRow[]>("/workspace/invitations");
+}
+
+export async function createInvitation(
+  email: string,
+  role: "admin" | "member" | "media_manager" | "analyst" = "member"
+): Promise<{ invitation: InvitationRow; inviteLink: string }> {
+  return api.post("/workspace/invitations", { email, role });
+}
+
+export async function revokeInvitation(id: string): Promise<void> {
+  return api.delete(`/workspace/invitations/${id}`);
+}
+
+export async function patchMemberRole(userId: string, role: string): Promise<void> {
+  await api.patch(`/workspace/members/${userId}`, { role });
+}
+
+export async function removeMember(userId: string): Promise<void> {
+  await api.delete(`/workspace/members/${userId}`);
+}
+
+export type AcceptInviteResponse = AuthMeResponse & {
+  accessToken: string;
+  refreshToken: string;
+};
+
+export async function acceptInviteLoggedIn(token: string): Promise<AcceptInviteResponse> {
+  return api.post("/auth/accept-invite", { token });
 }
 
 export type GoalRow = {

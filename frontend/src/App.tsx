@@ -18,6 +18,7 @@ import { CompanySettingsPage } from "@/pages/CompanySettingsPage";
 import { TeamPage } from "@/pages/TeamPage";
 import { PlansPage } from "@/pages/PlansPage";
 import { AdminPage } from "@/pages/AdminPage";
+import { PlatformPage } from "@/pages/PlatformPage";
 
 function ProtectedLayout() {
   return (
@@ -52,6 +53,7 @@ export default function App() {
           <Route path="usuarios" element={<TeamPage />} />
           <Route path="planos" element={<PlansPage />} />
           <Route path="admin" element={<AdminPage />} />
+          <Route path="plataforma" element={<PlatformPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
       </Routes>

@@ -5,6 +5,7 @@ export interface IntegrationFromApi {
   platform: string;
   slug: string;
   status: string;
+  clientAccountId: string | null;
   lastSyncAt: string | null;
   createdAt: string;
 }
@@ -26,6 +27,13 @@ export async function getMetaAdsAuthUrl(): Promise<string> {
 
 export async function disconnectIntegration(id: string): Promise<void> {
   await api.delete(`/integrations/${id}`);
+}
+
+export async function patchIntegrationClientAccount(
+  integrationId: string,
+  clientAccountId: string | null
+): Promise<{ id: string; clientAccountId: string | null }> {
+  return api.patch(`/integrations/${integrationId}/client`, { clientAccountId });
 }
 
 // Métricas do Google Ads (Marketing)

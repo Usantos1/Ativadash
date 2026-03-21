@@ -11,6 +11,7 @@ import {
   patchOrganizationName,
   fetchManagedOrganizations,
   createManagedOrganization,
+  fetchChildrenPortfolio,
 } from "@/lib/organization-api";
 import type { OrganizationContext } from "@/lib/organization-api";
 import type { OrganizationSummary } from "@/stores/auth-store";
@@ -26,6 +27,10 @@ export function CompanySettingsPage() {
 
   const [newClientName, setNewClientName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [inheritPlanForChild, setInheritPlanForChild] = useState(true);
+  const [portfolio, setPortfolio] = useState<
+    Awaited<ReturnType<typeof fetchChildrenPortfolio>>["organizations"] | null
+  >(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -37,8 +42,15 @@ export function CompanySettingsPage() {
       try {
         const list = await fetchManagedOrganizations();
         setChildren(list);
+        try {
+          const pf = await fetchChildrenPortfolio();
+          setPortfolio(pf.organizations);
+        } catch {
+          setPortfolio(null);
+        }
       } catch {
         setChildren([]);
+        setPortfolio(null);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao carregar");
@@ -76,10 +88,16 @@ export function CompanySettingsPage() {
     setCreating(true);
     setError(null);
     try {
-      await createManagedOrganization(n);
+      await createManagedOrganization(n, { inheritPlanFromParent: inheritPlanForChild });
       setNewClientName("");
       const list = await fetchManagedOrganizations();
       setChildren(list);
+      try {
+        const pf = await fetchChildrenPortfolio();
+        setPortfolio(pf.organizations);
+      } catch {
+        setPortfolio(null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao criar empresa cliente");
     } finally {
@@ -177,7 +195,8 @@ export function CompanySettingsPage() {
             </span>
             {ctx && (
               <span className="block rounded-md border border-border/80 bg-muted/40 px-2 py-1.5 text-xs text-muted-foreground">
-                <span className="font-medium text-foreground">Plano:</span> {ctx.plan?.name ?? "—"} ·{" "}
+                <span className="font-medium text-foreground">Plano (limites):</span> {ctx.plan?.name ?? "—"}
+                {ctx.planSource === "parent" ? " (herdado da matriz)" : ""} ·{" "}
                 <span className="font-medium text-foreground">Empresas vinculadas:</span>{" "}
                 {ctx.usage.childOrganizations} / {formatPlanCap(ctx.limits.maxChildOrganizations)}
               </span>
@@ -185,21 +204,32 @@ export function CompanySettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <form onSubmit={handleCreateChild} className="flex flex-col gap-2 sm:flex-row sm:items-end">
-            <div className="flex-1 space-y-2">
-              <Label htmlFor="child-name">Nova empresa cliente</Label>
-              <Input
-                id="child-name"
-                value={newClientName}
-                onChange={(e) => setNewClientName(e.target.value)}
-                placeholder="Ex.: Cliente ABC Ltda"
-                className="rounded-lg"
-              />
+          <form onSubmit={handleCreateChild} className="space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="child-name">Nova empresa cliente</Label>
+                <Input
+                  id="child-name"
+                  value={newClientName}
+                  onChange={(e) => setNewClientName(e.target.value)}
+                  placeholder="Ex.: Cliente ABC Ltda"
+                  className="rounded-lg"
+                />
+              </div>
+              <Button type="submit" disabled={creating || newClientName.trim().length < 2} className="rounded-lg">
+                <Plus className="mr-2 h-4 w-4" />
+                Criar
+              </Button>
             </div>
-            <Button type="submit" disabled={creating || newClientName.trim().length < 2} className="rounded-lg">
-              <Plus className="mr-2 h-4 w-4" />
-              Criar
-            </Button>
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={inheritPlanForChild}
+                onChange={(e) => setInheritPlanForChild(e.target.checked)}
+                className="rounded border-input"
+              />
+              Herdar plano e limites da empresa matriz (recomendado para revenda)
+            </label>
           </form>
 
           {children.length === 0 ? (
@@ -219,6 +249,33 @@ export function CompanySettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      {portfolio && portfolio.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Carteira (saúde das filiais)</CardTitle>
+            <CardDescription>Integrações conectadas e última sincronização por empresa cliente.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y divide-border/60 rounded-lg border border-border/80 text-sm">
+              {portfolio.map((row) => (
+                <li key={row.id} className="flex flex-col gap-1 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <span className="font-medium">{row.name}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">{row.slug}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {row.connectedIntegrations} integração(ões) ·{" "}
+                    {row.lastIntegrationSyncAt
+                      ? `última sync ${new Date(row.lastIntegrationSyncAt).toLocaleString("pt-BR")}`
+                      : "sem sync registrada"}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

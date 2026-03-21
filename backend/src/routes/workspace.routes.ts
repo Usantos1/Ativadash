@@ -24,5 +24,11 @@ router.delete("/launches/:id", workspace.launchesDelete);
 router.get("/goals", workspace.goalsList);
 
 router.get("/members", workspace.membersList);
+router.patch("/members/:userId", workspace.membersPatchRole);
+router.delete("/members/:userId", workspace.membersRemove);
+
+router.post("/invitations", workspace.invitationsCreate);
+router.get("/invitations", workspace.invitationsList);
+router.delete("/invitations/:id", workspace.invitationsRevoke);
 
 export default router;

@@ -1,23 +1,17 @@
 import { Router } from "express";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
-import {
-  getGoogleAdsAuthUrlHandler,
-  googleAdsCallbackHandler,
-  getMetaAdsAuthUrlHandler,
-  metaAdsCallbackHandler,
-  listHandler,
-  disconnectHandler,
-} from "../controllers/integrations.controller.js";
+import * as integrations from "../controllers/integrations.controller.js";
 
 const router = Router();
 
-router.get("/", authMiddleware, listHandler);
-router.delete("/:id", authMiddleware, disconnectHandler);
+router.get("/", authMiddleware, integrations.listHandler);
+router.patch("/:id/client", authMiddleware, integrations.patchIntegrationClientHandler);
+router.delete("/:id", authMiddleware, integrations.disconnectHandler);
 
-router.get("/google-ads/auth-url", authMiddleware, getGoogleAdsAuthUrlHandler);
-router.get("/google-ads/callback", googleAdsCallbackHandler);
+router.get("/google-ads/auth-url", authMiddleware, integrations.getGoogleAdsAuthUrlHandler);
+router.get("/google-ads/callback", integrations.googleAdsCallbackHandler);
 
-router.get("/meta-ads/auth-url", authMiddleware, getMetaAdsAuthUrlHandler);
-router.get("/meta-ads/callback", metaAdsCallbackHandler);
+router.get("/meta-ads/auth-url", authMiddleware, integrations.getMetaAdsAuthUrlHandler);
+router.get("/meta-ads/callback", integrations.metaAdsCallbackHandler);
 
 export default router;
