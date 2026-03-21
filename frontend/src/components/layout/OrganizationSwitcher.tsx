@@ -58,7 +58,10 @@ export function OrganizationSwitcher() {
         },
         res.accessToken,
         res.refreshToken,
-        { memberships: res.memberships, managedOrganizations: null }
+        {
+          memberships: res.memberships,
+          managedOrganizations: res.managedOrganizations ?? [],
+        }
       );
       navigate("/dashboard", { replace: true });
     } catch {

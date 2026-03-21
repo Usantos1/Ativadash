@@ -2,6 +2,7 @@ import { Check, Link2Off } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { IX } from "@/lib/integrationsCopy";
 
 interface IntegrationCardProps {
   name: string;
@@ -48,7 +49,8 @@ export function IntegrationCard({
         </div>
         {connected && lastSync && (
           <p className="mb-2 text-center text-xs text-muted-foreground">
-            Última sync: {lastSync}
+            {IX.ultimaSync}
+            {lastSync}
           </p>
         )}
         <div className="flex flex-wrap items-center justify-center gap-2">

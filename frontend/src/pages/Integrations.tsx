@@ -21,6 +21,7 @@ import {
   sendAtivaCrmTestMessage,
   type UpdateMarketingSettingsPayload,
 } from "@/lib/marketing-settings-api";
+import { IX } from "@/lib/integrationsCopy";
 
 export type IntegrationId =
   | "google-ads"
@@ -74,7 +75,7 @@ function formatLastSync(iso: string | null): string | undefined {
     const now = new Date();
     const sameDay = d.toDateString() === now.toDateString();
     return sameDay
-      ? `Hoje às ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+      ? `${IX.hojeAsPrefix}${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
       : d.toLocaleDateString("pt-BR");
   } catch {
     return undefined;
@@ -109,7 +110,7 @@ function AtivaCrmIntegrationPanel({
         setTokenInput("");
       })
       .catch(() => {
-        if (!cancelled) setLocalError("Não foi possível carregar as configurações.");
+        if (!cancelled) setLocalError(IX.errCarregarCfg);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -135,8 +136,8 @@ function AtivaCrmIntegrationPanel({
       const next = await saveMarketingSettings(payload);
       setTokenConfigured(next.ativaCrmTokenConfigured);
       setTokenInput("");
-      setLocalOk("Configurações salvas.");
-      onNotify({ type: "success", text: "Ativa CRM: configurações salvas." });
+      setLocalOk(IX.cfgSalvas);
+      onNotify({ type: "success", text: IX.ativaCrmCfgSalvas });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erro ao salvar.";
       setLocalError(msg);
@@ -161,7 +162,7 @@ function AtivaCrmIntegrationPanel({
       setTokenInput("");
       setPhone("");
       setAlertsEnabled(false);
-      setLocalOk("Integração removida.");
+      setLocalOk(IX.integracaoRemovida);
       onNotify({ type: "success", text: "Ativa CRM desconectado." });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erro ao remover.";
@@ -202,12 +203,12 @@ function AtivaCrmIntegrationPanel({
       <CardHeader className="space-y-1">
         <div className="flex items-center gap-2 text-primary">
           <MessageCircle className="h-5 w-5" aria-hidden />
-          <CardTitle className="text-lg">Integração WhatsApp (Ativa CRM)</CardTitle>
+          <CardTitle className="text-lg">{IX.painelIntegracaoTitle}</CardTitle>
         </div>
         <CardDescription>
           Envio pelo Ativa CRM para{" "}
-          <strong className="font-medium text-foreground">alertas de marketing</strong> (CPA, ROAS) quando o painel
-          avaliar o período.
+          <strong className="font-medium text-foreground">alertas de marketing</strong> (CPA, ROAS){" "}
+          {IX.painelPeriodoTail}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -229,11 +230,7 @@ function AtivaCrmIntegrationPanel({
               id="ativacrm-token"
               type="password"
               autoComplete="off"
-              placeholder={
-                tokenConfigured
-                  ? "Opcional (deixe em branco para manter o token atual)"
-                  : "Cole o token da conexão WhatsApp"
-              }
+              placeholder={tokenConfigured ? IX.tokenPhOpcional : IX.tokenPhCole}
               value={tokenInput}
               onChange={(e) => setTokenInput(e.target.value)}
               className="min-w-0 font-mono text-sm"
@@ -248,8 +245,10 @@ function AtivaCrmIntegrationPanel({
               >
                 app.ativacrm.com/connections
               </a>
-              : abra o menu <strong className="font-medium text-foreground">Conexões</strong>, edite a conexão do
-              WhatsApp e copie o valor do campo <strong className="font-medium text-foreground">Token</strong>.
+              {IX.tokenAfterLink}
+              <strong className="font-medium text-foreground">{IX.conexoesMenu}</strong>
+              {IX.tokenAfterConexoes}
+              <strong className="font-medium text-foreground">Token</strong>.
             </p>
           </div>
 
@@ -264,9 +263,7 @@ function AtivaCrmIntegrationPanel({
               onChange={(e) => setPhone(e.target.value)}
               className="min-w-0 max-w-md"
             />
-            <p className="text-xs text-muted-foreground">
-              Número que receberá os avisos (Brasil: comece com 55, ex.: 5511999999999).
-            </p>
+            <p className="text-xs text-muted-foreground">{IX.numeroAvisos}</p>
           </div>
 
           <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/80 bg-muted/20 p-3">
@@ -277,11 +274,8 @@ function AtivaCrmIntegrationPanel({
               onChange={(e) => setAlertsEnabled(e.target.checked)}
             />
             <span className="text-sm">
-              <span className="font-medium text-foreground">Enviar alertas críticos e de aviso por WhatsApp</span>
-              <span className="mt-0.5 block text-muted-foreground">
-                Ao avaliar o período no Dashboard/Marketing, mensagens de gravidade alta são enviadas (mínimo de 15
-                minutos entre envios).
-              </span>
+              <span className="font-medium text-foreground">{IX.alertasCriticos}</span>
+              <span className="mt-0.5 block text-muted-foreground">{IX.periodoMarketingFull}</span>
             </span>
           </label>
 
@@ -292,7 +286,7 @@ function AtivaCrmIntegrationPanel({
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
             <p>
               <strong className="font-semibold">Importante:</strong> configure um{" "}
-              <strong className="font-medium">WhatsApp padrão</strong> no Ativa CRM para que as mensagens sejam
+              <strong className="font-medium">{IX.whatsappPadrao}</strong> no Ativa CRM para que as mensagens sejam
               entregues corretamente.
             </p>
           </div>
@@ -307,7 +301,7 @@ function AtivaCrmIntegrationPanel({
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Button type="submit" disabled={saving} className="gap-2">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Salvar configurações
+              {IX.salvarCfg}
             </Button>
             <Button type="button" variant="outline" disabled={testing || !tokenConfigured} onClick={handleTest}>
               {testing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -322,7 +316,7 @@ function AtivaCrmIntegrationPanel({
                 onClick={handleRemove}
               >
                 {removing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Remover integração
+                {IX.removerIntegracao}
               </Button>
             ) : null}
           </div>
@@ -380,9 +374,9 @@ export function Integrations() {
     } else if (error) {
       const msg =
         error === "missing_code_or_state"
-          ? "Autorização incompleta."
+          ? IX.authIncompleta
           : error === "invalid_state"
-            ? "Sessão expirada. Tente conectar de novo."
+            ? IX.sessaoExpirada
             : error === "exchange_failed"
               ? "Falha ao conectar. Tente novamente."
               : "Erro ao conectar.";
@@ -404,7 +398,7 @@ export function Integrations() {
       const url = await getGoogleAdsAuthUrl();
       window.location.href = url;
     } catch (e) {
-      setMessage({ type: "error", text: e instanceof Error ? e.message : "Não foi possível iniciar a conexão." });
+      setMessage({ type: "error", text: e instanceof Error ? e.message : IX.naoFoiPossivelConexao });
       setConnecting(false);
     }
   };
@@ -416,7 +410,7 @@ export function Integrations() {
       const url = await getMetaAdsAuthUrl();
       window.location.href = url;
     } catch (e) {
-      setMessage({ type: "error", text: e instanceof Error ? e.message : "Não foi possível iniciar a conexão." });
+      setMessage({ type: "error", text: e instanceof Error ? e.message : IX.naoFoiPossivelConexao });
       setConnecting(false);
     }
   };
@@ -426,7 +420,7 @@ export function Integrations() {
     try {
       await disconnectApi(id);
       setList((prev) => prev.filter((i) => i.id !== id));
-      setMessage({ type: "success", text: "Integração desvinculada." });
+      setMessage({ type: "success", text: IX.integracaoDesvinculada });
     } catch (e) {
       setMessage({ type: "error", text: e instanceof Error ? e.message : "Erro ao desvincular." });
     }
@@ -473,16 +467,16 @@ export function Integrations() {
     <div className="min-w-0 max-w-full space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Integrações</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{IX.pageTitle}</h1>
           <p className="text-muted-foreground">
-            Publicidade (Google e Meta) e alertas por WhatsApp via Ativa CRM ? use a aba{" "}
+            {IX.introPublicidadeWhatsapp}
             <strong className="font-medium text-foreground">WhatsApp (CRM)</strong>.
           </p>
         </div>
         <div className="relative w-full sm:w-64">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Buscar integração..."
+            placeholder={IX.searchPlaceholder}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="rounded-lg pl-9"
@@ -523,7 +517,7 @@ export function Integrations() {
                 <div className="space-y-6">
                   {filteredNow.length > 0 && (
                     <div>
-                      <h2 className="mb-3 text-sm font-semibold text-foreground">Disponíveis agora</h2>
+                      <h2 className="mb-3 text-sm font-semibold text-foreground">{IX.disponiveisAgora}</h2>
                       <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
                         {filteredNow.map(renderCard)}
                       </div>
@@ -539,9 +533,9 @@ export function Integrations() {
                       <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-foreground marker:content-none [&::-webkit-details-marker]:hidden">
                         <span className="flex items-center justify-between gap-2">
                           <span>
-                            Outras plataformas{" "}
+                            {IX.outrasPlataformas}
                             <span className="font-normal text-muted-foreground">
-                              (em breve · {filteredLater.length})
+                              {IX.emBreveCount(filteredLater.length)}
                             </span>
                           </span>
                           <span className="text-xs text-muted-foreground group-open:hidden">Mostrar</span>
@@ -550,8 +544,8 @@ export function Integrations() {
                       </summary>
                       <div className="border-t border-border/60 p-4 pt-2">
                         <p className="mb-4 text-xs text-muted-foreground">
-                          Roadmap: checkout e webhooks. Alertas por WhatsApp: aba{" "}
-                          <strong className="text-foreground">WhatsApp (CRM)</strong> nesta página.
+                          {IX.roadmapWhatsappAba}
+                          <strong className="text-foreground">WhatsApp (CRM)</strong> {IX.nestaPagina}
                         </p>
                         <div className="grid min-w-0 grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
                           {filteredLater.map(renderCard)}
@@ -563,7 +557,7 @@ export function Integrations() {
                 {filtered.length === 0 && (
                   <EmptyState
                     icon={Plug}
-                    title="Nenhuma integração encontrada"
+                    title={IX.nenhumaTitulo}
                     description={`Nenhum resultado para "${search}".`}
                     className="min-h-[200px]"
                   />

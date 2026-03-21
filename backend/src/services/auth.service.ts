@@ -74,6 +74,48 @@ async function listMembershipSummaries(userId: string): Promise<MembershipSummar
     }));
 }
 
+/**
+ * Empresas filiais para o seletor de contexto:
+ * - Na matriz (sem pai): filhos diretos, se o usuário for owner/admin nela.
+ * - Num filho: todos os irmãos (mesmo parentId), se o usuário for owner/admin da mãe.
+ * Assim o dropdown não some ao entrar numa empresa cliente.
+ */
+async function listManagedOrganizationsForActiveContext(
+  userId: string,
+  activeOrganizationId: string
+): Promise<AuthOrganizationDto[]> {
+  const active = await prisma.organization.findFirst({
+    where: { id: activeOrganizationId, deletedAt: null },
+  });
+  if (!active) return [];
+
+  const parentId = active.parentOrganizationId;
+  if (parentId) {
+    const parentMem = await prisma.membership.findUnique({
+      where: { userId_organizationId: { userId, organizationId: parentId } },
+    });
+    if (!parentMem || !["owner", "admin"].includes(parentMem.role)) return [];
+
+    const children = await prisma.organization.findMany({
+      where: { parentOrganizationId: parentId, deletedAt: null },
+      select: { id: true, name: true, slug: true },
+      orderBy: { name: "asc" },
+    });
+    return children;
+  }
+
+  const mem = await prisma.membership.findUnique({
+    where: { userId_organizationId: { userId, organizationId: activeOrganizationId } },
+  });
+  if (!mem || !["owner", "admin"].includes(mem.role)) return [];
+
+  return prisma.organization.findMany({
+    where: { parentOrganizationId: activeOrganizationId, deletedAt: null },
+    select: { id: true, name: true, slug: true },
+    orderBy: { name: "asc" },
+  });
+}
+
 /** Acesso direto (Membership) ou revenda: owner/admin da empresa mãe acessa empresa filha. */
 export async function userHasEffectiveAccess(userId: string, organizationId: string): Promise<boolean> {
   const direct = await prisma.membership.findUnique({
@@ -282,9 +324,11 @@ export async function switchActiveOrganization(userId: string, targetOrganizatio
     throw new Error("Não foi possível carregar o perfil");
   }
   const memberships = await listMembershipSummaries(userId);
+  const managedOrganizations = await listManagedOrganizationsForActiveContext(userId, targetOrganizationId);
   return {
     user: userDto,
     memberships,
+    managedOrganizations,
     accessToken,
     refreshToken,
   };
@@ -364,11 +408,7 @@ export async function getAuthProfileExtended(
   const profile = await getAuthProfile(userId, organizationId);
   if (!profile) return null;
   const memberships = await listMembershipSummaries(userId);
-  const managedOrganizations = await prisma.organization.findMany({
-    where: { parentOrganizationId: organizationId, deletedAt: null },
-    select: { id: true, name: true, slug: true },
-    orderBy: { name: "asc" },
-  });
+  const managedOrganizations = await listManagedOrganizationsForActiveContext(userId, organizationId);
   return {
     ...profile,
     memberships,

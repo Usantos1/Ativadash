@@ -30,6 +30,7 @@ export async function createManagedOrganization(
 export type SwitchOrganizationResponse = {
   user: User & { organization: OrganizationSummary };
   memberships: MembershipSummary[];
+  managedOrganizations: OrganizationSummary[];
   accessToken: string;
   refreshToken: string;
 };
