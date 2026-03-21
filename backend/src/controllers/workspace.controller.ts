@@ -13,6 +13,7 @@ import {
   createLaunch,
   updateLaunch,
   deleteLaunch,
+  listGoals,
   listOrganizationMembers,
 } from "../services/workspace.service.js";
 import {
@@ -207,6 +208,12 @@ export async function launchesDelete(req: Request, res: Response) {
   const ok = await deleteLaunch(organizationId, id);
   if (!ok) return res.status(404).json({ message: "Lançamento não encontrado" });
   return res.status(204).send();
+}
+
+export async function goalsList(req: Request, res: Response) {
+  const { organizationId } = (req as AuthRequest).user;
+  const list = await listGoals(organizationId);
+  return res.json(list);
 }
 
 // —— Members ——

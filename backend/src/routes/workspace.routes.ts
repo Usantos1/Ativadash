@@ -21,6 +21,8 @@ router.post("/launches", workspace.launchesCreate);
 router.patch("/launches/:id", workspace.launchesUpdate);
 router.delete("/launches/:id", workspace.launchesDelete);
 
+router.get("/goals", workspace.goalsList);
+
 router.get("/members", workspace.membersList);
 
 export default router;

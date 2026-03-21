@@ -36,8 +36,17 @@ export interface MetaAdsCampaignRow {
   conversions?: number;
 }
 
+export interface MetaAdsDailyRow {
+  date: string;
+  impressions: number;
+  clicks: number;
+  spend: number;
+  leads: number;
+  purchases: number;
+}
+
 export type MetaAdsMetricsResult =
-  | { ok: true; summary: MetaAdsMetricsSummary; campaigns: MetaAdsCampaignRow[] }
+  | { ok: true; summary: MetaAdsMetricsSummary; campaigns: MetaAdsCampaignRow[]; daily?: MetaAdsDailyRow[] }
   | { ok: false; message: string };
 
 async function getMetaAdsConfig(organizationId: string): Promise<MetaAdsConfig | null> {
@@ -197,6 +206,52 @@ function aggregatePurchaseValue(actionValues?: ActionEntry[]): number {
   return total;
 }
 
+type DailyAcc = {
+  impressions: number;
+  clicks: number;
+  spend: number;
+  leads: number;
+  purchases: number;
+};
+
+async function fetchMetaDailyForAccount(
+  accountNumericId: string,
+  accessToken: string,
+  appSecret: string,
+  timeRange: string
+): Promise<Map<string, DailyAcc>> {
+  const path = `/act_${accountNumericId}/insights?fields=date_start,impressions,clicks,spend,actions,action_values&time_range=${encodeURIComponent(timeRange)}&time_increment=1&level=account&limit=500`;
+  const rows = await graphGetAllPages<{
+    date_start?: string;
+    impressions?: string;
+    clicks?: string;
+    spend?: string;
+    actions?: ActionEntry[];
+    action_values?: ActionEntry[];
+  }>(path, accessToken, appSecret);
+
+  const map = new Map<string, DailyAcc>();
+  for (const row of rows) {
+    const d = row.date_start ?? "";
+    if (!d) continue;
+    const imp = parseInt(row.impressions ?? "0", 10) || 0;
+    const clk = parseInt(row.clicks ?? "0", 10) || 0;
+    const sp = parseFloat(row.spend ?? "0") || 0;
+    const { leads, purchases } = aggregateActions(row.actions);
+    const cur = map.get(d);
+    if (cur) {
+      cur.impressions += imp;
+      cur.clicks += clk;
+      cur.spend += sp;
+      cur.leads += leads;
+      cur.purchases += purchases;
+    } else {
+      map.set(d, { impressions: imp, clicks: clk, spend: sp, leads, purchases });
+    }
+  }
+  return map;
+}
+
 export async function fetchMetaAdsMetrics(
   organizationId: string,
   range: { start: string; end: string }
@@ -224,6 +279,7 @@ export async function fetchMetaAdsMetrics(
         ok: true,
         summary: { impressions: 0, clicks: 0, spend: 0, leads: 0, purchases: 0 },
         campaigns: [],
+        daily: [],
       };
     }
 
@@ -298,6 +354,39 @@ export async function fetchMetaAdsMetrics(
       }
     }
 
+    const mergedDaily = new Map<string, DailyAcc>();
+    for (const account of accounts) {
+      const accountId = account.id.replace("act_", "");
+      try {
+        const part = await fetchMetaDailyForAccount(accountId, config.access_token, appSecret, timeRange);
+        for (const [d, v] of part) {
+          const cur = mergedDaily.get(d);
+          if (cur) {
+            cur.impressions += v.impressions;
+            cur.clicks += v.clicks;
+            cur.spend += v.spend;
+            cur.leads += v.leads;
+            cur.purchases += v.purchases;
+          } else {
+            mergedDaily.set(d, { ...v });
+          }
+        }
+      } catch (e) {
+        console.error("[Meta Ads] daily series:", e instanceof Error ? e.message : e);
+      }
+    }
+
+    const daily: MetaAdsDailyRow[] = Array.from(mergedDaily.entries())
+      .map(([date, v]) => ({
+        date,
+        impressions: v.impressions,
+        clicks: v.clicks,
+        spend: v.spend,
+        leads: v.leads,
+        purchases: v.purchases,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
     return {
       ok: true,
       summary: {
@@ -309,6 +398,7 @@ export async function fetchMetaAdsMetrics(
         purchaseValue: totalPurchaseValue > 0 ? totalPurchaseValue : undefined,
       },
       campaigns: Array.from(campaignMap.values()),
+      daily,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro ao buscar métricas do Meta Ads.";

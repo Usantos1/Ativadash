@@ -195,6 +195,13 @@ export async function deleteLaunch(organizationId: string, id: string) {
   return true;
 }
 
+export async function listGoals(organizationId: string) {
+  return prisma.goal.findMany({
+    where: { organizationId },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
 type MemberListItem = {
   membershipId: string;
   userId: string;

@@ -111,6 +111,21 @@ export async function fetchMembers(): Promise<MemberRow[]> {
   return api.get<MemberRow[]>("/workspace/members");
 }
 
+export type GoalRow = {
+  id: string;
+  organizationId: string;
+  name: string;
+  type: string;
+  targetValue: number;
+  period: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function fetchGoals(): Promise<GoalRow[]> {
+  return api.get<GoalRow[]>("/workspace/goals");
+}
+
 export async function patchProfile(name: string): Promise<{ id: string; email: string; name: string }> {
   return api.patch("/auth/profile", { name });
 }

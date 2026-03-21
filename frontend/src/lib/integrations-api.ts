@@ -46,10 +46,20 @@ export interface GoogleAdsCampaignRow {
   conversionsValue: number;
 }
 
+export interface GoogleAdsDailyRow {
+  date: string;
+  impressions: number;
+  clicks: number;
+  costMicros: number;
+  conversions: number;
+}
+
 export interface GoogleAdsMetricsResponse {
   ok: true;
   summary: GoogleAdsMetricsSummary;
   campaigns: GoogleAdsCampaignRow[];
+  /** Série diária (ausente em respostas antigas). */
+  daily?: GoogleAdsDailyRow[];
 }
 
 export type GoogleAdsMetricsResult = GoogleAdsMetricsResponse | { ok: false; message: string };
@@ -101,10 +111,20 @@ export interface MetaAdsCampaignRow {
   conversions?: number;
 }
 
+export interface MetaAdsDailyRow {
+  date: string;
+  impressions: number;
+  clicks: number;
+  spend: number;
+  leads: number;
+  purchases: number;
+}
+
 export interface MetaAdsMetricsResponse {
   ok: true;
   summary: MetaAdsMetricsSummary;
   campaigns: MetaAdsCampaignRow[];
+  daily?: MetaAdsDailyRow[];
 }
 
 export type MetaAdsMetricsResult = MetaAdsMetricsResponse | { ok: false; message: string };

@@ -28,8 +28,17 @@ export interface GoogleAdsCampaignRow {
   conversionsValue: number;
 }
 
+/** Série diária agregada (todas as campanhas) para gráficos. */
+export interface GoogleAdsDailyRow {
+  date: string;
+  impressions: number;
+  clicks: number;
+  costMicros: number;
+  conversions: number;
+}
+
 export type GoogleAdsMetricsResult =
-  | { ok: true; summary: GoogleAdsMetricsSummary; campaigns: GoogleAdsCampaignRow[] }
+  | { ok: true; summary: GoogleAdsMetricsSummary; campaigns: GoogleAdsCampaignRow[]; daily?: GoogleAdsDailyRow[] }
   | { ok: false; message: string };
 
 async function getGoogleAdsConfig(organizationId: string): Promise<GoogleAdsConfig | null> {
@@ -179,6 +188,78 @@ async function searchStream(
   return { summary, campaigns };
 }
 
+async function searchStreamDaily(
+  accessToken: string,
+  developerToken: string,
+  customerId: string,
+  range: { start: string; end: string }
+): Promise<GoogleAdsDailyRow[]> {
+  const query = `
+    SELECT
+      segments.date,
+      metrics.impressions,
+      metrics.clicks,
+      metrics.cost_micros,
+      metrics.conversions
+    FROM campaign
+    WHERE segments.date BETWEEN '${range.start}' AND '${range.end}'
+      AND campaign.status = 'ENABLED'
+  `.trim();
+
+  const res = await fetch(
+    `https://googleads.googleapis.com/${API_VERSION}/customers/${customerId}/googleAds:searchStream`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "developer-token": developerToken,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query }),
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`SearchStream (daily): ${res.status} ${text}`);
+  }
+
+  const raw = await res.json();
+  const batches = Array.isArray(raw) ? raw : [raw];
+  type Row = {
+    segments?: { date?: string };
+    metrics?: Record<string, string | number | undefined>;
+  };
+  const results: Row[] = [];
+  for (const batch of batches) {
+    const r = (batch as { results?: unknown[] }).results ?? [];
+    results.push(...(r as Row[]));
+  }
+
+  const byDate = new Map<string, GoogleAdsDailyRow>();
+
+  for (const row of results) {
+    const date = row.segments?.date ?? "";
+    if (!date) continue;
+    const m = row.metrics ?? {};
+    const impressions = Number(m.impressions ?? 0);
+    const clicks = Number(m.clicks ?? 0);
+    const costMicros = Number(m.costMicros ?? (m as Record<string, unknown>).cost_micros ?? 0);
+    const conversions = Number(m.conversions ?? 0);
+    const cur = byDate.get(date);
+    if (cur) {
+      cur.impressions += impressions;
+      cur.clicks += clicks;
+      cur.costMicros += costMicros;
+      cur.conversions += conversions;
+    } else {
+      byDate.set(date, { date, impressions, clicks, costMicros, conversions });
+    }
+  }
+
+  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
 export async function fetchGoogleAdsMetrics(
   organizationId: string,
   range: { start: string; end: string }
@@ -217,6 +298,7 @@ export async function fetchGoogleAdsMetrics(
         ok: true,
         summary: { impressions: 0, clicks: 0, costMicros: 0, conversions: 0, conversionsValue: 0 },
         campaigns: [],
+        daily: [],
       };
     }
     const customerId = customerIds[0];
@@ -226,7 +308,13 @@ export async function fetchGoogleAdsMetrics(
       customerId,
       range
     );
-    return { ok: true, summary, campaigns };
+    let daily: GoogleAdsDailyRow[] = [];
+    try {
+      daily = await searchStreamDaily(accessToken, env.GOOGLE_ADS_DEVELOPER_TOKEN, customerId, range);
+    } catch (e) {
+      console.error("[Google Ads] daily series:", e instanceof Error ? e.message : e);
+    }
+    return { ok: true, summary, campaigns, daily };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, message: `Erro ao buscar dados do Google Ads: ${msg}` };
