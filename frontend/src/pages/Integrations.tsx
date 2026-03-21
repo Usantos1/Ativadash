@@ -377,9 +377,11 @@ export function Integrations() {
           ? IX.authIncompleta
           : error === "invalid_state"
             ? IX.sessaoExpirada
-            : error === "exchange_failed"
-              ? "Falha ao conectar. Tente novamente."
-              : "Erro ao conectar.";
+            : error === "plan_limit_integrations"
+              ? IX.planLimitIntegrations
+              : error === "exchange_failed"
+                ? "Falha ao conectar. Tente novamente."
+                : "Erro ao conectar.";
       setMessage({ type: "error", text: msg });
       setSearchParams((p) => {
         p.delete("connected");

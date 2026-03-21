@@ -1,6 +1,7 @@
 import { env } from "../config/env.js";
 import { prisma } from "../utils/prisma.js";
 import { createState, consumeState } from "../utils/oauth-state.js";
+import { assertCanAddIntegration } from "./plan-limits.service.js";
 
 const GOOGLE_ADS_SLUG = "google-ads";
 const META_ADS_SLUG = "meta";
@@ -61,6 +62,13 @@ export async function exchangeGoogleAdsCode(code: string, state: string): Promis
     refresh_token: data.refresh_token ?? null,
     expiry_date: Date.now() + data.expires_in * 1000,
   });
+
+  const existingGoogle = await prisma.integration.findUnique({
+    where: { organizationId_slug: { organizationId, slug: GOOGLE_ADS_SLUG } },
+  });
+  if (!existingGoogle) {
+    await assertCanAddIntegration(organizationId);
+  }
 
   await prisma.integration.upsert({
     where: {
@@ -141,6 +149,13 @@ export async function exchangeMetaAdsCode(code: string, state: string): Promise<
     access_token: tokenToStore,
     expiry_date: Date.now() + 60 * 24 * 60 * 60 * 1000, // ~60 days
   });
+
+  const existingMeta = await prisma.integration.findUnique({
+    where: { organizationId_slug: { organizationId, slug: META_ADS_SLUG } },
+  });
+  if (!existingMeta) {
+    await assertCanAddIntegration(organizationId);
+  }
 
   await prisma.integration.upsert({
     where: {

@@ -97,7 +97,12 @@ model Plan {
   slug        String   @unique
   maxIntegrations Int   @default(5)
   maxDashboards   Int   @default(10)
+  /// Usuarios com login (membership direta nesta org). null = ilimitado
   maxUsers       Int?
+  /// Contas comerciais (ClientAccount) por organizacao. null = ilimitado
+  maxClientAccounts Int?
+  /// Empresas filhas (revenda / multi-empresa). null = ilimitado; 0 = nao pode criar filhas
+  maxChildOrganizations Int?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

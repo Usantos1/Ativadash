@@ -176,10 +176,12 @@ export async function register(data: RegisterInput) {
   const orgDisplayName = data.organizationName?.trim() || `${data.name} — Empresa`;
   const slugBase = slugifyOrganizationName(data.organizationName?.trim() || data.name);
   const slug = await uniqueOrganizationSlug(slugBase);
+  const starterPlan = await prisma.plan.findUnique({ where: { slug: "starter" } });
   const org = await prisma.organization.create({
     data: {
       name: orgDisplayName,
       slug,
+      planId: starterPlan?.id,
     },
   });
   const user = await prisma.user.create({

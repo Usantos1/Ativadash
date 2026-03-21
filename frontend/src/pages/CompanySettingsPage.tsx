@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   fetchOrganizationContext,
+  formatPlanCap,
   patchOrganizationName,
   fetchManagedOrganizations,
   createManagedOrganization,
@@ -168,10 +169,19 @@ export function CompanySettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Revenda · nova organização por cliente final</CardTitle>
-          <CardDescription>
-            Cada item aqui vira uma <strong className="text-foreground">empresa separada no seletor do topo</strong>, com
-            Google/Meta e dados próprios. Isso não substitui o menu <strong className="text-foreground">Clientes</strong>, que
-            continua sendo cadastro comercial <em>dentro</em> de cada ambiente.
+          <CardDescription className="space-y-2">
+            <span className="block">
+              Cada item aqui vira uma <strong className="text-foreground">empresa separada no seletor do topo</strong>, com
+              Google/Meta e dados próprios. Isso não substitui o menu <strong className="text-foreground">Clientes</strong>, que
+              continua sendo cadastro comercial <em>dentro</em> de cada ambiente.
+            </span>
+            {ctx && (
+              <span className="block rounded-md border border-border/80 bg-muted/40 px-2 py-1.5 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">Plano:</span> {ctx.plan?.name ?? "—"} ·{" "}
+                <span className="font-medium text-foreground">Empresas vinculadas:</span>{" "}
+                {ctx.usage.childOrganizations} / {formatPlanCap(ctx.limits.maxChildOrganizations)}
+              </span>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

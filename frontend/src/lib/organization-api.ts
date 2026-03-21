@@ -1,11 +1,36 @@
 import { api } from "./api";
 import type { OrganizationSummary, User, MembershipSummary } from "@/stores/auth-store";
 
+export type PlanLimits = {
+  maxUsers: number | null;
+  maxIntegrations: number;
+  maxDashboards: number;
+  maxClientAccounts: number | null;
+  maxChildOrganizations: number | null;
+};
+
+export type PlanUsage = {
+  directMembers: number;
+  integrations: number;
+  dashboards: number;
+  clientAccounts: number;
+  childOrganizations: number;
+};
+
+/** Exibe limite numérico ou "Ilimitado" quando null. */
+export function formatPlanCap(n: number | null | undefined): string {
+  if (n === null || n === undefined) return "Ilimitado";
+  return String(n);
+}
+
 export type OrganizationContext = {
   id: string;
   name: string;
   slug: string;
   parentOrganization: OrganizationSummary | null;
+  plan: { id: string; name: string; slug: string } | null;
+  limits: PlanLimits;
+  usage: PlanUsage;
 };
 
 export async function fetchOrganizationContext(): Promise<OrganizationContext> {

@@ -50,8 +50,17 @@ export async function clientsCreate(req: Request, res: Response) {
   if (!parsed.success) {
     return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Dados inválidos" });
   }
-  const row = await createClient(organizationId, parsed.data.name);
-  return res.status(201).json(row);
+  try {
+    const row = await createClient(organizationId, parsed.data.name);
+    return res.status(201).json(row);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Erro ao criar cliente";
+    if (msg.includes("Limite de clientes")) {
+      return res.status(403).json({ message: msg });
+    }
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao criar cliente" });
+  }
 }
 
 export async function clientsUpdate(req: Request, res: Response) {

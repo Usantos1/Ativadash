@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollRegion } from "@/components/ui/scroll-region";
 import { fetchMembers, type MemberRow } from "@/lib/workspace-api";
+import { fetchOrganizationContext, formatPlanCap, type OrganizationContext } from "@/lib/organization-api";
 import { useAuthStore } from "@/stores/auth-store";
 
 const roleLabel: Record<string, string> = {
@@ -14,14 +15,16 @@ const roleLabel: Record<string, string> = {
 export function TeamPage() {
   const orgName = useAuthStore((s) => s.user?.organization?.name);
   const [rows, setRows] = useState<MemberRow[]>([]);
+  const [orgCtx, setOrgCtx] = useState<OrganizationContext | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const list = await fetchMembers();
+      const [list, ctx] = await Promise.all([fetchMembers(), fetchOrganizationContext()]);
       setRows(list);
+      setOrgCtx(ctx);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao carregar");
     } finally {
@@ -32,6 +35,8 @@ export function TeamPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const directCount = rows.filter((r) => r.source === "direct").length;
 
   return (
     <div className="min-w-0 max-w-full space-y-6">
@@ -58,7 +63,11 @@ export function TeamPage() {
         <CardHeader>
           <CardTitle>Membros com acesso</CardTitle>
           <CardDescription>
-            {loading ? "Carregando…" : `${rows.length} pessoa(s) com acesso a esta organização`}
+            {loading
+              ? "Carregando…"
+              : orgCtx
+                ? `${directCount} / ${formatPlanCap(orgCtx.limits.maxUsers)} usuário(s) com login nesta empresa (contagem direta; convites em breve). Lista abaixo: ${rows.length} linha(s) incluindo acesso pela agência.`
+                : `${rows.length} pessoa(s) com acesso a esta organização`}
           </CardDescription>
         </CardHeader>
         <CardContent>

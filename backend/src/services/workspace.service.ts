@@ -1,4 +1,5 @@
 import { prisma } from "../utils/prisma.js";
+import { assertCanAddClientAccount } from "./plan-limits.service.js";
 
 export async function listClients(organizationId: string) {
   return prisma.clientAccount.findMany({
@@ -8,6 +9,7 @@ export async function listClients(organizationId: string) {
 }
 
 export async function createClient(organizationId: string, name: string) {
+  await assertCanAddClientAccount(organizationId);
   return prisma.clientAccount.create({
     data: { organizationId, name: name.trim() },
   });

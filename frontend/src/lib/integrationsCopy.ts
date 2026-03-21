@@ -21,6 +21,8 @@ export const IX = {
   sessaoExpirada: "Sess\u00e3o expirada. Tente conectar de novo.",
   naoFoiPossivelConexao: "N\u00e3o foi poss\u00edvel iniciar a conex\u00e3o.",
   integracaoDesvinculada: "Integra\u00e7\u00e3o desvinculada.",
+  planLimitIntegrations:
+    "Limite do plano: m\u00e1ximo de integra\u00e7\u00f5es conectadas. Desvincule uma conta ou fale com vendas para ampliar.",
 
   errCarregarCfg: "N\u00e3o foi poss\u00edvel carregar as configura\u00e7\u00f5es.",
   cfgSalvas: "Configura\u00e7\u00f5es salvas.",

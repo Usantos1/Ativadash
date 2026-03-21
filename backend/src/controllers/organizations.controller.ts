@@ -66,8 +66,7 @@ export async function createManagedOrganization(req: Request, res: Response) {
     const org = await createChildOrganization(user.organizationId, user.userId, parsed.data.name);
     return res.status(201).json({ organization: org });
   } catch (e) {
-    return res.status(403).json({
-      message: e instanceof Error ? e.message : "Sem permissão",
-    });
+    const msg = e instanceof Error ? e.message : "Sem permissão";
+    return res.status(403).json({ message: msg });
   }
 }

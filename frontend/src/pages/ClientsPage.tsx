@@ -14,9 +14,15 @@ import {
   deleteClient,
   type ClientAccount,
 } from "@/lib/workspace-api";
+import {
+  fetchOrganizationContext,
+  formatPlanCap,
+  type OrganizationContext,
+} from "@/lib/organization-api";
 
 export function ClientsPage() {
   const [rows, setRows] = useState<ClientAccount[]>([]);
+  const [orgCtx, setOrgCtx] = useState<OrganizationContext | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -27,8 +33,9 @@ export function ClientsPage() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const list = await fetchClients();
+      const [list, ctx] = await Promise.all([fetchClients(), fetchOrganizationContext()]);
       setRows(list);
+      setOrgCtx(ctx);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao carregar");
     } finally {
@@ -71,6 +78,10 @@ export function ClientsPage() {
     }
   }
 
+  const maxClients = orgCtx?.limits.maxClientAccounts;
+  const atClientLimit =
+    maxClients != null && rows.length >= maxClients;
+
   async function handleDelete(row: ClientAccount) {
     if (!confirm(`Remover o cliente "${row.name}"? Projetos vinculados ficam sem cliente.`)) return;
     try {
@@ -99,11 +110,17 @@ export function ClientsPage() {
             .
           </p>
         </div>
-        <Button onClick={openCreate}>
+        <Button onClick={openCreate} disabled={atClientLimit} title={atClientLimit ? "Limite do plano atingido" : undefined}>
           <Plus className="mr-2 h-4 w-4" />
           Novo cliente
         </Button>
       </div>
+
+      {atClientLimit && (
+        <p className="text-sm text-amber-800 dark:text-amber-200" role="status">
+          Limite de clientes comerciais do plano atingido. Remova um cliente ou fale com vendas para ampliar.
+        </p>
+      )}
 
       {error && (
         <p className="text-sm text-destructive" role="alert">
@@ -115,7 +132,11 @@ export function ClientsPage() {
         <CardHeader>
           <CardTitle>Lista</CardTitle>
           <CardDescription>
-            {loading ? "Carregando…" : `${rows.length} cliente(s)`}
+            {loading
+              ? "Carregando…"
+              : orgCtx
+                ? `${rows.length} / ${formatPlanCap(orgCtx.limits.maxClientAccounts)} cliente(s) · Plano ${orgCtx.plan?.name ?? "—"}`
+                : `${rows.length} cliente(s)`}
           </CardDescription>
         </CardHeader>
         <CardContent>

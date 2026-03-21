@@ -52,6 +52,9 @@ export async function googleAdsCallbackHandler(req: Request, res: Response) {
     return res.redirect(`${redirectBase}?connected=google-ads`);
   } catch (e) {
     console.error(e);
+    if (e instanceof Error && e.message.includes("Limite de integrações")) {
+      return res.redirect(`${redirectBase}?error=plan_limit_integrations`);
+    }
     return res.redirect(`${redirectBase}?error=exchange_failed`);
   }
 }
@@ -97,6 +100,9 @@ export async function metaAdsCallbackHandler(req: Request, res: Response) {
     return res.redirect(`${redirectBase}?connected=meta-ads`);
   } catch (e) {
     console.error(e);
+    if (e instanceof Error && e.message.includes("Limite de integrações")) {
+      return res.redirect(`${redirectBase}?error=plan_limit_integrations`);
+    }
     return res.redirect(`${redirectBase}?error=exchange_failed`);
   }
 }

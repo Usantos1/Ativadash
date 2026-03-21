@@ -5,6 +5,10 @@ import {
   canManageOrganization,
   userHasEffectiveAccess,
 } from "./auth.service.js";
+import {
+  assertCanAddChildOrganization,
+  getOrganizationPlanContext,
+} from "./plan-limits.service.js";
 
 export async function getOrganizationContext(organizationId: string, userId: string) {
   const allowed = await userHasEffectiveAccess(userId, organizationId);
@@ -20,11 +24,15 @@ export async function getOrganizationContext(organizationId: string, userId: str
   if (!org) {
     throw new Error("Empresa não encontrada");
   }
+  const planContext = await getOrganizationPlanContext(organizationId);
   return {
     id: org.id,
     name: org.name,
     slug: org.slug,
     parentOrganization: org.parentOrganization,
+    plan: planContext.plan,
+    limits: planContext.limits,
+    usage: planContext.usage,
   };
 }
 
@@ -51,12 +59,18 @@ export async function listChildOrganizations(organizationId: string, userId: str
 
 export async function createChildOrganization(parentOrganizationId: string, userId: string, name: string) {
   await assertDirectOrgAdmin(userId, parentOrganizationId);
+  await assertCanAddChildOrganization(parentOrganizationId);
+  const parent = await prisma.organization.findFirst({
+    where: { id: parentOrganizationId, deletedAt: null },
+    select: { planId: true },
+  });
   const slug = await uniqueOrganizationSlug(slugifyOrganizationName(name));
   const org = await prisma.organization.create({
     data: {
       name: name.trim(),
       slug,
       parentOrganizationId,
+      planId: parent?.planId ?? undefined,
     },
   });
   return { id: org.id, name: org.name, slug: org.slug };
