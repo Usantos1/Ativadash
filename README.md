@@ -14,8 +14,8 @@ Plataforma de dashboards de marketing, vendas e integrações para agências e g
 ```
 Ativadash/
 ├── frontend/    # App React
-├── backend/     # API Express + Prisma (PostgreSQL)
-├── worker/      # (opcional) API em Cloudflare Worker + D1
+├── backend/     # API Express + Prisma (PostgreSQL) — produção
+├── worker/      # Legado (Cloudflare Worker); não usado no deploy atual — ver worker/README.md
 └── package.json # Scripts raiz
 ```
 
@@ -47,7 +47,7 @@ Acesse **http://localhost:5173**. O proxy aponta `/api` para `http://localhost:3
 ## Deploy (VPS + PostgreSQL)
 
 - **Backend:** rode na VPS (Node + PM2 ou similar). Banco **PostgreSQL**; variáveis em `backend/.env` (ou ambiente). Ver `DEPLOY-VPS.md`.
-- **Frontend:** build estático (`cd frontend && npm run build`); sirva a pasta `frontend/dist` (Nginx, Pages, etc.). Em produção defina `VITE_API_URL` com a URL da API (ex.: `https://api.seudominio.com`).
+- **Frontend:** build estático (`cd frontend && npm run build`); sirva a pasta `frontend/dist` (ex.: Nginx na VPS). Em produção defina `VITE_API_URL` com a URL da API (ex.: `https://api.seudominio.com`).
 
 ## Google Ads
 
