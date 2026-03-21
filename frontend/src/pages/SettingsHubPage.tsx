@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Megaphone, Plug, User, Users, Building2 } from "lucide-react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeaderPremium } from "@/components/premium";
 import { AccountModelExplainer } from "@/components/help/AccountModelExplainer";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
@@ -51,22 +52,20 @@ export function SettingsHubPage() {
 
   return (
     <div className="mx-auto min-w-0 max-w-5xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Configurações</h1>
-        <p className="text-sm text-muted-foreground">
-          Central de ajustes da conta e do marketing. Em dúvida sobre empresa, usuários e clientes? Leia o quadro
-          abaixo.
-        </p>
-      </div>
+      <PageHeaderPremium
+        eyebrow="Conta"
+        title="Configurações"
+        subtitle="Central de ajustes da conta e do marketing. Em dúvida sobre empresa, usuários e clientes? Leia o quadro abaixo."
+      />
 
       <AccountModelExplainer />
 
       {org && (
-        <Card className="border-primary/20 bg-primary/5">
+        <Card className="rounded-2xl border-primary/25 bg-gradient-to-br from-primary/[0.07] to-card shadow-[var(--shadow-surface-sm)]">
           <CardHeader className="flex flex-row items-center gap-3 space-y-0 pb-2">
-            <Building2 className="h-8 w-8 text-primary" />
+            <Building2 className="h-8 w-8 shrink-0 text-primary" />
             <div>
-              <CardTitle className="text-base">{org.name}</CardTitle>
+              <CardTitle className="text-base font-bold">{org.name}</CardTitle>
               <CardDescription>Empresa ativa · slug: {org.slug}</CardDescription>
             </div>
           </CardHeader>
@@ -76,7 +75,11 @@ export function SettingsHubPage() {
       <div className="grid gap-4 sm:grid-cols-2">
         {links.map(({ to, title, description, icon: Icon }) => (
           <Link key={to} to={to} className="block transition-opacity hover:opacity-90">
-            <Card className={cn("h-full cursor-pointer hover:border-primary/30")}>
+            <Card
+              className={cn(
+                "h-full cursor-pointer rounded-2xl border-border/55 shadow-[var(--shadow-surface-sm)] transition-shadow hover:border-primary/35 hover:shadow-[var(--shadow-surface)]"
+              )}
+            >
               <CardHeader>
                 <div className="flex items-center gap-2">
                   <Icon className="h-5 w-5 text-primary" />

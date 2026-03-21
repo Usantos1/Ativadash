@@ -118,8 +118,9 @@ export function CompanySettingsPage() {
             Voltar
           </Link>
         </Button>
-        <h1 className="text-2xl font-semibold tracking-tight">Empresa e revenda</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-primary/80">Conta</p>
+        <h1 className="text-2xl font-bold tracking-tight">Empresa e revenda</h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           A <strong className="font-medium text-foreground">empresa ativa</strong> é o ambiente isolado (integrações,
           marketing, menu Clientes, projetos). Agências podem criar <strong className="font-medium text-foreground">empresas filhas</strong>{" "}
           abaixo — cada filha é outro ambiente completo, diferente dos registros do menu{" "}
@@ -142,7 +143,7 @@ export function CompanySettingsPage() {
       {msg && <p className="text-sm text-success">{msg}</p>}
 
       {ctx?.parentOrganization && (
-        <Card className="border-border/80 bg-muted/30">
+        <Card className="rounded-2xl border-border/55 bg-muted/25 shadow-[var(--shadow-surface-sm)]">
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <Network className="h-5 w-5 text-primary" />
@@ -157,11 +158,11 @@ export function CompanySettingsPage() {
         </Card>
       )}
 
-      <Card>
+      <Card className="rounded-2xl border-border/55 shadow-[var(--shadow-surface-sm)]">
         <CardHeader>
           <div className="flex items-center gap-2">
             <Building2 className="h-5 w-5 text-primary" />
-            <CardTitle className="text-lg">Nome da empresa ativa</CardTitle>
+            <CardTitle className="text-lg font-bold">Nome da empresa ativa</CardTitle>
           </div>
           <CardDescription>Identificação exibida no painel e nas integrações deste contexto.</CardDescription>
         </CardHeader>
@@ -184,9 +185,9 @@ export function CompanySettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-2xl border-border/55 shadow-[var(--shadow-surface-sm)]">
         <CardHeader>
-          <CardTitle className="text-lg">Revenda · nova organização por cliente final</CardTitle>
+          <CardTitle className="text-lg font-bold">Revenda · nova organização por cliente final</CardTitle>
           <CardDescription className="space-y-2">
             <span className="block">
               Cada item aqui vira uma <strong className="text-foreground">empresa separada no seletor do topo</strong>, com

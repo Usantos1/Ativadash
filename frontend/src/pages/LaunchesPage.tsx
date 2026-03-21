@@ -163,6 +163,7 @@ export function LaunchesPage() {
   return (
     <div className="w-full space-y-6">
       <AnalyticsPageHeader
+        eyebrow="Operação"
         title="Lançamentos"
         subtitle="Janelas nomeadas dentro de um projeto — alimentam filtros inteligentes no Marketing quando o título coincide com campanhas."
         actions={

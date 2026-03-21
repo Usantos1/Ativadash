@@ -122,6 +122,7 @@ export function ProjectsPage() {
   return (
     <div className="w-full space-y-6">
       <AnalyticsPageHeader
+        eyebrow="Operação"
         title="Projetos"
         subtitle="Estrutura operacional: cada projeto concentra lançamentos e pode estar vinculado a um cliente comercial."
         actions={

@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AnalyticsPageHeader } from "@/components/analytics/AnalyticsPageHeader";
 import { AnalyticsSection } from "@/components/analytics/AnalyticsSection";
-import { KpiPremium } from "@/components/analytics/KpiPremium";
+import { KpiCardPremium } from "@/components/premium";
 import {
   fetchMembers,
   fetchPendingInvitations,
@@ -142,10 +142,11 @@ export function TeamPage() {
 
       {!loading && orgCtx && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <KpiPremium label="Membros listados" value={String(rows.length)} icon={Users2} />
-          <KpiPremium label="Acesso direto" value={String(directCount)} icon={Users2} />
-          <KpiPremium label="Convites pendentes" value={String(pendingCount)} icon={Users2} />
-          <KpiPremium
+          <KpiCardPremium variant="primary" label="Membros listados" value={String(rows.length)} icon={Users2} />
+          <KpiCardPremium variant="primary" label="Acesso direto" value={String(directCount)} icon={Users2} />
+          <KpiCardPremium variant="compact" label="Convites pendentes" value={String(pendingCount)} icon={Users2} />
+          <KpiCardPremium
+            variant="compact"
             label="Limite do plano"
             value={maxUsersLabel}
             hint={`Usuários diretos + pendentes ≤ ${maxUsersLabel}.${planNote}`}
@@ -155,10 +156,12 @@ export function TeamPage() {
       )}
 
       <AnalyticsSection
+        eyebrow="Convite"
         title="Convidar por e-mail"
         description={`Gera link de cadastro. Limite: membros diretos + convites pendentes (máx. ${maxUsersLabel}).${planNote}`}
         dense
       >
+        <div className="rounded-xl border border-border/50 bg-muted/[0.12] p-4 sm:p-5">
           <form onSubmit={handleInvite} className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
             <div className="min-w-[200px] flex-1 space-y-1.5">
               <Label htmlFor="invite-email">E-mail</Label>
@@ -199,6 +202,7 @@ export function TeamPage() {
               <p className="mt-2 text-xs text-muted-foreground">Encaminhe por WhatsApp ou e-mail.</p>
             </div>
           )}
+        </div>
       </AnalyticsSection>
 
       {invites.length > 0 && (

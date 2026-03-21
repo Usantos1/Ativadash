@@ -31,9 +31,14 @@ import { PerformanceAlerts } from "@/components/marketing/PerformanceAlerts";
 import { CaptureTrendComposedChart } from "@/components/marketing/CaptureTrendComposedChart";
 import { CaptureDualDonuts } from "@/components/marketing/CaptureDualDonuts";
 import { RevenueDetailModal } from "@/components/marketing/RevenueDetailModal";
-import { AnalyticsPageHeader } from "@/components/analytics/AnalyticsPageHeader";
 import { AnalyticsSection } from "@/components/analytics/AnalyticsSection";
-import { KpiPremium } from "@/components/analytics/KpiPremium";
+import {
+  PageHeaderPremium,
+  FilterBarPremium,
+  KpiCardPremium,
+  DataTablePremium,
+  StatusBadge,
+} from "@/components/premium";
 import { formatCost, formatNumber, formatSpend } from "@/lib/metrics-format";
 import { cn } from "@/lib/utils";
 import { useMarketingFilteredAggregates } from "@/hooks/useMarketingFilteredAggregates";
@@ -44,6 +49,12 @@ import {
 } from "@/lib/marketing-capture-aggregate";
 
 export type FunnelVariant = "captacao" | "conversao" | "receita";
+
+const VARIANT_EYEBROW: Record<FunnelVariant, string> = {
+  captacao: "Funil · aquisição",
+  conversao: "Funil · conversão",
+  receita: "Funil · monetização",
+};
 
 const VARIANT_COPY: Record<
   FunnelVariant,
@@ -71,7 +82,7 @@ function relDelta(current: number, prev: number, compareEnabled: boolean): { pct
   return { pct: ((current - prev) / prev) * 100 };
 }
 
-function DataTable({
+function ScrollTable({
   minWidth,
   children,
 }: {
@@ -80,7 +91,9 @@ function DataTable({
 }) {
   return (
     <ScrollRegion className="scrollbar-thin">
-      <table className={cn("w-full text-sm", minWidth)}>{children}</table>
+      <DataTablePremium zebra className={cn("text-[13px]", minWidth)}>
+        {children}
+      </DataTablePremium>
     </ScrollRegion>
   );
 }
@@ -115,6 +128,8 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
     tempFilter,
     setTempFilter,
     selectedLaunch,
+    leadGoalTarget,
+    settings,
     aggG,
     aggM,
     filteredSpend,
@@ -277,9 +292,19 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
   const dataSourceLabel =
     hasMeta && hasGoogle ? "Meta + Google Ads" : hasMeta ? "Meta Ads" : hasGoogle ? "Google Ads" : "—";
 
+  const faltaMetaLeads =
+    leadGoalTarget != null && leadGoalTarget > 0 ? Math.max(0, Math.round(leadGoalTarget - leadsReais)) : null;
+  const targetCpa = settings?.targetCpaBrl ?? null;
+  const faltaInvestir =
+    leadGoalTarget != null && targetCpa != null && leadGoalTarget > 0
+      ? leadGoalTarget * targetCpa - filteredSpend
+      : null;
+
   return (
     <div className="w-full space-y-6">
-      <AnalyticsPageHeader
+      <PageHeaderPremium
+        eyebrow={VARIANT_EYEBROW[variant]}
+        breadcrumbs={[{ label: "Marketing", href: "/marketing" }, { label: vc.title }]}
         title={vc.title}
         subtitle={vc.subtitle}
         meta={
@@ -293,22 +318,74 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
               </span>
             ) : null}
             {compareEnabled ? (
-              <span className="rounded-md bg-primary/10 px-2 py-0.5 font-medium text-primary">Comparação ativa</span>
+              <span className="rounded-md border border-primary/20 bg-primary/[0.08] px-2 py-0.5 text-[11px] font-semibold text-primary">
+                Comparação ativa
+              </span>
             ) : null}
-            <span>{dataSourceLabel}</span>
-            <Link to="/marketing" className="font-medium text-primary underline-offset-4 hover:underline">
+            <span>
+              Fonte: <span className="font-medium text-foreground">{dataSourceLabel}</span>
+            </span>
+            {hasGoogle || hasMeta ? (
+              <StatusBadge tone={dataHealthy && !loadingAny ? "healthy" : "alert"} dot>
+                {loadingAny ? "Sincronizando" : dataHealthy ? "Dados OK" : "Checar integrações"}
+              </StatusBadge>
+            ) : null}
+            <Link to="/marketing" className="font-semibold text-primary underline-offset-4 hover:underline">
               Visão completa Marketing
             </Link>
           </>
         }
+        actions={
+          hasGoogle || hasMeta ? (
+            <div className="flex flex-col gap-2 sm:items-end">
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 rounded-lg border-border/70 bg-background/80 shadow-sm"
+                  disabled={metricsLoading || metaMetricsLoading}
+                  onClick={() => refreshAll()}
+                >
+                  <RefreshCw
+                    className={cn(
+                      "mr-1.5 h-3.5 w-3.5",
+                      metricsLoading || metaMetricsLoading ? "animate-spin" : ""
+                    )}
+                  />
+                  Atualizar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="h-9 rounded-lg shadow-sm"
+                  type="button"
+                  onClick={handleShare}
+                >
+                  <Share2 className="mr-1.5 h-3.5 w-3.5" />
+                  Compartilhar
+                </Button>
+              </div>
+              {shareHint ? <span className="text-right text-xs text-muted-foreground">{shareHint}</span> : null}
+            </div>
+          ) : null
+        }
       />
 
-      <div className="rounded-xl border border-border/70 bg-card/90 p-4 shadow-sm backdrop-blur-sm">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <FilterBarPremium
+        label="Contexto e período"
+        footer={
+          launchId !== "all" && selectedLaunch ? (
+            <>
+              Filtro por lançamento alinhado a tokens de “{selectedLaunch.name}” nos nomes de campanha (Google/Meta).
+            </>
+          ) : undefined
+        }
+      >
+        <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex min-w-0 max-w-full items-center gap-2 sm:max-w-[min(100%,360px)]">
+            <div className="flex min-w-0 max-w-full items-center gap-2 sm:max-w-[min(100%,380px)]">
               <Select value={launchId} onValueChange={setLaunchId}>
-                <SelectTrigger className="h-9 min-w-0 flex-1 rounded-lg border-border/80 bg-background text-sm shadow-sm">
+                <SelectTrigger className="h-9 min-w-0 flex-1 rounded-lg border-border/70 bg-background text-sm shadow-sm">
                   <SelectValue placeholder="Lançamento" />
                 </SelectTrigger>
                 <SelectContent>
@@ -320,20 +397,13 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                   ))}
                 </SelectContent>
               </Select>
-              {launchId !== "all" && selectedLaunch && (
-                <span
-                  className={cn(
-                    "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                    dataHealthy && !loadingAny
-                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
-                      : "bg-amber-500/15 text-amber-800 dark:text-amber-400"
-                  )}
-                >
-                  {dataHealthy && !loadingAny ? "OK" : "…"}
-                </span>
-              )}
+              {launchId !== "all" && selectedLaunch ? (
+                <StatusBadge tone={dataHealthy && !loadingAny ? "connected" : "alert"} dot>
+                  {dataHealthy && !loadingAny ? "Contexto OK" : "Aguardando"}
+                </StatusBadge>
+              ) : null}
             </div>
-            <div className="flex flex-wrap gap-1 rounded-lg border border-border/60 bg-muted/40 p-0.5">
+            <div className="flex flex-wrap gap-1 rounded-xl border border-border/55 bg-muted/30 p-1 shadow-inner">
               {tempBtn("geral", "Geral")}
               {tempBtn("frio", "Frio")}
               {tempBtn("quente", "Quente")}
@@ -342,7 +412,7 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
               type="button"
               variant="outline"
               size="sm"
-              className="h-9 gap-2 rounded-lg border-border/80 bg-background shadow-sm"
+              className="h-9 gap-2 rounded-lg border-border/70 bg-background shadow-sm"
               onClick={() => setPickerOpen(true)}
             >
               <CalendarRange className="h-3.5 w-3.5 opacity-70" />
@@ -358,63 +428,75 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
               onApply={applyDateFilter}
             />
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {hasGoogle || hasMeta ? (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 rounded-lg shadow-sm"
-                  disabled={metricsLoading || metaMetricsLoading}
-                  onClick={() => refreshAll()}
-                >
-                  <RefreshCw
-                    className={cn(
-                      "mr-1.5 h-3.5 w-3.5",
-                      metricsLoading || metaMetricsLoading ? "animate-spin" : ""
-                    )}
-                  />
-                  Atualizar
-                </Button>
-                <Button size="sm" variant="secondary" className="h-9 rounded-lg shadow-sm" type="button" onClick={handleShare}>
-                  <Share2 className="mr-1.5 h-3.5 w-3.5" />
-                  Compartilhar
-                </Button>
-                {shareHint ? <span className="text-xs text-muted-foreground">{shareHint}</span> : null}
-              </>
-            ) : (
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Clock className="h-3.5 w-3.5" />
-                Conecte integrações
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {compareEnabled && (hasGoogle || hasMeta) && (
-        <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground">
-          {cmpLoading ? (
-            <span>Carregando período anterior…</span>
-          ) : funnelPrevSpend <= 0 && funnelCurrentSpend <= 0 ? (
-            <span>Sem gasto registrado nos dois períodos.</span>
-          ) : (
-            <span>
-              <strong className="font-medium text-foreground">Gasto anterior:</strong> {formatSpend(funnelPrevSpend)}
-              {funnelCurrentSpend > 0 && funnelPrevSpend > 0 && (
-                <>
-                  {" "}
-                  (
-                  {funnelCurrentSpend >= funnelPrevSpend ? "+" : ""}
-                  {(((funnelCurrentSpend - funnelPrevSpend) / funnelPrevSpend) * 100).toFixed(1)}%)
-                </>
-              )}
+          {!(hasGoogle || hasMeta) ? (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Clock className="h-3.5 w-3.5 shrink-0" />
+              Conecte integrações para liberar esta visão.
             </span>
+          ) : (
+            <span className="text-[11px] text-muted-foreground">Deltas ao ativar comparação no calendário.</span>
           )}
         </div>
-      )}
+      </FilterBarPremium>
 
-      <PerformanceAlerts alerts={insightData?.alerts} loading={insightLoading} />
+      {(hasGoogle || hasMeta) && (
+        <AnalyticsSection
+          eyebrow="Governança"
+          title="Período, metas e alertas"
+          description="Mesmo motor da visão Marketing — leitura compacta antes dos blocos analíticos."
+          dense
+        >
+          <div className="space-y-4">
+            {compareEnabled ? (
+              <div className="rounded-xl border border-border/50 bg-muted/20 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+                {cmpLoading ? (
+                  <span>Carregando período anterior…</span>
+                ) : funnelPrevSpend <= 0 && funnelCurrentSpend <= 0 ? (
+                  <span>Sem gasto registrado nos dois períodos.</span>
+                ) : (
+                  <span>
+                    <strong className="font-semibold text-foreground">Gasto anterior:</strong>{" "}
+                    <span className="font-semibold tabular-nums text-foreground">{formatSpend(funnelPrevSpend)}</span>
+                    {funnelCurrentSpend > 0 && funnelPrevSpend > 0 && (
+                      <>
+                        {" "}
+                        (
+                        {funnelCurrentSpend >= funnelPrevSpend ? "+" : ""}
+                        {(((funnelCurrentSpend - funnelPrevSpend) / funnelPrevSpend) * 100).toFixed(1)}%)
+                      </>
+                    )}
+                  </span>
+                )}
+              </div>
+            ) : null}
+            <div className="grid gap-4 lg:grid-cols-12 lg:items-start">
+              <div className="grid gap-3 sm:grid-cols-2 lg:col-span-5">
+                <KpiCardPremium
+                  variant="compact"
+                  label="Falta para meta de leads"
+                  value={faltaMetaLeads != null ? formatNumber(faltaMetaLeads) : "—"}
+                  icon={TrendingUp}
+                  hint={
+                    leadGoalTarget != null
+                      ? `Meta: ${formatNumber(leadGoalTarget)} leads.`
+                      : "Defina em Metas e alertas."
+                  }
+                />
+                <KpiCardPremium
+                  variant="compact"
+                  label="Falta investir (est.)"
+                  value={faltaInvestir != null ? formatSpend(faltaInvestir) : "—"}
+                  icon={DollarSign}
+                  hint="Meta × CPA alvo − gasto."
+                />
+              </div>
+              <div className="lg:col-span-7">
+                <PerformanceAlerts alerts={insightData?.alerts} loading={insightLoading} />
+              </div>
+            </div>
+          </div>
+        </AnalyticsSection>
+      )}
 
       {!hasGoogle && !hasMeta ? (
         <EmptyState
@@ -440,53 +522,73 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
       ) : variant === "captacao" ? (
         <div className="space-y-6">
           <AnalyticsSection
+            eyebrow="Faixa executiva"
             title="KPIs de tráfego e aquisição"
             description="Consolidado filtrado · CPL usa leads totais (Google conversões + Meta leads)."
             dense
           >
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-              <KpiPremium label="Impressões" value={formatNumber(impressionsT)} icon={Eye} source={dataSourceLabel} />
-              <KpiPremium
-                label="Alcance (proxy)"
+              <KpiCardPremium
+                variant="primary"
+                label="Investimento"
+                value={formatSpend(filteredSpend)}
+                icon={DollarSign}
+                source={dataSourceLabel}
+                delta={relDelta(filteredSpend, prevFilteredSpend, compareEnabled)}
+              />
+              <KpiCardPremium
+                variant="primary"
+                label="Impressões"
                 value={formatNumber(impressionsT)}
-                hint="Sem alcance único na API; usamos impressões como proxy."
                 icon={Eye}
                 source={dataSourceLabel}
               />
-              <KpiPremium label="Cliques" value={formatNumber(clicksT)} icon={MousePointer} source={dataSourceLabel} />
-              <KpiPremium
+              <KpiCardPremium
+                variant="primary"
+                label="Cliques"
+                value={formatNumber(clicksT)}
+                icon={MousePointer}
+                source={dataSourceLabel}
+              />
+              <KpiCardPremium
+                variant="primary"
+                label="CPL"
+                value={cplLeads != null ? formatSpend(cplLeads) : "—"}
+                icon={DollarSign}
+                source={dataSourceLabel}
+                deltaInvert
+                hint="Investimento ÷ leads totais."
+              />
+              <KpiCardPremium
+                variant="compact"
+                label="Alcance (proxy)"
+                value={formatNumber(impressionsT)}
+                hint="Sem alcance único na API; impressões como proxy."
+                icon={Eye}
+                source={dataSourceLabel}
+              />
+              <KpiCardPremium
+                variant="compact"
                 label="CTR"
                 value={ctrT != null ? `${ctrT.toFixed(2)}%` : "—"}
                 icon={Target}
                 source={dataSourceLabel}
               />
-              <KpiPremium
+              <KpiCardPremium
+                variant="compact"
                 label="CPC"
                 value={cpcT != null ? formatSpend(cpcT) : "—"}
                 icon={MousePointer}
                 source={dataSourceLabel}
                 deltaInvert
               />
-              <KpiPremium
+              <KpiCardPremium
+                variant="compact"
                 label="CPM"
                 value={cpmT != null ? formatSpend(cpmT) : "—"}
                 icon={BarChart3}
                 source={dataSourceLabel}
                 deltaInvert
-              />
-              <KpiPremium
-                label="CPL"
-                value={cplLeads != null ? formatSpend(cplLeads) : "—"}
-                icon={DollarSign}
-                source={dataSourceLabel}
-                deltaInvert
-              />
-              <KpiPremium
-                label="Investimento"
-                value={formatSpend(filteredSpend)}
-                icon={DollarSign}
-                source={dataSourceLabel}
-                delta={relDelta(filteredSpend, prevFilteredSpend, compareEnabled)}
               />
             </div>
           </AnalyticsSection>
@@ -494,18 +596,28 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
           <div className="grid gap-6 xl:grid-cols-2">
             <AnalyticsSection title="Meta vs Google (filtrado)" description="Comparativo de investimento e volume." dense>
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-lg border border-border/70 bg-muted/10 p-4">
-                  <p className="text-xs font-semibold uppercase text-muted-foreground">Google Ads</p>
-                  <p className="mt-2 text-xl font-semibold tabular-nums">{formatCost(aggG.costMicros)}</p>
-                  <p className="text-xs text-muted-foreground">
+                <div className="rounded-xl border border-border/55 bg-gradient-to-br from-card to-muted/30 p-5 shadow-[var(--shadow-surface-sm)]">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Google Ads</p>
+                    <StatusBadge tone="neutral" dot>
+                      Canal
+                    </StatusBadge>
+                  </div>
+                  <p className="mt-3 text-2xl font-bold tabular-nums tracking-tight">{formatCost(aggG.costMicros)}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
                     {formatNumber(aggG.impressions)} impr. · {formatNumber(aggG.clicks)} cliques ·{" "}
                     {formatNumber(aggG.conversions)} conv.
                   </p>
                 </div>
-                <div className="rounded-lg border border-border/70 bg-muted/10 p-4">
-                  <p className="text-xs font-semibold uppercase text-muted-foreground">Meta Ads</p>
-                  <p className="mt-2 text-xl font-semibold tabular-nums">{formatSpend(aggM.spend)}</p>
-                  <p className="text-xs text-muted-foreground">
+                <div className="rounded-xl border border-border/55 bg-gradient-to-br from-card to-primary/[0.05] p-5 shadow-[var(--shadow-surface-sm)]">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-primary">Meta Ads</p>
+                    <StatusBadge tone="connected" dot>
+                      Canal
+                    </StatusBadge>
+                  </div>
+                  <p className="mt-3 text-2xl font-bold tabular-nums tracking-tight">{formatSpend(aggM.spend)}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
                     {formatNumber(aggM.impressions)} impr. · {formatNumber(aggM.clicks)} cliques ·{" "}
                     {formatNumber(aggM.leads)} leads
                   </p>
@@ -548,12 +660,21 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
             </AnalyticsSection>
           </div>
 
-          <AnalyticsSection title="Evolução diária" description="Gasto, leads e CPA consolidados." dense>
-            <CaptureTrendComposedChart data={mergedChartData} />
+          <AnalyticsSection
+            eyebrow="Série temporal"
+            title="Evolução diária"
+            description="Gasto, leads e CPA consolidados no período filtrado."
+            dense
+          >
+            <CaptureTrendComposedChart
+              embedded
+              data={mergedChartData}
+              description="Barras: gasto · linhas: CPA e leads."
+            />
           </AnalyticsSection>
 
           <AnalyticsSection title="Por origem (canal)" dense>
-            <DataTable minWidth="min-w-[720px]">
+            <ScrollTable minWidth="min-w-[720px]">
               <thead>
                 <tr className="border-b text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   <th className="pb-2 pr-3">Origem</th>
@@ -584,7 +705,7 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                   );
                 })}
               </tbody>
-            </DataTable>
+            </ScrollTable>
           </AnalyticsSection>
 
           <AnalyticsSection
@@ -592,7 +713,7 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
             description="Deriva do nome da campanha (segmentos). Para UTMs reais, integre dados de landing/CRM."
             dense
           >
-            <DataTable minWidth="min-w-[640px]">
+            <ScrollTable minWidth="min-w-[640px]">
               <thead>
                 <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
                   <th className="pb-2 pr-3">Campanha / grupo</th>
@@ -615,11 +736,11 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                   </tr>
                 ))}
               </tbody>
-            </DataTable>
+            </ScrollTable>
           </AnalyticsSection>
 
           <AnalyticsSection title="Campanhas (top investimento)" dense>
-            <DataTable minWidth="min-w-[800px]">
+            <ScrollTable minWidth="min-w-[800px]">
               <thead>
                 <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
                   <th className="pb-2 pr-3">Canal</th>
@@ -651,80 +772,127 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                   );
                 })}
               </tbody>
-            </DataTable>
+            </ScrollTable>
           </AnalyticsSection>
         </div>
       ) : variant === "conversao" ? (
         <div className="space-y-6">
-          <AnalyticsSection title="Resultados totais" description="Volume e custo no filtro atual." dense>
+          <AnalyticsSection
+            eyebrow="Faixa executiva"
+            title="Resultados totais"
+            description="Volume e custo no filtro atual — topo e fundo de funil em um só olhar."
+            dense
+          >
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-              <KpiPremium label="Leads" value={formatNumber(leadsReais)} icon={UserPlus} source={dataSourceLabel} />
-              <KpiPremium
+              <KpiCardPremium
+                variant="primary"
+                label="Leads"
+                value={formatNumber(leadsReais)}
+                icon={UserPlus}
+                source={dataSourceLabel}
+              />
+              <KpiCardPremium
+                variant="primary"
                 label="Qualificados (est.)"
                 value={formatNumber(Math.round(mqlNumerator))}
                 icon={Target}
                 hint="Conv. Google + vendas Meta."
                 source={dataSourceLabel}
               />
-              <KpiPremium label="Vendas Meta" value={formatNumber(aggM.purchases)} icon={ShoppingBag} source="Meta" />
-              <KpiPremium
+              <KpiCardPremium
+                variant="primary"
+                label="Investimento"
+                value={formatSpend(filteredSpend)}
+                icon={DollarSign}
+                source={dataSourceLabel}
+              />
+              <KpiCardPremium
+                variant="primary"
                 label="CPA tráfego"
                 value={leadsReais > 0 ? formatSpend(filteredSpend / leadsReais) : "—"}
                 icon={DollarSign}
                 deltaInvert
                 source={dataSourceLabel}
               />
-              <KpiPremium
+              <KpiCardPremium
+                variant="compact"
+                label="Vendas Meta"
+                value={formatNumber(aggM.purchases)}
+                icon={ShoppingBag}
+                source="Meta"
+              />
+              <KpiCardPremium
+                variant="compact"
                 label="Custo / qualif."
                 value={
-                  mqlNumerator > 0 ? formatSpend(filteredSpend / mqlNumerator) : leadsReais > 0 ? formatSpend(filteredSpend / leadsReais) : "—"
+                  mqlNumerator > 0
+                    ? formatSpend(filteredSpend / mqlNumerator)
+                    : leadsReais > 0
+                      ? formatSpend(filteredSpend / leadsReais)
+                      : "—"
                 }
                 icon={DollarSign}
                 deltaInvert
               />
-              <KpiPremium
+              <KpiCardPremium
+                variant="compact"
                 label="Conv. lead → venda"
                 value={aggM.leads > 0 ? `${((aggM.purchases / aggM.leads) * 100).toFixed(2)}%` : "—"}
                 icon={TrendingUp}
                 source="Meta"
               />
-              <KpiPremium
-                label="Distribuição score A"
+              <KpiCardPremium
+                variant="compact"
+                label="Peso faixa A"
                 value={`${grades.A.toFixed(0)}%`}
                 icon={BarChart3}
-                hint="Peso por CTR de campanha."
+                hint="Participação em CTR ponderado."
               />
-              <KpiPremium label="Investimento" value={formatSpend(filteredSpend)} icon={DollarSign} />
             </div>
           </AnalyticsSection>
 
           <div className="grid gap-6 lg:grid-cols-2">
-            <AnalyticsSection title="Quente × frio (resultados)" dense>
+            <AnalyticsSection title="Quente × frio (resultados)" description="Leads e gasto por heurística de nome." dense>
               <CaptureDualDonuts
+                embedded
                 hotLeads={hotCold.hotLeads}
                 coldLeads={hotCold.coldLeads}
                 hotSpend={hotCold.hotSpend}
                 coldSpend={hotCold.coldSpend}
               />
             </AnalyticsSection>
-            <AnalyticsSection title="Temperatura por plataforma" dense>
+            <AnalyticsSection title="Temperatura por plataforma" description="Mesma lógica, separada por rede." dense>
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-lg border border-border/60 p-3 text-sm">
-                  <p className="text-xs font-semibold text-muted-foreground">Google</p>
-                  <p className="mt-1 text-muted-foreground">
-                    Quente: {formatNumber(googleOnlyHotCold.hotLeads)} leads · {formatSpend(googleOnlyHotCold.hotSpend)}
+                <div className="rounded-xl border border-border/55 bg-gradient-to-br from-card to-muted/25 p-4 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Google</p>
+                    <StatusBadge tone="neutral" dot>
+                      Ads
+                    </StatusBadge>
+                  </div>
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    <span className="font-semibold text-foreground">Quente:</span>{" "}
+                    {formatNumber(googleOnlyHotCold.hotLeads)} leads · {formatSpend(googleOnlyHotCold.hotSpend)}
                   </p>
-                  <p className="text-muted-foreground">
-                    Frio: {formatNumber(googleOnlyHotCold.coldLeads)} · {formatSpend(googleOnlyHotCold.coldSpend)}
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    <span className="font-semibold text-foreground">Frio:</span>{" "}
+                    {formatNumber(googleOnlyHotCold.coldLeads)} · {formatSpend(googleOnlyHotCold.coldSpend)}
                   </p>
                 </div>
-                <div className="rounded-lg border border-border/60 p-3 text-sm">
-                  <p className="text-xs font-semibold text-muted-foreground">Meta</p>
-                  <p className="mt-1 text-muted-foreground">
-                    Quente: {formatNumber(metaOnlyHotCold.hotLeads)} · {formatSpend(metaOnlyHotCold.hotSpend)}
+                <div className="rounded-xl border border-border/55 bg-gradient-to-br from-card to-primary/[0.04] p-4 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-primary">Meta</p>
+                    <StatusBadge tone="connected" dot>
+                      Ads
+                    </StatusBadge>
+                  </div>
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    <span className="font-semibold text-foreground">Quente:</span>{" "}
+                    {formatNumber(metaOnlyHotCold.hotLeads)} · {formatSpend(metaOnlyHotCold.hotSpend)}
                   </p>
-                  <p className="text-muted-foreground">
-                    Frio: {formatNumber(metaOnlyHotCold.coldLeads)} · {formatSpend(metaOnlyHotCold.coldSpend)}
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    <span className="font-semibold text-foreground">Frio:</span>{" "}
+                    {formatNumber(metaOnlyHotCold.coldLeads)} · {formatSpend(metaOnlyHotCold.coldSpend)}
                   </p>
                 </div>
               </div>
@@ -732,7 +900,7 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
           </div>
 
           <AnalyticsSection title="Agregado por faixa de score (CTR)" dense>
-            <DataTable minWidth="min-w-[640px]">
+            <ScrollTable minWidth="min-w-[640px]">
               <thead>
                 <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
                   <th className="pb-2 pr-3">Faixa</th>
@@ -758,7 +926,7 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                   );
                 })}
               </tbody>
-            </DataTable>
+            </ScrollTable>
           </AnalyticsSection>
 
           <AnalyticsSection
@@ -767,23 +935,25 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
             dense
           >
             <div className="mb-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-4">
-                <p className="text-xs font-semibold uppercase text-emerald-800 dark:text-emerald-300">Com valor / venda</p>
-                <p className="mt-2 text-lg font-semibold tabular-nums">{formatSpend(deepFunnel.deepAgg.spend)}</p>
-                <p className="text-xs text-muted-foreground">
+              <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.08] to-card p-5 shadow-[var(--shadow-surface-sm)]">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-800 dark:text-emerald-300">
+                  Fundo de funil · valor / venda
+                </p>
+                <p className="mt-3 text-2xl font-bold tabular-nums tracking-tight">{formatSpend(deepFunnel.deepAgg.spend)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
                   {formatNumber(deepFunnel.withValue.length)} campanhas · {formatNumber(deepFunnel.deepAgg.leads)} conv.
                   leads · {formatNumber(deepFunnel.deepAgg.sales)} vendas
                 </p>
               </div>
-              <div className="rounded-lg border border-border/70 bg-muted/10 p-4">
-                <p className="text-xs font-semibold uppercase text-muted-foreground">Topo de funil</p>
-                <p className="mt-2 text-lg font-semibold tabular-nums">{formatSpend(deepFunnel.topAgg.spend)}</p>
-                <p className="text-xs text-muted-foreground">
+              <div className="rounded-xl border border-border/55 bg-gradient-to-br from-muted/30 to-card p-5 shadow-[var(--shadow-surface-sm)]">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Topo de funil</p>
+                <p className="mt-3 text-2xl font-bold tabular-nums tracking-tight">{formatSpend(deepFunnel.topAgg.spend)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
                   {formatNumber(deepFunnel.topOnly.length)} campanhas · {formatNumber(deepFunnel.topAgg.leads)} leads
                 </p>
               </div>
             </div>
-            <DataTable minWidth="min-w-[900px]">
+            <ScrollTable minWidth="min-w-[900px]">
               <thead>
                 <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
                   <th className="pb-2 pr-3">Canal</th>
@@ -810,55 +980,95 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                   </tr>
                 ))}
               </tbody>
-            </DataTable>
+            </ScrollTable>
           </AnalyticsSection>
         </div>
       ) : (
         <div className="space-y-6">
-          <AnalyticsSection title="Monetização" description="Valores atribuídos pelas APIs das plataformas." dense>
+          <AnalyticsSection
+            eyebrow="Monetização"
+            title="KPIs de receita atribuída"
+            description="Valores enviados pelas APIs (Google conversões · Meta compras). Zero não é falha do painel — pode ser ausência de valor na conta ou período sem venda rastreada."
+            dense
+          >
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-              <KpiPremium label="Investimento" value={formatSpend(filteredSpend)} icon={DollarSign} />
-              <KpiPremium
+              <KpiCardPremium
+                variant="primary"
                 label="Valor atribuído"
                 value={formatSpend(attributedRevenue)}
                 icon={TrendingUp}
+                source={dataSourceLabel}
                 delta={relDelta(attributedRevenue, prevAttributedRevenue, compareEnabled)}
               />
-              <KpiPremium
+              <KpiCardPremium
+                variant="primary"
                 label="ROAS"
                 value={roas != null ? `${roas.toFixed(2)}x` : "—"}
                 icon={BarChart3}
+                source={dataSourceLabel}
                 delta={roas != null && prevRoas != null ? relDelta(roas, prevRoas, compareEnabled) : undefined}
               />
-              <KpiPremium
+              <KpiCardPremium
+                variant="primary"
+                label="Investimento"
+                value={formatSpend(filteredSpend)}
+                icon={DollarSign}
+                source={dataSourceLabel}
+              />
+              <KpiCardPremium
+                variant="primary"
                 label="Ticket médio"
                 value={ticketMedio != null ? formatSpend(ticketMedio) : "—"}
                 hint={aggM.purchases === 0 ? "Sem vendas Meta no filtro." : undefined}
                 icon={ShoppingBag}
+                source="Meta"
               />
-              <KpiPremium label="Google — valor conv." value={formatSpend(aggG.conversionsValue)} icon={Target} />
-              <KpiPremium label="Meta — compras" value={formatSpend(aggM.purchaseValue)} icon={ShoppingBag} />
-              <KpiPremium label="Vendas Meta" value={formatNumber(aggM.purchases)} icon={UserPlus} />
-              <KpiPremium
+              <KpiCardPremium
+                variant="compact"
+                label="Google — valor conv."
+                value={formatSpend(aggG.conversionsValue)}
+                icon={Target}
+              />
+              <KpiCardPremium
+                variant="compact"
+                label="Meta — compras"
+                value={formatSpend(aggM.purchaseValue)}
+                icon={ShoppingBag}
+              />
+              <KpiCardPremium variant="compact" label="Vendas Meta" value={formatNumber(aggM.purchases)} icon={UserPlus} />
+              <KpiCardPremium
+                variant="compact"
                 label="Leads (funil)"
                 value={formatNumber(leadsReais)}
                 icon={UserPlus}
+                source={dataSourceLabel}
                 delta={relDelta(leadsReais, prevLeadsReais, compareEnabled)}
               />
             </div>
+            {attributedRevenue <= 0 && (
+              <div
+                className="mt-4 rounded-xl border border-sky-500/25 bg-sky-500/[0.06] p-4 text-sm leading-relaxed text-muted-foreground dark:bg-sky-950/20"
+                role="status"
+              >
+                <p className="font-semibold text-foreground">Nenhuma receita atribuída neste período</p>
+                <p className="mt-2">
+                  Use a visão <Link to="/marketing/conversao" className="font-medium text-primary underline-offset-4 hover:underline">Conversão</Link> para volume de leads e vendas Meta; confira se o pixel e os valores de conversão estão configurados nas contas.
+                </p>
+              </div>
+            )}
             {attributedRevenue > 0 && (
-              <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border/60 pt-4">
+              <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border/50 pt-4">
                 <RevenueDetailModal
                   total={attributedRevenue}
                   rows={revenueModalRows}
                   trigger={
-                    <Button type="button" variant="outline" size="sm" className="rounded-lg">
+                    <Button type="button" variant="outline" size="sm" className="rounded-lg border-border/70 shadow-sm">
                       Composição do faturamento (est.)
                     </Button>
                   }
                 />
-                <p className="text-xs text-muted-foreground">
-                  Estimativa ilustrativa de principal vs bump; ajuste com dados reais de checkout quando integrados.
+                <p className="max-w-xl text-xs text-muted-foreground">
+                  Estimativa ilustrativa de principal vs bump; refine com checkout integrado quando disponível.
                 </p>
               </div>
             )}
@@ -866,7 +1076,7 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
 
           <div className="grid gap-6 lg:grid-cols-2">
             <AnalyticsSection title="Receita por canal" dense>
-              <DataTable minWidth="min-w-[480px]">
+              <ScrollTable minWidth="min-w-[480px]">
                 <thead>
                   <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
                     <th className="pb-2 pr-3">Canal</th>
@@ -895,10 +1105,10 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                     );
                   })}
                 </tbody>
-              </DataTable>
+              </ScrollTable>
             </AnalyticsSection>
             <AnalyticsSection title="Top campanhas por receita" dense>
-              <DataTable minWidth="min-w-[520px]">
+              <ScrollTable minWidth="min-w-[520px]">
                 <thead>
                   <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
                     <th className="pb-2 pr-3">Campanha</th>
@@ -921,22 +1131,26 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                       </tr>
                     ))}
                 </tbody>
-              </DataTable>
+              </ScrollTable>
             </AnalyticsSection>
           </div>
 
-          <AnalyticsSection title="Série no período" dense>
-            <CaptureTrendComposedChart data={mergedChartData} />
+          <AnalyticsSection eyebrow="Série temporal" title="Gasto e resultados no período" dense>
+            <CaptureTrendComposedChart
+              embedded
+              data={mergedChartData}
+              description="Mesma série da visão Marketing — útil para cruzar picos de gasto com leads e CPA."
+            />
           </AnalyticsSection>
         </div>
       )}
 
       {hasData && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border/70 bg-muted/10 px-4 py-4">
-          <p className="text-sm text-muted-foreground">
-            Relatórios avançados e tabela consolidada completa na visão principal.
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-dashed border-primary/25 bg-gradient-to-r from-primary/[0.04] via-muted/15 to-transparent px-5 py-5 shadow-[var(--shadow-surface-sm)]">
+          <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
+            Relatórios avançados, tabela consolidada Meta + Google e abas por plataforma estão na visão principal de Marketing.
           </p>
-          <Button className="rounded-lg" asChild>
+          <Button className="shrink-0 rounded-xl shadow-sm" asChild>
             <Link to="/marketing" className="gap-2">
               Abrir Marketing
               <ArrowRight className="h-4 w-4" />

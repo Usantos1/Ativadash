@@ -148,6 +148,8 @@ export function MarketingSettings() {
         </Link>
       </Button>
       <AnalyticsPageHeader
+        eyebrow="Marketing"
+        breadcrumbs={[{ label: "Marketing", href: "/marketing" }, { label: "Configurações" }]}
         title="Configurações de Marketing"
         subtitle="Metas de performance, sensibilidade dos alertas e critérios mínimos para avaliar CPA e ROAS. Os avisos aparecem no Dashboard e nas telas de Marketing."
         meta={

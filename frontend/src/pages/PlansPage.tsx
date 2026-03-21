@@ -153,9 +153,10 @@ export function PlansPage() {
 
   return (
     <div className="w-full space-y-10 pb-8">
-      <div className="text-center space-y-3">
-        <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Planos e limites técnicos</h1>
-        <p className="mx-auto max-w-2xl text-sm text-muted-foreground leading-relaxed">
+      <div className="space-y-3 text-center">
+        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-primary/80">Assinatura</p>
+        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Planos e limites técnicos</h1>
+        <p className="mx-auto max-w-2xl text-sm leading-relaxed text-muted-foreground">
           Preço é combinado com o comercial (trial incluso quando fizer sentido). Abaixo está o que o produto{" "}
           <strong className="text-foreground">efetivamente aplica</strong> por{" "}
           <strong className="text-foreground">empresa ativa</strong> no painel — sem surpresa na hora de escalar
@@ -164,7 +165,7 @@ export function PlansPage() {
       </div>
 
       {orgCtx && (
-        <Card className="mx-auto max-w-4xl border-primary/25 bg-primary/[0.04]">
+        <Card className="mx-auto max-w-4xl rounded-2xl border-primary/30 bg-gradient-to-br from-primary/[0.06] to-card shadow-[var(--shadow-surface)]">
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold">Sua empresa agora: {orgCtx.name}</CardTitle>
             <CardDescription>
@@ -253,9 +254,9 @@ export function PlansPage() {
             <Card
               key={plan.slug}
               className={cn(
-                "relative flex flex-col",
-                plan.highlight && "border-primary shadow-md ring-1 ring-primary/20 md:-mt-1 md:mb-1",
-                isCurrent && "ring-2 ring-primary/40"
+                "relative flex flex-col rounded-2xl border-border/55 shadow-[var(--shadow-surface-sm)] transition-shadow hover:shadow-[var(--shadow-surface)]",
+                plan.highlight && "border-primary/40 shadow-md ring-2 ring-primary/15 md:-mt-1 md:mb-1",
+                isCurrent && "ring-2 ring-primary/35"
               )}
             >
               {plan.highlight && (
@@ -324,7 +325,7 @@ export function PlansPage() {
         })}
       </div>
 
-      <div className="mx-auto max-w-2xl space-y-4 rounded-lg border border-border/80 bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
+      <div className="mx-auto max-w-2xl space-y-4 rounded-2xl border border-border/55 bg-muted/20 px-5 py-4 text-xs leading-relaxed text-muted-foreground shadow-inner">
         <p>
           <strong className="text-foreground">Cliente comercial</strong> é cada marca no menu Clientes.{" "}
           <strong className="text-foreground">Empresa vinculada</strong> é um ambiente separado (filho) para o cliente

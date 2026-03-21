@@ -9,7 +9,7 @@ import { ScrollRegion } from "@/components/ui/scroll-region";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AnalyticsPageHeader } from "@/components/analytics/AnalyticsPageHeader";
 import { AnalyticsSection } from "@/components/analytics/AnalyticsSection";
-import { KpiPremium } from "@/components/analytics/KpiPremium";
+import { KpiCardPremium } from "@/components/premium";
 import {
   fetchClients,
   fetchProjects,
@@ -123,6 +123,7 @@ export function ClientsPage() {
   return (
     <div className="w-full space-y-6">
       <AnalyticsPageHeader
+        eyebrow="Carteira"
         title="Clientes comerciais"
         subtitle="Contas ou marcas que você atende nesta organização. Agrupam projetos, lançamentos e vínculos de mídia. Não confundir com usuários da equipe."
         meta={
@@ -154,20 +155,23 @@ export function ClientsPage() {
 
       {!loading && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <KpiPremium label="Clientes cadastrados" value={String(rows.length)} icon={Building2} />
-          <KpiPremium
+          <KpiCardPremium variant="primary" label="Clientes cadastrados" value={String(rows.length)} icon={Building2} />
+          <KpiCardPremium
+            variant="primary"
             label="Uso do plano"
             value={orgCtx ? `${rows.length} / ${formatPlanCap(orgCtx.limits.maxClientAccounts)}` : "—"}
             hint={orgCtx ? `Plano ${orgCtx.plan?.name ?? "—"}` : undefined}
             icon={Building2}
           />
-          <KpiPremium
+          <KpiCardPremium
+            variant="compact"
             label="Projetos com cliente"
             value={String(totalProjectsOnClients)}
             hint="Projetos vinculados a algum cliente."
             icon={Building2}
           />
-          <KpiPremium
+          <KpiCardPremium
+            variant="compact"
             label="Resultado da busca"
             value={String(filteredRows.length)}
             hint={search.trim() ? `Filtro: “${search.trim()}”` : "Sem filtro de texto."}

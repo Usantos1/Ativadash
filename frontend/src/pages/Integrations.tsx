@@ -593,6 +593,7 @@ export function Integrations() {
   return (
     <div className="min-w-0 max-w-full space-y-6">
       <AnalyticsPageHeader
+        eyebrow="Conex?es"
         title={IX.pageTitle}
         subtitle={`${IX.introPublicidadeWhatsapp}WhatsApp (CRM).`}
         actions={
@@ -620,14 +621,20 @@ export function Integrations() {
         </div>
       )}
 
-      <div className="min-w-0 overflow-hidden rounded-xl border border-border/80 bg-card p-4 sm:p-6">
+      <div className="min-w-0 overflow-hidden rounded-2xl border border-border/55 bg-card p-4 shadow-[var(--shadow-surface)] ring-1 ring-black/[0.02] dark:ring-white/[0.03] sm:p-6">
         <Tabs defaultValue="ads" className="min-w-0 space-y-4">
-          <TabsList className="grid h-auto w-full min-w-0 grid-cols-2 gap-1 sm:inline-flex sm:w-auto sm:max-w-full">
-            <TabsTrigger value="ads" className="gap-2 px-3 py-2 text-xs sm:text-sm">
+          <TabsList className="grid h-auto w-full min-w-0 grid-cols-2 gap-1 rounded-xl border border-border/50 bg-muted/25 p-1 shadow-inner sm:inline-flex sm:w-auto sm:max-w-full">
+            <TabsTrigger
+              value="ads"
+              className="gap-2 rounded-lg px-3 py-2 text-xs data-[state=active]:bg-card data-[state=active]:shadow-sm sm:text-sm"
+            >
               <Megaphone className="h-4 w-4 shrink-0" aria-hidden />
               Publicidade
             </TabsTrigger>
-            <TabsTrigger value="ativacrm" className="gap-2 px-3 py-2 text-xs sm:text-sm">
+            <TabsTrigger
+              value="ativacrm"
+              className="gap-2 rounded-lg px-3 py-2 text-xs data-[state=active]:bg-card data-[state=active]:shadow-sm sm:text-sm"
+            >
               <MessageCircle className="h-4 w-4 shrink-0" aria-hidden />
               WhatsApp (CRM)
             </TabsTrigger>
@@ -643,7 +650,7 @@ export function Integrations() {
               <>
                 <div className="space-y-6">
                   {filteredNow.length > 0 && (
-                    <AnalyticsSection title={IX.disponiveisAgora} description="OAuth e leitura de campanhas no período." dense>
+                    <AnalyticsSection title={IX.disponiveisAgora} description="OAuth e leitura de campanhas no per?odo." dense>
                       <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
                         {filteredNow.map(renderCard)}
                       </div>
@@ -656,7 +663,7 @@ export function Integrations() {
                     return (
                       <AnalyticsSection
                         key={cat}
-                        title={`${CATEGORY_SECTION_TITLE[cat]} · em breve`}
+                        title={`${CATEGORY_SECTION_TITLE[cat]} ? em breve`}
                         description={
                           cat === "crm"
                             ? `${IX.roadmapWhatsappAba}WhatsApp (CRM) ${IX.nestaPagina}`

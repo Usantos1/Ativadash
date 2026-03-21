@@ -4,16 +4,16 @@ import {
   useReactTable,
   type ColumnDef,
 } from "@tanstack/react-table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollRegion } from "@/components/ui/scroll-region";
+import { DataTablePremium } from "@/components/premium/data-table-premium";
 import { cn } from "@/lib/utils";
 
-// TanStack Table column defs from createColumnHelper use specific value types; we accept any for flexibility.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyColumnDef = ColumnDef<any, any>;
 
 interface AnalyticTableProps<T> {
   title: string;
+  description?: string;
   columns: AnyColumnDef[];
   data: T[];
   className?: string;
@@ -21,6 +21,7 @@ interface AnalyticTableProps<T> {
 
 export function AnalyticTable<T>({
   title,
+  description,
   columns,
   data,
   className,
@@ -32,29 +33,31 @@ export function AnalyticTable<T>({
   });
 
   return (
-    <Card className={cn("overflow-hidden", className)}>
+    <div
+      className={cn(
+        "overflow-hidden rounded-2xl border border-border/55 bg-card shadow-[var(--shadow-surface)] ring-1 ring-black/[0.02] dark:ring-white/[0.03]",
+        className
+      )}
+    >
       {title ? (
-        <CardHeader>
-          <CardTitle className="text-base">{title}</CardTitle>
-        </CardHeader>
+        <div className="border-b border-border/50 bg-gradient-to-r from-muted/35 via-transparent to-transparent px-5 py-4">
+          <h3 className="text-sm font-bold tracking-tight text-foreground">{title}</h3>
+          {description ? (
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
+          ) : null}
+        </div>
       ) : null}
-      <CardContent className="p-0">
+      <div className="p-0">
         <ScrollRegion className="scrollbar-thin">
-          <table className="w-full min-w-[520px] text-sm">
+          <DataTablePremium zebra className="min-w-[520px] text-[13px]">
             <thead>
               {table.getHeaderGroups().map((headerGroup) => (
-                <tr key={headerGroup.id} className="border-b border-border">
+                <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
-                    <th
-                      key={header.id}
-                      className="px-4 py-3 text-left font-medium text-muted-foreground"
-                    >
+                    <th key={header.id} className="text-left">
                       {header.isPlaceholder
                         ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
+                        : flexRender(header.column.columnDef.header, header.getContext())}
                     </th>
                   ))}
                 </tr>
@@ -62,24 +65,18 @@ export function AnalyticTable<T>({
             </thead>
             <tbody>
               {table.getRowModel().rows.map((row) => (
-                <tr
-                  key={row.id}
-                  className="border-b border-border/50 transition-colors hover:bg-muted/50"
-                >
+                <tr key={row.id}>
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-4 py-2.5">
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
+                    <td key={cell.id} className="align-middle">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTablePremium>
         </ScrollRegion>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

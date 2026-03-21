@@ -87,8 +87,8 @@ export function IntegrationCard({
   return (
     <Card
       className={cn(
-        "relative flex min-h-[200px] flex-col rounded-xl border-border/70 bg-gradient-to-b from-card to-card/95 shadow-sm transition-all hover:border-border hover:shadow-md",
-        connected && "ring-1 ring-emerald-500/35"
+        "relative flex min-h-[200px] flex-col rounded-2xl border-border/55 bg-gradient-to-b from-card via-card to-muted/[0.2] shadow-[var(--shadow-surface-sm)] ring-1 ring-black/[0.02] transition-all hover:border-border/80 hover:shadow-[var(--shadow-surface)] dark:ring-white/[0.04]",
+        connected && "ring-2 ring-emerald-500/30"
       )}
     >
       {connected && (
