@@ -63,7 +63,7 @@ export function MainLayout() {
   }, [sidebarOpen]);
 
   return (
-    <div className="min-h-dvh overflow-x-hidden bg-background bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,hsl(var(--primary)/0.06),transparent_50%)]">
+    <div className="min-h-dvh bg-background bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,hsl(var(--primary)/0.06),transparent_50%)]">
       <Sidebar
         mobileOpen={sidebarOpen}
         onMobileClose={() => setSidebarOpen(false)}
@@ -71,12 +71,16 @@ export function MainLayout() {
       <main
         className={cn(
           /* Sem w-full: 100% + margin-left da sidebar estoura a viewport (scroll horizontal) */
-          "min-h-dvh min-w-0 max-w-full transition-[margin] duration-200",
+          "min-h-dvh min-w-0 max-w-full overflow-x-hidden transition-[margin] duration-200",
           sidebarCollapsed ? "md:ml-14" : "md:ml-[228px]"
         )}
       >
-        <AppTopbar onMobileOpen={() => setSidebarOpen(true)} onLogout={handleLogout} />
-        <div className="min-w-0 max-w-full px-3 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-5 md:px-8 md:py-6 md:pb-6">
+        <AppTopbar
+          sidebarCollapsed={sidebarCollapsed}
+          onMobileOpen={() => setSidebarOpen(true)}
+          onLogout={handleLogout}
+        />
+        <div className="min-w-0 max-w-full px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[calc(1rem+3rem+env(safe-area-inset-top,0px))] sm:px-5 md:px-8 md:pb-6 md:pt-[calc(1.5rem+3rem+env(safe-area-inset-top,0px))]">
           <AnalyticsShell>
             <Outlet />
           </AnalyticsShell>

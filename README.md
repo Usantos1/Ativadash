@@ -59,7 +59,7 @@ API autenticada em `/api/workspace/*` (JWT + `organizationId`):
 - `GET /workspace/members` — usuários da empresa
 - `PATCH /auth/profile` — atualizar nome do usuário
 
-No frontend: rotas `/clientes`, `/projetos`, `/lancamentos`, `/configuracoes`, `/perfil`, `/usuarios`, `/planos`, `/admin`.
+No frontend: rotas `/clientes`, `/projetos`, `/lancamentos`, `/configuracoes`, `/perfil`, `/usuarios`, `/assinatura` (antigo `/planos` redireciona), `/admin`, `/plataforma` (admin de plataforma).
 
 Após puxar o código, rode na VPS: `npx prisma migrate deploy` (inclui FK `Project` → `ClientAccount`).
 

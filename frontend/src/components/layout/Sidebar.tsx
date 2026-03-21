@@ -70,7 +70,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Conta",
     items: [
-      { to: "/planos", label: "Planos", icon: CreditCard },
+      { to: "/assinatura", label: "Assinatura e uso", icon: CreditCard },
       { to: "/configuracoes", label: "Configurações", icon: Settings },
     ],
   },

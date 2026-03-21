@@ -208,6 +208,16 @@ export async function register(data: RegisterInput) {
       planId: starterPlan?.id,
     },
   });
+  if (starterPlan?.id) {
+    await prisma.subscription.create({
+      data: {
+        organizationId: org.id,
+        planId: starterPlan.id,
+        billingMode: "trial",
+        status: "trialing",
+      },
+    });
+  }
   const user = await prisma.user.create({
     data: {
       email: data.email,

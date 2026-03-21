@@ -15,5 +15,11 @@ router.delete("/plans/:id", platform.plansDelete);
 
 router.get("/organizations", platform.organizationsList);
 router.patch("/organizations/:organizationId/plan", platform.organizationAssignPlan);
+router.get("/organizations/:organizationId/limits-override", platform.organizationOverrideGet);
+router.put("/organizations/:organizationId/limits-override", platform.organizationOverridePut);
+router.patch("/organizations/:organizationId/subscription", platform.organizationSubscriptionPatch);
+
+router.get("/subscriptions", platform.subscriptionsList);
+router.post("/maintenance/sync-subscriptions", platform.maintenanceSyncSubscriptions);
 
 export default router;

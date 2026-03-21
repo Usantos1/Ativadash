@@ -83,7 +83,10 @@ export async function updatePlan(
     features: Prisma.InputJsonValue;
   }>
 ) {
-  return prisma.plan.update({ where: { id }, data });
+  const clean = Object.fromEntries(
+    Object.entries(data).filter(([, v]) => v !== undefined)
+  ) as Prisma.PlanUpdateInput;
+  return prisma.plan.update({ where: { id }, data: clean });
 }
 
 export async function deletePlan(id: string) {
@@ -180,25 +183,49 @@ export async function updateSubscriptionForOrganization(
     notes?: string | null;
   }
 ) {
-  const sub = await prisma.subscription.findUnique({ where: { organizationId } });
-  if (!sub) {
-    throw new Error("Assinatura não encontrada para esta empresa");
+  const org = await prisma.organization.findFirst({
+    where: { id: organizationId, deletedAt: null },
+    select: { planId: true },
+  });
+  if (!org) throw new Error("Empresa não encontrada");
+  let planId = org.planId;
+  if (data.planId !== undefined) {
+    const p = await prisma.plan.findUnique({ where: { id: data.planId } });
+    if (!p) throw new Error("Plano não encontrado");
+    planId = data.planId;
+    await prisma.organization.update({
+      where: { id: organizationId },
+      data: { planId: data.planId },
+    });
   }
+  if (!planId) {
+    throw new Error("Atribua um plano à empresa antes de editar a assinatura");
+  }
+
+  const existing = await prisma.subscription.findUnique({ where: { organizationId } });
   const patch: Prisma.SubscriptionUpdateInput = {};
   if (data.billingMode !== undefined) patch.billingMode = data.billingMode;
   if (data.status !== undefined) patch.status = data.status;
   if (data.renewsAt !== undefined) patch.renewsAt = data.renewsAt;
   if (data.endedAt !== undefined) patch.endedAt = data.endedAt;
   if (data.notes !== undefined) patch.notes = data.notes;
-  if (data.planId !== undefined) {
-    const p = await prisma.plan.findUnique({ where: { id: data.planId } });
-    if (!p) throw new Error("Plano não encontrado");
-    patch.plan = { connect: { id: data.planId } };
-    await prisma.organization.update({
-      where: { id: organizationId },
-      data: { planId: data.planId },
+  if (data.planId !== undefined) patch.plan = { connect: { id: data.planId } };
+
+  if (!existing) {
+    return prisma.subscription.create({
+      data: {
+        organizationId,
+        planId,
+        billingMode: (data.billingMode as string) ?? "custom",
+        status: (data.status as string) ?? "active",
+        renewsAt: data.renewsAt,
+        endedAt: data.endedAt,
+        notes: data.notes ?? null,
+      },
+      include: { plan: true, organization: { select: { id: true, name: true, slug: true } } },
     });
   }
+
   return prisma.subscription.update({
     where: { organizationId },
     data: patch,

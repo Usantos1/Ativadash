@@ -4,11 +4,23 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
+  const starterFeatures = {
+    marketingDashboard: true,
+    performanceAlerts: true,
+    multiUser: true,
+    multiOrganization: false,
+    integrations: true,
+    webhooks: false,
+  };
+
   const starter = await prisma.plan.upsert({
     where: { slug: "starter" },
     create: {
       name: "Essencial",
       slug: "starter",
+      planType: "standard",
+      descriptionInternal: "Entrada / freelancer",
+      features: starterFeatures,
       maxIntegrations: 3,
       maxDashboards: 10,
       maxUsers: 3,
@@ -17,6 +29,9 @@ async function main() {
     },
     update: {
       name: "Essencial",
+      planType: "standard",
+      descriptionInternal: "Entrada / freelancer",
+      features: starterFeatures,
       maxIntegrations: 3,
       maxDashboards: 10,
       maxUsers: 3,
@@ -24,12 +39,24 @@ async function main() {
       maxChildOrganizations: 0,
     },
   });
+
+  const proFeatures = {
+    marketingDashboard: true,
+    performanceAlerts: true,
+    multiUser: true,
+    multiOrganization: true,
+    integrations: true,
+    webhooks: false,
+  };
 
   const professional = await prisma.plan.upsert({
     where: { slug: "professional" },
     create: {
       name: "Profissional",
       slug: "professional",
+      planType: "standard",
+      descriptionInternal: "Agências médias",
+      features: proFeatures,
       maxIntegrations: 10,
       maxDashboards: 40,
       maxUsers: 10,
@@ -38,6 +65,9 @@ async function main() {
     },
     update: {
       name: "Profissional",
+      planType: "standard",
+      descriptionInternal: "Agências médias",
+      features: proFeatures,
       maxIntegrations: 10,
       maxDashboards: 40,
       maxUsers: 10,
@@ -46,11 +76,23 @@ async function main() {
     },
   });
 
+  const agencyFeatures = {
+    marketingDashboard: true,
+    performanceAlerts: true,
+    multiUser: true,
+    multiOrganization: true,
+    integrations: true,
+    webhooks: true,
+  };
+
   await prisma.plan.upsert({
     where: { slug: "agency" },
     create: {
       name: "Agência Plus",
       slug: "agency",
+      planType: "enterprise",
+      descriptionInternal: "Alto volume / revenda",
+      features: agencyFeatures,
       maxIntegrations: 20,
       maxDashboards: 100,
       maxUsers: 30,
@@ -59,6 +101,9 @@ async function main() {
     },
     update: {
       name: "Agência Plus",
+      planType: "enterprise",
+      descriptionInternal: "Alto volume / revenda",
+      features: agencyFeatures,
       maxIntegrations: 20,
       maxDashboards: 100,
       maxUsers: 30,
@@ -109,6 +154,21 @@ async function main() {
     },
     update: {},
   });
+
+  for (const o of await prisma.organization.findMany({
+    where: { deletedAt: null, planId: { not: null } },
+  })) {
+    await prisma.subscription.upsert({
+      where: { organizationId: o.id },
+      create: {
+        organizationId: o.id,
+        planId: o.planId!,
+        billingMode: "custom",
+        status: "active",
+      },
+      update: { planId: o.planId! },
+    });
+  }
 
   console.log("Seed concluído. Planos: starter, professional, agency. Demo: demo@ativadash.com / demo123");
 }

@@ -52,7 +52,7 @@ export function resolveTopbarCrumbs(pathname: string): TopbarCrumb[] {
     ];
   }
   if (p === "/perfil") return [{ label: "Perfil" }];
-  if (p === "/planos") return [{ label: "Planos" }];
+  if (p === "/assinatura") return [{ label: "Assinatura e uso" }];
   if (p === "/plataforma") return [{ label: "Plataforma" }];
   if (p === "/admin") return [{ label: "Administração" }];
 

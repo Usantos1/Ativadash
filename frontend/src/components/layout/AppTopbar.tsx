@@ -7,59 +7,67 @@ import { OrganizationSwitcher } from "@/components/layout/OrganizationSwitcher";
 import { TopbarActions } from "@/components/layout/TopbarActions";
 import { resolveTopbarCrumbs } from "@/components/layout/topbar-crumbs";
 
-export function AppTopbar({ onMobileOpen, onLogout }: { onMobileOpen: () => void; onLogout: () => void }) {
+export function AppTopbar({
+  sidebarCollapsed,
+  onMobileOpen,
+  onLogout,
+}: {
+  sidebarCollapsed: boolean;
+  onMobileOpen: () => void;
+  onLogout: () => void;
+}) {
   const { pathname } = useLocation();
   const crumbs = useMemo(() => resolveTopbarCrumbs(pathname), [pathname]);
 
   return (
     <header
       className={cn(
-        "sticky top-0 z-20 grid min-h-12 w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-border/60 bg-card/80 px-2.5 py-1.5 shadow-[0_1px_0_0_hsl(var(--border)/0.35)] backdrop-blur-xl supports-[backdrop-filter]:bg-card/70 sm:gap-3 sm:px-4 md:grid-cols-[auto_minmax(0,1fr)_auto] md:px-5",
-        "supports-[padding:max(0px)]:pt-[max(0.375rem,env(safe-area-inset-top))]"
+        "fixed right-0 top-0 z-30 flex h-[calc(3rem+env(safe-area-inset-top,0px))] min-h-12 w-full min-w-0 items-stretch border-b border-border/60 bg-card/90 shadow-[0_1px_0_0_hsl(var(--border)/0.35)] backdrop-blur-xl supports-[backdrop-filter]:bg-card/80",
+        "supports-[padding:max(0px)]:pt-[env(safe-area-inset-top)]",
+        "left-0",
+        sidebarCollapsed ? "md:left-14 md:w-[calc(100%-3.5rem)]" : "md:left-[228px] md:w-[calc(100%-228px)]"
       )}
     >
-      {/* Esquerda: menu + organização */}
-      <div className="flex min-w-0 max-w-full items-center gap-1.5 sm:gap-2.5 md:max-w-[min(100%,520px)]">
-        <SidebarHeaderControl onMobileOpen={onMobileOpen} />
-        <span className="hidden h-6 w-px shrink-0 bg-border/70 md:block" aria-hidden />
-        <div className="min-w-0 flex-1 md:flex-initial">
-          <OrganizationSwitcher />
+      <div className="flex h-12 w-full min-w-0 items-center gap-2 px-2.5 sm:gap-3 sm:px-4 md:px-5">
+        {/* Esquerda: menu, workspace, ações (tema / notif. / perfil) — tudo alinhado ao início */}
+        <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
+          <SidebarHeaderControl onMobileOpen={onMobileOpen} />
+          <span className="hidden h-6 w-px shrink-0 bg-border/70 md:block" aria-hidden />
+          <div className="min-w-0 max-w-[min(100vw-12rem,280px)] sm:max-w-[min(100vw-14rem,300px)]">
+            <OrganizationSwitcher />
+          </div>
+          <span className="hidden h-6 w-px shrink-0 bg-border/70 sm:block" aria-hidden />
+          <TopbarActions onLogout={onLogout} />
         </div>
-      </div>
 
-      {/* Centro: breadcrumb discreto ou traço (desktop) */}
-      <div className="hidden min-w-0 justify-center px-2 md:flex">
-        {crumbs.length > 0 ? (
-          <nav
-            className="flex max-w-full items-center justify-center gap-1 overflow-hidden text-[11px] font-medium text-muted-foreground/90"
-            aria-label="Navegação contextual"
-          >
-            {crumbs.map((c, i) => (
-              <span key={`${c.label}-${i}`} className="flex min-w-0 items-center gap-1">
-                {i > 0 ? <ChevronRight className="h-3 w-3 shrink-0 opacity-45" aria-hidden /> : null}
-                {c.href ? (
-                  <Link
-                    to={c.href}
-                    className="truncate transition-colors hover:text-foreground"
-                  >
-                    {c.label}
-                  </Link>
-                ) : (
-                  <span className="truncate text-foreground/80">{c.label}</span>
-                )}
-              </span>
-            ))}
-          </nav>
-        ) : (
-          <div
-            className="h-px max-w-[min(12rem,40vw)] flex-1 rounded-full bg-gradient-to-r from-transparent via-border/80 to-transparent"
-            aria-hidden
-          />
-        )}
-      </div>
+        {/* Centro: breadcrumb ou traço — só o espaço flexível centraliza */}
+        <div className="flex min-w-0 flex-1 justify-center px-1 sm:px-2">
+          {crumbs.length > 0 ? (
+            <nav
+              className="flex max-w-full items-center justify-center gap-1 overflow-hidden text-[11px] font-medium text-muted-foreground/90"
+              aria-label="Navegação contextual"
+            >
+              {crumbs.map((c, i) => (
+                <span key={`${c.label}-${i}`} className="flex min-w-0 items-center gap-1">
+                  {i > 0 ? <ChevronRight className="h-3 w-3 shrink-0 opacity-45" aria-hidden /> : null}
+                  {c.href ? (
+                    <Link to={c.href} className="truncate transition-colors hover:text-foreground">
+                      {c.label}
+                    </Link>
+                  ) : (
+                    <span className="truncate text-foreground/80">{c.label}</span>
+                  )}
+                </span>
+              ))}
+            </nav>
+          ) : (
+            <div
+              className="h-px w-full max-w-[min(12rem,36vw)] rounded-full bg-gradient-to-r from-transparent via-border/80 to-transparent"
+              aria-hidden
+            />
+          )}
+        </div>
 
-      <div className="col-start-2 md:col-start-3">
-        <TopbarActions onLogout={onLogout} />
       </div>
     </header>
   );

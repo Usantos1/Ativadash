@@ -16,6 +16,35 @@ export type PlanUsage = {
   dashboards: number;
   clientAccounts: number;
   childOrganizations: number;
+  projects: number;
+  launches: number;
+};
+
+export type EnabledFeatures = {
+  marketingDashboard: boolean;
+  performanceAlerts: boolean;
+  multiUser: boolean;
+  multiOrganization: boolean;
+  integrations: boolean;
+  webhooks: boolean;
+};
+
+export type SubscriptionView = {
+  billingMode: string;
+  status: string;
+  startedAt: string;
+  renewsAt: string | null;
+  endedAt: string | null;
+  notes: string | null;
+  plan: {
+    id: string;
+    name: string;
+    slug: string;
+    planType: string;
+    active: boolean;
+  };
+  billingOrganization: { id: string; name: string } | null;
+  inherited: boolean;
 };
 
 /** Exibe limite numérico ou "Ilimitado" quando null. */
@@ -29,11 +58,13 @@ export type OrganizationContext = {
   name: string;
   slug: string;
   parentOrganization: OrganizationSummary | null;
-  plan: { id: string; name: string; slug: string } | null;
-  /** own = plano próprio; parent = limites herdados da matriz */
+  plan: { id: string; name: string; slug: string; planType: string; active: boolean } | null;
   planSource?: "own" | "parent";
   limits: PlanLimits;
+  limitsHaveOverrides?: boolean;
   usage: PlanUsage;
+  subscription: SubscriptionView | null;
+  enabledFeatures: EnabledFeatures;
 };
 
 export async function fetchOrganizationContext(): Promise<OrganizationContext> {
