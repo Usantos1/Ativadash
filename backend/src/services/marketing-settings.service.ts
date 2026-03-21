@@ -1,5 +1,6 @@
 import type { MarketingSettings } from "@prisma/client";
 import { prisma } from "../utils/prisma.js";
+import { normalizeAtivaCrmPhone, sendAtivaCrmTextMessage } from "./ativacrm.service.js";
 import type { UpdateMarketingSettingsInput } from "../validators/marketing-settings.validator.js";
 
 export type MarketingSettingsDto = {
@@ -12,6 +13,9 @@ export type MarketingSettingsDto = {
   alertCpaAboveMax: boolean;
   alertCpaAboveTarget: boolean;
   alertRoasBelowTarget: boolean;
+  ativaCrmTokenConfigured: boolean;
+  ativaCrmNotifyPhone: string | null;
+  ativaCrmAlertsEnabled: boolean;
 };
 
 export type InsightAlert = {
@@ -38,6 +42,9 @@ function toDto(row: MarketingSettings): MarketingSettingsDto {
     alertCpaAboveMax: row.alertCpaAboveMax,
     alertCpaAboveTarget: row.alertCpaAboveTarget,
     alertRoasBelowTarget: row.alertRoasBelowTarget,
+    ativaCrmTokenConfigured: Boolean(row.ativaCrmApiToken?.trim()),
+    ativaCrmNotifyPhone: row.ativaCrmNotifyPhone ?? null,
+    ativaCrmAlertsEnabled: row.ativaCrmAlertsEnabled,
   };
 }
 
@@ -79,6 +86,15 @@ export async function updateMarketingSettings(
   if (input.alertCpaAboveMax !== undefined) data.alertCpaAboveMax = input.alertCpaAboveMax;
   if (input.alertCpaAboveTarget !== undefined) data.alertCpaAboveTarget = input.alertCpaAboveTarget;
   if (input.alertRoasBelowTarget !== undefined) data.alertRoasBelowTarget = input.alertRoasBelowTarget;
+  if (input.ativaCrmApiToken !== undefined) {
+    const t = input.ativaCrmApiToken;
+    data.ativaCrmApiToken = t === null || t.trim() === "" ? null : t.trim();
+  }
+  if (input.ativaCrmNotifyPhone !== undefined) {
+    const p = input.ativaCrmNotifyPhone;
+    data.ativaCrmNotifyPhone = p === null || p.trim() === "" ? null : p.trim();
+  }
+  if (input.ativaCrmAlertsEnabled !== undefined) data.ativaCrmAlertsEnabled = input.ativaCrmAlertsEnabled;
 
   const row = await prisma.marketingSettings.upsert({
     where: { organizationId },
@@ -235,4 +251,64 @@ export async function evaluateInsightsForOrganization(
 ) {
   const settings = await getOrCreateMarketingSettings(organizationId);
   return evaluatePerformanceInsights(settings, input);
+}
+
+const ATIVA_CRM_ALERT_COOLDOWN_MS = 15 * 60 * 1000;
+
+/** Envia alertas críticos/aviso por WhatsApp (Ativa CRM), com intervalo mínimo entre envios. */
+export async function maybeSendAtivaCrmAlerts(
+  organizationId: string,
+  result: { alerts: InsightAlert[]; periodLabel: string }
+): Promise<void> {
+  const row = await prisma.marketingSettings.findUnique({
+    where: { organizationId },
+  });
+  if (!row?.ativaCrmAlertsEnabled) return;
+  const token = row.ativaCrmApiToken?.trim();
+  if (!token) return;
+  const phone = normalizeAtivaCrmPhone(row.ativaCrmNotifyPhone);
+  if (!phone) return;
+
+  const actionable = result.alerts.filter((a) => a.severity === "critical" || a.severity === "warning");
+  if (actionable.length === 0) return;
+
+  const last = row.lastAtivaCrmAlertSentAt;
+  if (last && Date.now() - last.getTime() < ATIVA_CRM_ALERT_COOLDOWN_MS) return;
+
+  const body =
+    `*Ativa Dash* — Alertas (${result.periodLabel})\n\n` +
+    actionable.map((a) => `• *${a.title}*\n${a.message}`).join("\n\n");
+
+  const sent = await sendAtivaCrmTextMessage(token, phone, body);
+  if (sent.ok) {
+    await prisma.marketingSettings.update({
+      where: { organizationId },
+      data: { lastAtivaCrmAlertSentAt: new Date() },
+    });
+  } else {
+    console.error("[Ativa CRM] Falha ao enviar alerta:", sent.error);
+  }
+}
+
+export async function sendAtivaCrmTestForOrganization(
+  organizationId: string,
+  customBody?: string
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const row = await prisma.marketingSettings.findUnique({
+    where: { organizationId },
+  });
+  const token = row?.ativaCrmApiToken?.trim();
+  if (!token) {
+    return { ok: false, message: "Configure o token da Ativa CRM antes de testar." };
+  }
+  const phone = normalizeAtivaCrmPhone(row?.ativaCrmNotifyPhone);
+  if (!phone) {
+    return { ok: false, message: "Informe o número WhatsApp (com DDD) para receber o teste." };
+  }
+  const body =
+    customBody?.trim() ||
+    "Mensagem de teste — Ativa Dash. Integração Ativa CRM OK. Configure um WhatsApp padrão no CRM se ainda não enviou.";
+  const sent = await sendAtivaCrmTextMessage(token, phone, body);
+  if (sent.ok) return { ok: true };
+  return { ok: false, message: sent.error };
 }

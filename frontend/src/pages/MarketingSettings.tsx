@@ -226,7 +226,11 @@ export function MarketingSettings() {
             </div>
             <CardDescription>
               Os alertas aparecem no Dashboard e nas páginas de Marketing quando os dados do período estiverem
-              disponíveis.
+              disponíveis. Para receber os mesmos avisos no WhatsApp (Ativa CRM), configure em{" "}
+              <Link to="/marketing/integracoes" className="font-medium text-primary underline-offset-4 hover:underline">
+                Integrações → WhatsApp (CRM)
+              </Link>
+              .
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

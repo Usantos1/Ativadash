@@ -13,6 +13,10 @@ export const updateMarketingSettingsSchema = z
     alertCpaAboveMax: z.boolean().optional(),
     alertCpaAboveTarget: z.boolean().optional(),
     alertRoasBelowTarget: z.boolean().optional(),
+    /** undefined = não alterar; string vazia = remover token; valor = gravar */
+    ativaCrmApiToken: z.union([z.string().max(4000), z.null()]).optional(),
+    ativaCrmNotifyPhone: z.union([z.string().max(32), z.null()]).optional(),
+    ativaCrmAlertsEnabled: z.boolean().optional(),
   })
   .refine((d) => {
     const t = d.targetCpaBrl;
@@ -31,3 +35,9 @@ export const evaluateInsightsSchema = z.object({
 });
 
 export type EvaluateInsightsInput = z.infer<typeof evaluateInsightsSchema>;
+
+export const ativaCrmTestMessageSchema = z.object({
+  message: z.string().max(2000).optional(),
+});
+
+export type AtivaCrmTestMessageInput = z.infer<typeof ativaCrmTestMessageSchema>;

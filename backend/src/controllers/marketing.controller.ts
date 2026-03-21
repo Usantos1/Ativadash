@@ -4,9 +4,12 @@ import { fetchMetaAdsMetrics } from "../services/meta-ads-metrics.service.js";
 import {
   evaluateInsightsForOrganization,
   getOrCreateMarketingSettings,
+  maybeSendAtivaCrmAlerts,
+  sendAtivaCrmTestForOrganization,
   updateMarketingSettings,
 } from "../services/marketing-settings.service.js";
 import {
+  ativaCrmTestMessageSchema,
   evaluateInsightsSchema,
   updateMarketingSettingsSchema,
 } from "../validators/marketing-settings.validator.js";
@@ -102,9 +105,36 @@ export async function postMarketingInsightsHandler(req: Request, res: Response) 
       totalResults,
       totalAttributedValueBrl,
     });
+    await maybeSendAtivaCrmAlerts(user.organizationId, result).catch((err) =>
+      console.error("[Ativa CRM] maybeSendAtivaCrmAlerts:", err)
+    );
     return res.json(result);
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: "Erro ao avaliar indicadores." });
+  }
+}
+
+export async function postAtivaCrmTestHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  if (!user?.organizationId) {
+    return res.status(401).json({ message: "Não autorizado" });
+  }
+  const parsed = ativaCrmTestMessageSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: "Dados inválidos",
+      issues: parsed.error.flatten(),
+    });
+  }
+  try {
+    const out = await sendAtivaCrmTestForOrganization(user.organizationId, parsed.data.message);
+    if (!out.ok) {
+      return res.status(400).json({ message: out.message });
+    }
+    return res.json({ ok: true, message: "Mensagem de teste enviada." });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao enviar teste." });
   }
 }

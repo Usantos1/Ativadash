@@ -10,6 +10,9 @@ export type MarketingSettingsDto = {
   alertCpaAboveMax: boolean;
   alertCpaAboveTarget: boolean;
   alertRoasBelowTarget: boolean;
+  ativaCrmTokenConfigured: boolean;
+  ativaCrmNotifyPhone: string | null;
+  ativaCrmAlertsEnabled: boolean;
 };
 
 export type InsightAlert = {
@@ -40,6 +43,10 @@ export type UpdateMarketingSettingsPayload = Partial<{
   alertCpaAboveMax: boolean;
   alertCpaAboveTarget: boolean;
   alertRoasBelowTarget: boolean;
+  /** string = gravar; null = apagar token */
+  ativaCrmApiToken: string | null;
+  ativaCrmNotifyPhone: string | null;
+  ativaCrmAlertsEnabled: boolean;
 }>;
 
 export async function saveMarketingSettings(
@@ -47,6 +54,20 @@ export async function saveMarketingSettings(
 ): Promise<MarketingSettingsDto> {
   const res = await api.put<{ settings: MarketingSettingsDto }>("/marketing/settings", payload);
   return res.settings;
+}
+
+export async function sendAtivaCrmTestMessage(message?: string): Promise<{ ok: boolean; message: string }> {
+  try {
+    const res = await api.post<{ ok: boolean; message: string }>("/marketing/ativacrm/test-message", {
+      message: message?.trim() || undefined,
+    });
+    return { ok: true, message: res.message };
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : "Não foi possível enviar o teste.",
+    };
+  }
 }
 
 export async function evaluateMarketingInsights(

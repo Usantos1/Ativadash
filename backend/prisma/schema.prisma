@@ -78,6 +78,15 @@ model MarketingSettings {
   alertCpaAboveTarget  Boolean @default(true)
   alertRoasBelowTarget Boolean @default(true)
 
+  /// Token da API Ativa CRM (Conexões → WhatsApp). Não retornar em APIs públicas.
+  ativaCrmApiToken          String?   @db.Text
+  /// WhatsApp para alertas (apenas dígitos; ex.: 5511999999999)
+  ativaCrmNotifyPhone       String?
+  /// Enviar alertas críticos/aviso por WhatsApp via Ativa CRM
+  ativaCrmAlertsEnabled     Boolean   @default(false)
+  /// Evita spam: último envio de alerta por WhatsApp
+  lastAtivaCrmAlertSentAt   DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
