@@ -1,11 +1,20 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+/** Empresa (organização) à qual o usuário está vinculado via Membership */
+export interface OrganizationSummary {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 export interface User {
   id: string;
   email: string;
   name: string;
   organizationId: string;
+  /** Preenchido no login/cadastro e em GET /auth/me */
+  organization?: OrganizationSummary;
 }
 
 interface AuthState {

@@ -15,6 +15,10 @@ import { cn } from "@/lib/utils";
 const schema = z
   .object({
     name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
+    organizationName: z
+      .string()
+      .min(2, "Nome da empresa deve ter pelo menos 2 caracteres")
+      .max(120, "Nome da empresa muito longo"),
     email: z.string().email("E-mail inválido"),
     password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
     confirmPassword: z.string(),
@@ -38,7 +42,13 @@ export function Register() {
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", email: "", password: "", confirmPassword: "" },
+    defaultValues: {
+      name: "",
+      organizationName: "",
+      email: "",
+      password: "",
+      confirmPassword: "",
+    },
   });
 
   async function onSubmit(data: FormData) {
@@ -50,6 +60,7 @@ export function Register() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: data.name,
+          organizationName: data.organizationName.trim(),
           email: data.email,
           password: data.password,
         }),
@@ -102,6 +113,22 @@ export function Register() {
                 {errors.name && (
                   <p className="text-sm text-destructive">{errors.name.message}</p>
                 )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="organizationName">Empresa</Label>
+                <Input
+                  id="organizationName"
+                  placeholder="Nome da sua empresa ou equipe"
+                  autoComplete="organization"
+                  {...register("organizationName")}
+                  className={cn(errors.organizationName && "border-destructive")}
+                />
+                {errors.organizationName && (
+                  <p className="text-sm text-destructive">{errors.organizationName.message}</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Sua conta será vinculada a esta empresa no sistema.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">E-mail</Label>

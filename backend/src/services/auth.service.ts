@@ -2,10 +2,47 @@ import bcrypt from "bcryptjs";
 import jwt, { type SignOptions } from "jsonwebtoken";
 import { prisma } from "../utils/prisma.js";
 import { env } from "../config/env.js";
+import { slugifyOrganizationName, uniqueOrganizationSlug } from "../utils/org-slug.js";
 import type { LoginInput, RegisterInput } from "../validators/auth.validator.js";
 import type { JwtPayload } from "../middlewares/auth.middleware.js";
 
 const SALT_ROUNDS = 10;
+
+export type AuthOrganizationDto = { id: string; name: string; slug: string };
+
+export type AuthUserDto = {
+  id: string;
+  email: string;
+  name: string;
+  organizationId: string;
+  organization: AuthOrganizationDto;
+};
+
+async function organizationToDto(organizationId: string): Promise<AuthOrganizationDto> {
+  const org = await prisma.organization.findFirst({
+    where: { id: organizationId, deletedAt: null },
+  });
+  if (!org) {
+    throw new Error("Organização não encontrada");
+  }
+  return { id: org.id, name: org.name, slug: org.slug };
+}
+
+async function buildAuthUserDto(
+  userId: string,
+  email: string,
+  name: string,
+  organizationId: string
+): Promise<AuthUserDto> {
+  const organization = await organizationToDto(organizationId);
+  return {
+    id: userId,
+    email,
+    name,
+    organizationId,
+    organization,
+  };
+}
 
 export async function register(data: RegisterInput) {
   const existing = await prisma.user.findUnique({ where: { email: data.email } });
@@ -13,10 +50,13 @@ export async function register(data: RegisterInput) {
     throw new Error("E-mail já cadastrado");
   }
   const hashedPassword = await bcrypt.hash(data.password, SALT_ROUNDS);
+  const orgDisplayName = data.organizationName?.trim() || `${data.name} — Empresa`;
+  const slugBase = slugifyOrganizationName(data.organizationName?.trim() || data.name);
+  const slug = await uniqueOrganizationSlug(slugBase);
   const org = await prisma.organization.create({
     data: {
-      name: `${data.name} - Organização`,
-      slug: `org-${Date.now()}`,
+      name: orgDisplayName,
+      slug,
     },
   });
   const user = await prisma.user.create({
@@ -35,13 +75,9 @@ export async function register(data: RegisterInput) {
   });
   const { accessToken, refreshToken } = await createTokens(user.id, user.email, org.id);
   await saveRefreshToken(user.id, refreshToken);
+  const userDto = await buildAuthUserDto(user.id, user.email, user.name, org.id);
   return {
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      organizationId: org.id,
-    },
+    user: userDto,
     accessToken,
     refreshToken,
   };
@@ -58,6 +94,7 @@ export async function login(data: LoginInput) {
   }
   const membership = await prisma.membership.findFirst({
     where: { userId: user.id },
+    orderBy: { createdAt: "asc" },
     include: { organization: true },
   });
   if (!membership) {
@@ -91,6 +128,7 @@ export async function refreshAccessToken(refreshToken: string) {
   }
   const membership = await prisma.membership.findFirst({
     where: { userId: stored.userId },
+    orderBy: { createdAt: "asc" },
   });
   if (!membership) {
     throw new Error("Usuário sem organização");
@@ -102,13 +140,14 @@ export async function refreshAccessToken(refreshToken: string) {
     membership.organizationId
   );
   await saveRefreshToken(stored.user.id, newRefresh);
+  const userDto = await buildAuthUserDto(
+    stored.user.id,
+    stored.user.email,
+    stored.user.name,
+    membership.organizationId
+  );
   return {
-    user: {
-      id: stored.user.id,
-      email: stored.user.email,
-      name: stored.user.name,
-      organizationId: membership.organizationId,
-    },
+    user: userDto,
     accessToken,
     refreshToken: newRefresh,
   };
@@ -125,6 +164,29 @@ async function createTokens(userId: string, email: string, organizationId: strin
     refreshOpts
   );
   return { accessToken, refreshToken };
+}
+
+/** Perfil para GET /auth/me: exige vínculo Membership ativo com a org do JWT */
+export async function getAuthProfile(userId: string, organizationId: string): Promise<AuthUserDto | null> {
+  const membership = await prisma.membership.findUnique({
+    where: {
+      userId_organizationId: { userId, organizationId },
+    },
+    include: { user: true, organization: true },
+  });
+  if (!membership?.user || membership.user.deletedAt) return null;
+  if (membership.organization.deletedAt) return null;
+  return {
+    id: membership.user.id,
+    email: membership.user.email,
+    name: membership.user.name,
+    organizationId: membership.organization.id,
+    organization: {
+      id: membership.organization.id,
+      name: membership.organization.name,
+      slug: membership.organization.slug,
+    },
+  };
 }
 
 async function saveRefreshToken(userId: string, token: string) {

@@ -3,6 +3,7 @@ import {
   login as loginService,
   register as registerService,
   refreshAccessToken,
+  getAuthProfile,
 } from "../services/auth.service.js";
 import {
   loginSchema,
@@ -73,10 +74,12 @@ export async function refresh(req: Request, res: Response) {
 }
 
 export async function me(req: Request, res: Response) {
-  const user = (req as Request & { user: { userId: string; email: string; organizationId: string } }).user;
-  return res.json({
-    id: user.userId,
-    email: user.email,
-    organizationId: user.organizationId,
-  });
+  const jwtUser = (req as Request & { user: { userId: string; email: string; organizationId: string } }).user;
+  const profile = await getAuthProfile(jwtUser.userId, jwtUser.organizationId);
+  if (!profile) {
+    return res.status(403).json({
+      message: "Usuário não está associado a esta empresa ou o vínculo foi removido.",
+    });
+  }
+  return res.json(profile);
 }

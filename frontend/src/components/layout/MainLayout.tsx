@@ -4,7 +4,8 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Moon, Sun, User, Settings, LogOut } from "lucide-react";
 import { Sidebar, SidebarTrigger } from "@/components/layout/Sidebar";
 import { useUIStore } from "@/stores/ui-store";
-import { useAuthStore } from "@/stores/auth-store";
+import { useAuthStore, type User as AuthUser } from "@/stores/auth-store";
+import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +27,33 @@ export function MainLayout() {
     useUIStore.getState().setTheme(useUIStore.getState().theme);
   }, []);
 
+  /** Sincroniza usuário + empresa (organização) com o backend após login ou sessão antiga */
+  useEffect(() => {
+    const token = useAuthStore.getState().accessToken;
+    if (!token) return;
+    let cancelled = false;
+    api
+      .get<AuthUser>("/auth/me")
+      .then((profile) => {
+        if (cancelled) return;
+        useAuthStore.setState({
+          user: {
+            id: profile.id,
+            email: profile.email,
+            name: profile.name,
+            organizationId: profile.organizationId,
+            organization: profile.organization,
+          },
+        });
+      })
+      .catch(() => {
+        /* 401 já redireciona em api.ts */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-background">
       <Sidebar
@@ -34,9 +62,8 @@ export function MainLayout() {
       />
       <main
         className={cn(
-          "min-h-screen transition-[margin] duration-200",
-          "md:ml-[220px]",
-          sidebarCollapsed && "md:ml-14"
+          "min-h-screen w-full min-w-0 transition-[margin] duration-200",
+          sidebarCollapsed ? "md:ml-14" : "md:ml-[220px]"
         )}
       >
         <header className="sticky top-0 z-20 flex h-16 items-center gap-4 border-b border-border/50 bg-card/95 px-4 shadow-sm backdrop-blur-sm">
@@ -75,7 +102,13 @@ export function MainLayout() {
                 >
                   {user && (
                     <div className="mb-1 px-2 py-1.5 text-sm text-muted-foreground">
-                      {user.email}
+                      <p className="font-medium text-foreground">{user.name}</p>
+                      <p className="truncate text-xs">{user.email}</p>
+                      {user.organization && (
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                          Empresa: <span className="text-foreground">{user.organization.name}</span>
+                        </p>
+                      )}
                     </div>
                   )}
                   <DropdownMenu.Item asChild>
@@ -97,7 +130,7 @@ export function MainLayout() {
             </DropdownMenu.Root>
           </div>
         </header>
-        <div className="p-4 md:p-6">
+        <div className="w-full min-w-0 p-4 md:p-6">
           <Outlet />
         </div>
       </main>

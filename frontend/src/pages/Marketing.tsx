@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   RefreshCw,
@@ -42,14 +41,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { AnalyticTable } from "@/components/marketing/AnalyticTable";
 import { DashboardPanel, KpiStat, SectionLabel } from "@/components/dashboard/DashboardPrimitives";
 import { formatCost, formatNumber, formatSpend } from "@/lib/metrics-format";
-import {
-  fetchIntegrations,
-  fetchGoogleAdsMetrics,
-  fetchMetaAdsMetrics,
-  type GoogleAdsMetricsResponse,
-  type MetaAdsMetricsResponse,
-  type MetaAdsCampaignRow,
-} from "@/lib/integrations-api";
+import { cn } from "@/lib/utils";
+import { useUIStore } from "@/stores/ui-store";
+import type { MetaAdsCampaignRow } from "@/lib/integrations-api";
+import { useMarketingMetrics } from "@/hooks/useMarketingMetrics";
+import { PerformanceAlerts } from "@/components/marketing/PerformanceAlerts";
 
 const periods = [
   { value: "7d", label: "Últimos 7 dias" },
@@ -113,94 +109,33 @@ const metaAdsCampaignColumns = [
 
 export function Marketing() {
   const navigate = useNavigate();
-  const [period, setPeriod] = useState<"7d" | "30d" | "90d">("30d");
-  const [hasIntegrations, setHasIntegrations] = useState(false);
-  const [hasMeta, setHasMeta] = useState(false);
-  const [metrics, setMetrics] = useState<GoogleAdsMetricsResponse | null>(null);
-  const [metaMetrics, setMetaMetrics] = useState<MetaAdsMetricsResponse | null>(null);
-  const [metricsLoading, setMetricsLoading] = useState(false);
-  const [metaMetricsLoading, setMetaMetricsLoading] = useState(false);
-  const [metricsError, setMetricsError] = useState<string | null>(null);
-  const [metaMetricsError, setMetaMetricsError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchIntegrations()
-      .then((list) => {
-        if (!cancelled) {
-          setHasIntegrations(list.some((i) => i.status === "connected"));
-          setHasMeta(list.some((i) => i.slug === "meta" && i.status === "connected"));
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setHasIntegrations(false);
-      });
-    return () => { cancelled = true; };
-  }, []);
-
-  const loadMetrics = useCallback(async () => {
-    if (!hasIntegrations) return;
-    setMetricsLoading(true);
-    setMetricsError(null);
-    try {
-      const data = await fetchGoogleAdsMetrics(period);
-      if (!data) {
-        setMetrics(null);
-        setMetricsError("Não foi possível carregar os dados. Verifique se o Developer Token do Google Ads está configurado no servidor.");
-      } else if (!data.ok) {
-        setMetrics(null);
-        setMetricsError(data.message);
-      } else {
-        setMetrics(data);
-        setMetricsError(null);
-        setLastUpdated(new Date());
-      }
-    } catch {
-      setMetrics(null);
-      setMetricsError("Erro ao buscar métricas.");
-    } finally {
-      setMetricsLoading(false);
-    }
-  }, [hasIntegrations, period]);
-
-  const loadMetaMetrics = useCallback(async () => {
-    if (!hasMeta) return;
-    setMetaMetricsLoading(true);
-    setMetaMetricsError(null);
-    try {
-      const data = await fetchMetaAdsMetrics(period);
-      if (!data) {
-        setMetaMetrics(null);
-        setMetaMetricsError("Não foi possível carregar os dados do Meta Ads.");
-      } else if (!data.ok) {
-        setMetaMetrics(null);
-        setMetaMetricsError(data.message);
-      } else {
-        setMetaMetrics(data);
-        setMetaMetricsError(null);
-        setLastUpdated(new Date());
-      }
-    } catch {
-      setMetaMetrics(null);
-      setMetaMetricsError("Erro ao buscar métricas do Meta Ads.");
-    } finally {
-      setMetaMetricsLoading(false);
-    }
-  }, [hasMeta, period]);
-
-  useEffect(() => {
-    if (hasIntegrations) loadMetrics();
-    else setMetrics(null);
-  }, [hasIntegrations, period, loadMetrics]);
-
-  useEffect(() => {
-    if (hasMeta) loadMetaMetrics();
-    else setMetaMetrics(null);
-  }, [hasMeta, period, loadMetaMetrics]);
+  const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
+  const {
+    period,
+    setPeriod,
+    hasGoogle,
+    hasMeta,
+    metrics,
+    metaMetrics,
+    metricsLoading,
+    metaMetricsLoading,
+    metricsError,
+    metaMetricsError,
+    loadMetrics,
+    loadMetaMetrics,
+    refreshAll,
+    lastUpdated,
+    insightData,
+    insightLoading,
+  } = useMarketingMetrics();
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6">
+    <div
+      className={cn(
+        "w-full space-y-6",
+        sidebarCollapsed ? "max-w-none" : "mx-auto max-w-[1600px]"
+      )}
+    >
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Marketing</h1>
@@ -242,24 +177,21 @@ export function Marketing() {
                 ))}
               </SelectContent>
             </Select>
-            {(hasIntegrations || hasMeta) && (
+            {(hasGoogle || hasMeta) && (
               <span className="hidden text-xs text-muted-foreground sm:inline">
-                {hasMeta && hasIntegrations ? "Meta + Google" : hasMeta ? "Meta Ads" : "Google Ads"}
+                {hasMeta && hasGoogle ? "Meta + Google" : hasMeta ? "Meta Ads" : "Google Ads"}
               </span>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {hasIntegrations || hasMeta ? (
+            {hasGoogle || hasMeta ? (
               <>
                 <Button
                   variant="outline"
                   size="sm"
                   className="h-9 rounded-md border-border/80"
                   disabled={metricsLoading || metaMetricsLoading}
-                  onClick={() => {
-                    loadMetrics();
-                    loadMetaMetrics();
-                  }}
+                  onClick={() => refreshAll()}
                 >
                   <RefreshCw
                     className={`mr-1.5 h-3.5 w-3.5 ${metricsLoading || metaMetricsLoading ? "animate-spin" : ""}`}
@@ -269,6 +201,9 @@ export function Marketing() {
                 <Button size="sm" className="h-9 rounded-md" variant="secondary" disabled>
                   <Share2 className="mr-1.5 h-3.5 w-3.5" />
                   Compartilhar
+                </Button>
+                <Button variant="outline" size="sm" className="h-9 rounded-md border-border/80" asChild>
+                  <Link to="/marketing/configuracoes">Metas e alertas</Link>
                 </Button>
               </>
             ) : (
@@ -281,7 +216,9 @@ export function Marketing() {
         </div>
       </DashboardPanel>
 
-      {!hasIntegrations && !hasMeta ? (
+      <PerformanceAlerts alerts={insightData?.alerts} loading={insightLoading} />
+
+      {!hasGoogle && !hasMeta ? (
         <EmptyState
           icon={BarChart3}
           title="Nenhum dado de marketing ainda"
@@ -387,7 +324,7 @@ export function Marketing() {
                           </div>
                         </div>
                       </div>
-                      {hasIntegrations && hasMeta && donutData.length > 0 && (
+                      {hasGoogle && hasMeta && donutData.length > 0 && (
                         <div className="flex flex-col xl:col-span-4">
                           <SectionLabel>Distribuição do gasto</SectionLabel>
                           <div className="flex flex-1 flex-col rounded-lg border border-border/80 bg-muted/20 p-4">
@@ -444,7 +381,7 @@ export function Marketing() {
                     Meta Ads
                   </TabsTrigger>
                 )}
-                {hasIntegrations && (
+                {hasGoogle && (
                   <TabsTrigger value="google-ads" className="rounded-md text-xs font-semibold uppercase tracking-wide">
                     Google Ads
                   </TabsTrigger>
@@ -452,7 +389,7 @@ export function Marketing() {
               </TabsList>
 
               {/* Google Ads */}
-              {hasIntegrations && (
+              {hasGoogle && (
                 <TabsContent value="google-ads" className="mt-4">
                   {metricsLoading && !metrics ? (
                 <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-border/80 bg-card">
@@ -692,7 +629,7 @@ export function Marketing() {
             </div>
           </DashboardPanel>
 
-          {hasIntegrations && !metrics?.ok && !metricsError && !metricsLoading && hasMeta && !metaMetrics?.ok && !metaMetricsError && !metaMetricsLoading && (
+          {hasGoogle && !metrics?.ok && !metricsError && !metricsLoading && hasMeta && !metaMetrics?.ok && !metaMetricsError && !metaMetricsLoading && (
             <div className="rounded-xl border border-border/80 bg-card p-6">
               <p className="text-sm text-muted-foreground">
                 Nenhum dado no período. Altere o período ou confira as integrações.

@@ -1,4 +1,3 @@
-import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ArrowRight,
@@ -35,15 +34,11 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { DashboardPanel, KpiStat, SectionLabel } from "@/components/dashboard/DashboardPrimitives";
 import { formatCost, formatNumber, formatSpend } from "@/lib/metrics-format";
-import {
-  fetchIntegrations,
-  fetchGoogleAdsMetrics,
-  fetchMetaAdsMetrics,
-  type GoogleAdsMetricsResponse,
-  type MetaAdsMetricsResponse,
-} from "@/lib/integrations-api";
-import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
+import { useUIStore } from "@/stores/ui-store";
+import { useAuthStore } from "@/stores/auth-store";
+import { useMarketingMetrics } from "@/hooks/useMarketingMetrics";
+import { PerformanceAlerts } from "@/components/marketing/PerformanceAlerts";
 
 const periods = [
   { value: "7d", label: "Últimos 7 dias" },
@@ -63,96 +58,25 @@ function greetingName(email: string | undefined): string {
 export function Dashboard() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
-  const [period, setPeriod] = useState<"7d" | "30d" | "90d">("30d");
-  const [hasGoogle, setHasGoogle] = useState(false);
-  const [hasMeta, setHasMeta] = useState(false);
-  const [metrics, setMetrics] = useState<GoogleAdsMetricsResponse | null>(null);
-  const [metaMetrics, setMetaMetrics] = useState<MetaAdsMetricsResponse | null>(null);
-  const [metricsLoading, setMetricsLoading] = useState(false);
-  const [metaMetricsLoading, setMetaMetricsLoading] = useState(false);
-  const [metricsError, setMetricsError] = useState<string | null>(null);
-  const [metaMetricsError, setMetaMetricsError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchIntegrations()
-      .then((list) => {
-        if (!cancelled) {
-          setHasGoogle(list.some((i) => i.slug === "google-ads" && i.status === "connected"));
-          setHasMeta(list.some((i) => i.slug === "meta" && i.status === "connected"));
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setHasGoogle(false);
-          setHasMeta(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const loadMetrics = useCallback(async () => {
-    if (!hasGoogle) return;
-    setMetricsLoading(true);
-    setMetricsError(null);
-    try {
-      const data = await fetchGoogleAdsMetrics(period);
-      if (!data) {
-        setMetrics(null);
-        setMetricsError("Não foi possível carregar o Google Ads.");
-      } else if (!data.ok) {
-        setMetrics(null);
-        setMetricsError(data.message);
-      } else {
-        setMetrics(data);
-        setMetricsError(null);
-        setLastUpdated(new Date());
-      }
-    } catch {
-      setMetrics(null);
-      setMetricsError("Erro ao buscar métricas.");
-    } finally {
-      setMetricsLoading(false);
-    }
-  }, [hasGoogle, period]);
-
-  const loadMetaMetrics = useCallback(async () => {
-    if (!hasMeta) return;
-    setMetaMetricsLoading(true);
-    setMetaMetricsError(null);
-    try {
-      const data = await fetchMetaAdsMetrics(period);
-      if (!data) {
-        setMetaMetrics(null);
-        setMetaMetricsError("Não foi possível carregar o Meta Ads.");
-      } else if (!data.ok) {
-        setMetaMetrics(null);
-        setMetaMetricsError(data.message);
-      } else {
-        setMetaMetrics(data);
-        setMetaMetricsError(null);
-        setLastUpdated(new Date());
-      }
-    } catch {
-      setMetaMetrics(null);
-      setMetaMetricsError("Erro ao buscar métricas do Meta.");
-    } finally {
-      setMetaMetricsLoading(false);
-    }
-  }, [hasMeta, period]);
-
-  useEffect(() => {
-    if (hasGoogle) loadMetrics();
-    else setMetrics(null);
-  }, [hasGoogle, period, loadMetrics]);
-
-  useEffect(() => {
-    if (hasMeta) loadMetaMetrics();
-    else setMetaMetrics(null);
-  }, [hasMeta, period, loadMetaMetrics]);
+  const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
+  const {
+    period,
+    setPeriod,
+    hasGoogle,
+    hasMeta,
+    metrics,
+    metaMetrics,
+    metricsLoading,
+    metaMetricsLoading,
+    metricsError,
+    metaMetricsError,
+    loadMetrics,
+    loadMetaMetrics,
+    refreshAll,
+    lastUpdated,
+    insightData,
+    insightLoading,
+  } = useMarketingMetrics();
 
   const hasAnyChannel = hasGoogle || hasMeta;
   const dataLoading = (hasGoogle && metricsLoading && !metrics) || (hasMeta && metaMetricsLoading && !metaMetrics);
@@ -191,7 +115,12 @@ export function Dashboard() {
       : [];
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6">
+    <div
+      className={cn(
+        "w-full space-y-6",
+        sidebarCollapsed ? "max-w-none" : "mx-auto max-w-[1600px]"
+      )}
+    >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -235,10 +164,7 @@ export function Dashboard() {
                 size="sm"
                 className="h-9 rounded-lg border-border/80"
                 disabled={metricsLoading || metaMetricsLoading}
-                onClick={() => {
-                  loadMetrics();
-                  loadMetaMetrics();
-                }}
+                onClick={() => refreshAll()}
               >
                 <RefreshCw
                   className={cn(
@@ -288,6 +214,8 @@ export function Dashboard() {
           </Button>
         </div>
       </DashboardPanel>
+
+      <PerformanceAlerts alerts={insightData?.alerts} loading={insightLoading} />
 
       {!hasAnyChannel ? (
         <div className="grid gap-6 lg:grid-cols-3">

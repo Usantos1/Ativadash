@@ -43,9 +43,37 @@ model Organization {
   memberships   Membership[]
   clients       ClientAccount[]
   projects      Project[]
-  integrations  Integration[]
-  dashboards    Dashboard[]
-  goals         Goal[]
+  integrations       Integration[]
+  dashboards         Dashboard[]
+  goals              Goal[]
+  marketingSettings  MarketingSettings?
+}
+
+/// Metas e alertas de performance de marketing por organização
+model MarketingSettings {
+  id             String   @id @default(cuid())
+  organizationId String   @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// CPA alvo (BRL) — alerta quando o CPA real ultrapassar
+  targetCpaBrl   Decimal? @db.Decimal(14, 2)
+  /// CPA máximo tolerável (BRL) — alerta crítico
+  maxCpaBrl      Decimal? @db.Decimal(14, 2)
+  /// ROAS mínimo desejado (ex.: 3 = R$ 3 de receita por R$ 1 investido)
+  targetRoas     Decimal? @db.Decimal(10, 4)
+
+  /// Mínimo de resultados (conv. Google + leads + vendas Meta) para avaliar CPA
+  minResultsForCpa     Int      @default(5)
+  /// Gasto mínimo no período (BRL) para disparar alertas de CPA/ROAS
+  minSpendForAlertsBrl Decimal? @db.Decimal(14, 2)
+
+  alertsEnabled        Boolean @default(true)
+  alertCpaAboveMax     Boolean @default(true)
+  alertCpaAboveTarget  Boolean @default(true)
+  alertRoasBelowTarget Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Plan {
