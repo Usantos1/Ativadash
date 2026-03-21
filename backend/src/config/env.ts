@@ -1,11 +1,14 @@
 import "dotenv/config";
 
+/**
+ * Por padrão confia em 1 hop de proxy (Nginx, Cloudflare, Vite proxy, túneis).
+ * Se false: sem trust proxy — qualquer X-Forwarded-For quebrava o express-rate-limit v7.
+ * Desligue só se o Node estiver exposto direto à internet sem proxy: TRUST_PROXY=false
+ */
 function parseTrustProxy(): boolean {
   const v = process.env.TRUST_PROXY?.toLowerCase();
   if (v === "false" || v === "0" || v === "no") return false;
-  if (v === "true" || v === "1" || v === "yes") return true;
-  // Produção atrás de Nginx/Cloudflare costuma enviar X-Forwarded-For
-  return process.env.NODE_ENV === "production";
+  return true;
 }
 
 export const env = {
