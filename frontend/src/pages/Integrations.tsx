@@ -1,11 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Search, Plug, MessageCircle, Megaphone, Loader2, AlertTriangle } from "lucide-react";
+import { Search, Plug } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { IntegrationCard } from "@/components/integrations/IntegrationCard";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -15,11 +11,6 @@ import {
   disconnectIntegration as disconnectApi,
   type IntegrationFromApi,
 } from "@/lib/integrations-api";
-import {
-  fetchMarketingSettings,
-  saveMarketingSettings,
-  sendAtivaCrmTestMessage,
-} from "@/lib/marketing-settings-api";
 
 export type IntegrationId =
   | "google-ads"
@@ -45,7 +36,7 @@ interface IntegrationDef {
   available: boolean;
 }
 
-/** Plataformas com OAuth / métricas prontos no backend */
+/** Plataformas com OAuth / m?tricas prontos no backend */
 const AVAILABLE_SLUGS = new Set<string>(["google-ads", "meta"]);
 
 const INTEGRATION_DEFS: IntegrationDef[] = [
@@ -71,252 +62,10 @@ function formatLastSync(iso: string | null): string | undefined {
     const d = new Date(iso);
     const now = new Date();
     const sameDay = d.toDateString() === now.toDateString();
-    return sameDay ? `Hoje às ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : d.toLocaleDateString("pt-BR");
+    return sameDay ? `Hoje ?s ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : d.toLocaleDateString("pt-BR");
   } catch {
     return undefined;
   }
-}
-
-const ATIVA_CRM_CONNECTIONS_URL = "https://app.ativacrm.com/connections";
-
-function AtivaCrmIntegrationPanel({
-  onNotify,
-}: {
-  onNotify: (m: { type: "success" | "error"; text: string }) => void;
-}) {
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [removing, setRemoving] = useState(false);
-  const [tokenInput, setTokenInput] = useState("");
-  const [phone, setPhone] = useState("");
-  const [alertsEnabled, setAlertsEnabled] = useState(false);
-  const [tokenConfigured, setTokenConfigured] = useState(false);
-  const [localError, setLocalError] = useState<string | null>(null);
-  const [localOk, setLocalOk] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    fetchMarketingSettings()
-      .then((s) => {
-        if (cancelled) return;
-        setPhone(s.ativaCrmNotifyPhone ?? "");
-        setAlertsEnabled(s.ativaCrmAlertsEnabled);
-        setTokenConfigured(s.ativaCrmTokenConfigured);
-        setTokenInput("");
-      })
-      .catch(() => {
-        if (!cancelled) setLocalError("Não foi possível carregar as configurações.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
-    setLocalError(null);
-    setLocalOk(null);
-    setSaving(true);
-    try {
-      const payload: Parameters<typeof saveMarketingSettings>[0] = {
-        ativaCrmNotifyPhone: phone.trim() === "" ? null : phone.trim(),
-        ativaCrmAlertsEnabled: alertsEnabled,
-      };
-      if (tokenInput.trim() !== "") {
-        payload.ativaCrmApiToken = tokenInput.trim();
-      }
-      const next = await saveMarketingSettings(payload);
-      setTokenConfigured(next.ativaCrmTokenConfigured);
-      setTokenInput("");
-      setLocalOk("Configurações salvas.");
-      onNotify({ type: "success", text: "Ativa CRM: configurações salvas." });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erro ao salvar.";
-      setLocalError(msg);
-      onNotify({ type: "error", text: msg });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleRemove() {
-    if (!confirm("Remover o token Ativa CRM e desligar alertas por WhatsApp?")) return;
-    setLocalError(null);
-    setLocalOk(null);
-    setRemoving(true);
-    try {
-      await saveMarketingSettings({
-        ativaCrmApiToken: null,
-        ativaCrmAlertsEnabled: false,
-        ativaCrmNotifyPhone: null,
-      });
-      setTokenConfigured(false);
-      setTokenInput("");
-      setPhone("");
-      setAlertsEnabled(false);
-      setLocalOk("Integração removida.");
-      onNotify({ type: "success", text: "Ativa CRM desconectado." });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erro ao remover.";
-      setLocalError(msg);
-    } finally {
-      setRemoving(false);
-    }
-  }
-
-  async function handleTest() {
-    setLocalError(null);
-    setLocalOk(null);
-    setTesting(true);
-    try {
-      const r = await sendAtivaCrmTestMessage();
-      if (r.ok) {
-        setLocalOk(r.message);
-        onNotify({ type: "success", text: r.message });
-      } else {
-        setLocalError(r.message);
-        onNotify({ type: "error", text: r.message });
-      }
-    } finally {
-      setTesting(false);
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex min-h-[200px] items-center justify-center text-muted-foreground">
-        <Loader2 className="h-8 w-8 animate-spin" aria-hidden />
-      </div>
-    );
-  }
-
-  return (
-    <Card className="min-w-0 border-border/80 shadow-sm">
-      <CardHeader className="space-y-1">
-        <div className="flex items-center gap-2 text-primary">
-          <MessageCircle className="h-5 w-5" aria-hidden />
-          <CardTitle className="text-lg">Integração WhatsApp (Ativa CRM)</CardTitle>
-        </div>
-        <CardDescription>
-          Configure o envio de mensagens pelo Ativa CRM para{" "}
-          <strong className="font-medium text-foreground">alertas de marketing</strong> (CPA, ROAS) quando o painel
-          avaliar o período.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSave} className="space-y-5">
-          {localError && (
-            <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {localError}
-            </div>
-          )}
-          {localOk && (
-            <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800 dark:border-green-900/50 dark:bg-green-950/40 dark:text-green-200">
-              {localOk}
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <Label htmlFor="ativacrm-token">Token de acesso Ativa CRM</Label>
-            <Input
-              id="ativacrm-token"
-              type="password"
-              autoComplete="off"
-              placeholder={tokenConfigured ? "•••••••• (deixe em branco para manter)" : "Cole o token da conexão WhatsApp"}
-              value={tokenInput}
-              onChange={(e) => setTokenInput(e.target.value)}
-              className="min-w-0 font-mono text-sm"
-            />
-            <p className="text-xs text-muted-foreground">
-              Obtenha o token em:{" "}
-              <a
-                href={ATIVA_CRM_CONNECTIONS_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-medium text-primary underline-offset-4 hover:underline"
-              >
-                app.ativacrm.com/connections
-              </a>{" "}
-              — menu <strong className="font-medium text-foreground">Conexões</strong> → editar WhatsApp → campo{" "}
-              <strong className="font-medium text-foreground">Token</strong>.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="ativacrm-phone">WhatsApp para alertas (com DDD)</Label>
-            <Input
-              id="ativacrm-phone"
-              type="tel"
-              inputMode="tel"
-              placeholder="Ex.: 11999999999 ou 5511999999999"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="min-w-0 max-w-md"
-            />
-            <p className="text-xs text-muted-foreground">
-              Número que receberá os avisos. A API usa o formato internacional (55…).
-            </p>
-          </div>
-
-          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/80 bg-muted/20 p-3">
-            <input
-              type="checkbox"
-              className="mt-1 h-4 w-4 rounded border-border"
-              checked={alertsEnabled}
-              onChange={(e) => setAlertsEnabled(e.target.checked)}
-            />
-            <span className="text-sm">
-              <span className="font-medium text-foreground">Enviar alertas críticos e de aviso por WhatsApp</span>
-              <span className="mt-0.5 block text-muted-foreground">
-                Quando o Dashboard/Marketing avaliar o período, mensagens com gravidade alta são enviadas (intervalo
-                mínimo de 15 minutos entre envios).
-              </span>
-            </span>
-          </label>
-
-          <div
-            className="flex gap-2 rounded-lg border border-amber-200/80 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100"
-            role="status"
-          >
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
-            <p>
-              <strong className="font-semibold">Importante:</strong> configure um{" "}
-              <strong className="font-medium">WhatsApp padrão</strong> no Ativa CRM (painel administrativo) para que as
-              mensagens sejam entregues corretamente.
-            </p>
-          </div>
-
-          <p className="text-xs text-muted-foreground">
-            API: <code className="rounded bg-muted px-1 py-0.5 text-[11px]">POST https://api.ativacrm.com/api/messages/send</code>{" "}
-            com <code className="rounded bg-muted px-1 py-0.5 text-[11px]">Authorization: Bearer {'{token}'}</code> e corpo{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{'{ number, body }'}</code>.
-          </p>
-
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Button type="submit" disabled={saving} className="gap-2">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Salvar configurações
-            </Button>
-            <Button type="button" variant="outline" disabled={testing || !tokenConfigured} onClick={handleTest}>
-              {testing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Enviar mensagem de teste
-            </Button>
-            {tokenConfigured ? (
-              <Button type="button" variant="ghost" className="text-destructive hover:text-destructive" disabled={removing} onClick={handleRemove}>
-                {removing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Remover integração
-              </Button>
-            ) : null}
-          </div>
-        </form>
-      </CardContent>
-    </Card>
-  );
 }
 
 export function Integrations() {
@@ -326,7 +75,7 @@ export function Integrations() {
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  /** React/TS não tipam defaultOpen em <details>; usamos open controlado */
+  /** React/TS n?o tipam defaultOpen em <details>; usamos open controlado */
   const [laterSectionOpen, setLaterSectionOpen] = useState(false);
 
   useEffect(() => {
@@ -364,7 +113,7 @@ export function Integrations() {
       }, { replace: true });
       fetchIntegrations().then(setList);
     } else if (error) {
-      const msg = error === "missing_code_or_state" ? "Autorização incompleta." : error === "invalid_state" ? "Sessão expirada. Tente conectar de novo." : error === "exchange_failed" ? "Falha ao conectar. Tente novamente." : "Erro ao conectar.";
+      const msg = error === "missing_code_or_state" ? "Autoriza??o incompleta." : error === "invalid_state" ? "Sess?o expirada. Tente conectar de novo." : error === "exchange_failed" ? "Falha ao conectar. Tente novamente." : "Erro ao conectar.";
       setMessage({ type: "error", text: msg });
       setSearchParams((p) => {
         p.delete("connected");
@@ -383,7 +132,7 @@ export function Integrations() {
       const url = await getGoogleAdsAuthUrl();
       window.location.href = url;
     } catch (e) {
-      setMessage({ type: "error", text: e instanceof Error ? e.message : "Não foi possível iniciar a conexão." });
+      setMessage({ type: "error", text: e instanceof Error ? e.message : "N?o foi poss?vel iniciar a conex?o." });
       setConnecting(false);
     }
   };
@@ -395,7 +144,7 @@ export function Integrations() {
       const url = await getMetaAdsAuthUrl();
       window.location.href = url;
     } catch (e) {
-      setMessage({ type: "error", text: e instanceof Error ? e.message : "Não foi possível iniciar a conexão." });
+      setMessage({ type: "error", text: e instanceof Error ? e.message : "N?o foi poss?vel iniciar a conex?o." });
       setConnecting(false);
     }
   };
@@ -405,7 +154,7 @@ export function Integrations() {
     try {
       await disconnectApi(id);
       setList((prev) => prev.filter((i) => i.id !== id));
-      setMessage({ type: "success", text: "Integração desvinculada." });
+      setMessage({ type: "success", text: "Integra??o desvinculada." });
     } catch (e) {
       setMessage({ type: "error", text: e instanceof Error ? e.message : "Erro ao desvincular." });
     }
@@ -455,16 +204,16 @@ export function Integrations() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            Integrações
+            Integra??es
           </h1>
           <p className="text-muted-foreground">
-            Publicidade (Google e Meta) e alertas por WhatsApp via Ativa CRM — aba <strong className="font-medium text-foreground">WhatsApp (CRM)</strong>.
+            Google Ads e Meta Ads est?o dispon?veis. As demais entram em fases seguintes.
           </p>
         </div>
         <div className="relative w-full sm:w-64">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Buscar integração..."
+            placeholder="Buscar integra??o..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="rounded-lg pl-9"
@@ -485,79 +234,60 @@ export function Integrations() {
       )}
 
       <div className="min-w-0 overflow-hidden rounded-xl border border-border/80 bg-card p-4 sm:p-6">
-        <Tabs defaultValue="ads" className="min-w-0 space-y-4">
-          <TabsList className="grid h-auto w-full min-w-0 grid-cols-2 gap-1 sm:inline-flex sm:w-auto sm:max-w-full">
-            <TabsTrigger value="ads" className="gap-2 px-3 py-2 text-xs sm:text-sm">
-              <Megaphone className="h-4 w-4 shrink-0" aria-hidden />
-              Publicidade
-            </TabsTrigger>
-            <TabsTrigger value="ativacrm" className="gap-2 px-3 py-2 text-xs sm:text-sm">
-              <MessageCircle className="h-4 w-4 shrink-0" aria-hidden />
-              WhatsApp (CRM)
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="ads" className="mt-0 min-w-0 focus-visible:outline-none">
-            {loading ? (
-              <div className="flex justify-center py-12 text-muted-foreground">Carregando...</div>
-            ) : (
-              <>
-                <div className="space-y-6">
-                  {filteredNow.length > 0 && (
-                    <div>
-                      <h2 className="mb-3 text-sm font-semibold text-foreground">Disponíveis agora</h2>
-                      <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
-                        {filteredNow.map(renderCard)}
-                      </div>
-                    </div>
-                  )}
-
-                  {filteredLater.length > 0 && (
-                    <details
-                      className="group rounded-lg border border-border/60 bg-muted/20"
-                      open={laterSectionOpen}
-                      onToggle={(e) => setLaterSectionOpen(e.currentTarget.open)}
-                    >
-                      <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-foreground marker:content-none [&::-webkit-details-marker]:hidden">
-                        <span className="flex items-center justify-between gap-2">
-                          <span>
-                            Outras plataformas{" "}
-                            <span className="font-normal text-muted-foreground">
-                              (em breve · {filteredLater.length})
-                            </span>
-                          </span>
-                          <span className="text-xs text-muted-foreground group-open:hidden">Mostrar</span>
-                          <span className="hidden text-xs text-muted-foreground group-open:inline">Ocultar</span>
-                        </span>
-                      </summary>
-                      <div className="border-t border-border/60 p-4 pt-2">
-                        <p className="mb-4 text-xs text-muted-foreground">
-                          Roadmap: checkout e webhooks. Alertas por WhatsApp: aba <strong className="text-foreground">WhatsApp (CRM)</strong>{" "}
-                          nesta página.
-                        </p>
-                        <div className="grid min-w-0 grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
-                          {filteredLater.map(renderCard)}
-                        </div>
-                      </div>
-                    </details>
-                  )}
+        {loading ? (
+          <div className="flex justify-center py-12 text-muted-foreground">Carregando...</div>
+        ) : (
+          <>
+            <div className="space-y-6">
+              {filteredNow.length > 0 && (
+                <div>
+                  <h2 className="mb-3 text-sm font-semibold text-foreground">Dispon?veis agora</h2>
+                  <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
+                    {filteredNow.map(renderCard)}
+                  </div>
                 </div>
-                {filtered.length === 0 && (
-                  <EmptyState
-                    icon={Plug}
-                    title="Nenhuma integração encontrada"
-                    description={`Nenhum resultado para "${search}".`}
-                    className="min-h-[200px]"
-                  />
-                )}
-              </>
-            )}
-          </TabsContent>
+              )}
 
-          <TabsContent value="ativacrm" className="mt-0 min-w-0 focus-visible:outline-none">
-            <AtivaCrmIntegrationPanel onNotify={setMessage} />
-          </TabsContent>
-        </Tabs>
+              {filteredLater.length > 0 && (
+                <details
+                  className="group rounded-lg border border-border/60 bg-muted/20"
+                  open={laterSectionOpen}
+                  onToggle={(e) => setLaterSectionOpen(e.currentTarget.open)}
+                >
+                  <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-foreground marker:content-none [&::-webkit-details-marker]:hidden">
+                    <span className="flex items-center justify-between gap-2">
+                      <span>
+                        Outras plataformas{" "}
+                        <span className="font-normal text-muted-foreground">
+                          (em breve ? {filteredLater.length})
+                        </span>
+                      </span>
+                      <span className="text-xs text-muted-foreground group-open:hidden">Mostrar</span>
+                      <span className="hidden text-xs text-muted-foreground group-open:inline">Ocultar</span>
+                    </span>
+                  </summary>
+                  <div className="border-t border-border/60 p-4 pt-2">
+                    <p className="mb-4 text-xs text-muted-foreground">
+                      Roadmap: checkout, mensageria e webhooks. Nada aqui conecta ainda ? evitamos
+                      poluir a tela com dezenas de cards.
+                    </p>
+                    <div className="grid min-w-0 grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+                      {filteredLater.map(renderCard)}
+                    </div>
+                  </div>
+                </details>
+              )}
+            </div>
+            {filtered.length === 0 && (
+              <EmptyState
+                icon={Plug}
+                title="Nenhuma integra??o encontrada"
+                description={`Nenhum resultado para "${search}".`}
+                className="min-h-[200px]"
+              />
+            )}
+          </>
+        )}
       </div>
     </div>
   );
