@@ -37,9 +37,53 @@ export interface GoogleAdsDailyRow {
   conversions: number;
 }
 
+export type GoogleAdsMetricsErrorCode =
+  | "NOT_CONNECTED"
+  | "MISSING_DEVELOPER_TOKEN"
+  | "TOKEN_REFRESH_FAILED"
+  | "API_PENDING_OR_RESTRICTED"
+  | "UNKNOWN";
+
 export type GoogleAdsMetricsResult =
   | { ok: true; summary: GoogleAdsMetricsSummary; campaigns: GoogleAdsCampaignRow[]; daily?: GoogleAdsDailyRow[] }
-  | { ok: false; message: string };
+  | { ok: false; code: GoogleAdsMetricsErrorCode; message: string };
+
+const MSG_GOOGLE_PENDING =
+  "Google Ads ainda não está disponível neste ambiente. O pedido de ativação da API está em análise. Assim que aprovado, os dados serão exibidos aqui.";
+
+const MSG_GOOGLE_SOFT_UNAVAILABLE =
+  "Não foi possível carregar o Google Ads agora. O painel segue com os dados da Meta Ads; tentaremos novamente quando a integração estiver liberada.";
+
+function googleAdsFailure(
+  code: GoogleAdsMetricsErrorCode,
+  message: string,
+  technical?: string
+): GoogleAdsMetricsResult {
+  if (technical) console.error("[Google Ads]", code, technical);
+  return { ok: false, code, message };
+}
+
+/** Mensagem amigável para a UI; detalhe técnico só em log. */
+function classifyGoogleAdsError(raw: string): GoogleAdsMetricsResult {
+  const t = raw.toLowerCase();
+  if (
+    t.includes("permission_denied") ||
+    t.includes("permission denied") ||
+    t.includes("developer_token") ||
+    t.includes("developer token") ||
+    t.includes("not approved") ||
+    t.includes("not_approved") ||
+    t.includes("test account") ||
+    t.includes("basic access") ||
+    t.includes("standard access")
+  ) {
+    return googleAdsFailure("API_PENDING_OR_RESTRICTED", MSG_GOOGLE_PENDING, raw);
+  }
+  if (t.includes("invalid_grant") || t.includes("unauthorized") || t.includes("401")) {
+    return googleAdsFailure("TOKEN_REFRESH_FAILED", MSG_GOOGLE_SOFT_UNAVAILABLE, raw);
+  }
+  return googleAdsFailure("UNKNOWN", MSG_GOOGLE_SOFT_UNAVAILABLE, raw);
+}
 
 async function getGoogleAdsConfig(organizationId: string): Promise<GoogleAdsConfig | null> {
   const integration = await prisma.integration.findUnique({
@@ -266,15 +310,22 @@ export async function fetchGoogleAdsMetrics(
 ): Promise<GoogleAdsMetricsResult> {
   const config = await getGoogleAdsConfig(organizationId);
   if (!config) {
-    return { ok: false, message: "Google Ads não conectado para esta organização." };
+    return googleAdsFailure(
+      "NOT_CONNECTED",
+      "Google Ads não está conectado. Quando a API estiver liberada, conecte em Integrações para ver os dados aqui."
+    );
+  }
+
+  if (env.GOOGLE_ADS_UX_PENDING) {
+    return googleAdsFailure("API_PENDING_OR_RESTRICTED", MSG_GOOGLE_PENDING, "GOOGLE_ADS_UX_PENDING=true");
   }
 
   if (!env.GOOGLE_ADS_DEVELOPER_TOKEN) {
-    return {
-      ok: false,
-      message:
-        "Developer Token do Google Ads não configurado. Configure GOOGLE_ADS_DEVELOPER_TOKEN no servidor.",
-    };
+    return googleAdsFailure(
+      "MISSING_DEVELOPER_TOKEN",
+      MSG_GOOGLE_PENDING,
+      "GOOGLE_ADS_DEVELOPER_TOKEN ausente"
+    );
   }
 
   let accessToken = config.access_token;
@@ -284,10 +335,8 @@ export async function fetchGoogleAdsMetrics(
     try {
       accessToken = await refreshAndSaveGoogleAdsToken(organizationId, config);
     } catch (e) {
-      return {
-        ok: false,
-        message: e instanceof Error ? e.message : "Falha ao renovar token do Google Ads.",
-      };
+      const raw = e instanceof Error ? e.message : String(e);
+      return classifyGoogleAdsError(raw);
     }
   }
 
@@ -317,7 +366,7 @@ export async function fetchGoogleAdsMetrics(
     return { ok: true, summary, campaigns, daily };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, message: `Erro ao buscar dados do Google Ads: ${msg}` };
+    return classifyGoogleAdsError(msg);
   }
 }
 

@@ -7,6 +7,7 @@ import {
   mutateGoogleCampaignStatus,
 } from "../services/google-ads-metrics.service.js";
 import { fetchMetaAdsMetrics } from "../services/meta-ads-metrics.service.js";
+import { fetchMarketingDashboardPayload } from "../services/marketing-dashboard.service.js";
 import {
   fetchMetaAdsetMetrics,
   fetchMetaAdLevelMetrics,
@@ -83,6 +84,28 @@ export async function getMetaAdsMetricsHandler(req: Request, res: Response) {
     }
     console.error(e);
     return res.status(500).json({ ok: false, message: "Erro ao buscar métricas do Meta Ads." });
+  }
+}
+
+/** Payload agregado para o dashboard executivo (Meta-first, série diária alinhada ao resumo). */
+export async function getMarketingDashboardHandler(req: Request, res: Response) {
+  const { userId, organizationId } = (req as AuthRequest).user;
+  if (!(await guardRead(userId, organizationId, res))) return;
+  try {
+    const range = parseMetricsDateRangeQuery({
+      startDate: req.query.startDate as string | undefined,
+      endDate: req.query.endDate as string | undefined,
+      period: req.query.period as string | undefined,
+    });
+    const result = await fetchMarketingDashboardPayload(organizationId, range);
+    return res.json(result);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("Período") || msg.includes("Data") || msg.includes("formato")) {
+      return res.status(400).json({ ok: false, message: msg });
+    }
+    console.error(e);
+    return res.status(500).json({ ok: false, message: "Erro ao montar o dashboard de marketing." });
   }
 }
 

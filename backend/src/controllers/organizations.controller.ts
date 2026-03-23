@@ -73,6 +73,7 @@ export async function createManagedOrganization(req: Request, res: Response) {
       inheritPlanFromParent: parsed.data.inheritPlanFromParent,
       planId: parsed.data.planId ?? undefined,
       workspaceNote: parsed.data.workspaceNote ?? undefined,
+      resellerOrgKind: parsed.data.resellerOrgKind,
     });
     return res.status(201).json({ organization: org });
   } catch (e) {

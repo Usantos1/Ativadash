@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 type DataTablePremiumProps = {
   children: ReactNode;
   className?: string;
+  /** Classes no container externo (borda, raio, sombra) */
+  shellClassName?: string;
   /** Listra muito sutil nas linhas */
   zebra?: boolean;
   /** altura mínima da área rolável */
@@ -14,11 +16,12 @@ type DataTablePremiumProps = {
  * Wrapper semântico para tabelas analíticas: borda, hover, zebra opcional.
  * Use thead com classes utilitárias ou o componente exporta constantes recomendadas.
  */
-export function DataTablePremium({ children, className, zebra, minHeight }: DataTablePremiumProps) {
+export function DataTablePremium({ children, className, shellClassName, zebra, minHeight }: DataTablePremiumProps) {
   return (
     <div
       className={cn(
         "overflow-hidden rounded-xl border border-border/55 bg-card/80 shadow-[var(--shadow-surface)]",
+        shellClassName,
         minHeight
       )}
     >

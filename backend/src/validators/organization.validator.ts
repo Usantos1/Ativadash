@@ -9,6 +9,7 @@ export const createChildOrganizationSchema = z.object({
   inheritPlanFromParent: z.boolean().optional(),
   planId: z.string().min(1).optional().nullable(),
   workspaceNote: z.string().max(5000).optional().nullable(),
+  resellerOrgKind: z.enum(["AGENCY", "CLIENT"]).optional(),
 });
 
 export const patchChildOrganizationSchema = z
@@ -16,6 +17,8 @@ export const patchChildOrganizationSchema = z
     name: z.string().min(2, "Nome muito curto").max(120, "Nome muito longo").optional(),
     workspaceStatus: z.enum(["ACTIVE", "PAUSED", "ARCHIVED"]).optional(),
     workspaceNote: z.string().max(5000).optional().nullable(),
+    resellerOrgKind: z.enum(["AGENCY", "CLIENT"]).optional(),
+    featureOverrides: z.record(z.boolean()).optional().nullable(),
   })
   .refine((data) => Object.keys(data).length > 0, { message: "Envie ao menos um campo para atualizar" });
 

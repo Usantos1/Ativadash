@@ -34,3 +34,22 @@ export function mergePlanFeatures(plan: Plan | null): PlanFeatureFlags {
   }
   return { ...DEFAULT_FEATURES };
 }
+
+/** Merge do plano + overrides gravados na Organization (painel revenda). */
+export function mergePlanFeaturesWithOverrides(plan: Plan | null, overrides: unknown | null | undefined): PlanFeatureFlags {
+  const base = mergePlanFeatures(plan);
+  if (!overrides || typeof overrides !== "object" || Array.isArray(overrides)) {
+    return base;
+  }
+  const o = overrides as Record<string, unknown>;
+  return {
+    marketingDashboard:
+      o.marketingDashboard !== undefined ? Boolean(o.marketingDashboard) : base.marketingDashboard,
+    performanceAlerts:
+      o.performanceAlerts !== undefined ? Boolean(o.performanceAlerts) : base.performanceAlerts,
+    multiUser: o.multiUser !== undefined ? Boolean(o.multiUser) : base.multiUser,
+    multiOrganization: o.multiOrganization !== undefined ? Boolean(o.multiOrganization) : base.multiOrganization,
+    integrations: o.integrations !== undefined ? Boolean(o.integrations) : base.integrations,
+    webhooks: o.webhooks !== undefined ? Boolean(o.webhooks) : base.webhooks,
+  };
+}

@@ -58,8 +58,14 @@ export const env = {
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? "",
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET ?? "",
   GOOGLE_ADS_DEVELOPER_TOKEN: process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? "",
+  /**
+   * Quando true, não chama a API do Google Ads e devolve estado “em ativação” (UX até aprovação do developer token / API).
+   */
+  GOOGLE_ADS_UX_PENDING: process.env.GOOGLE_ADS_UX_PENDING === "true",
   META_APP_ID: process.env.META_APP_ID ?? "",
   META_APP_SECRET: process.env.META_APP_SECRET ?? "",
   /** E-mails (separados por vírgula) com acesso a /api/platform/* */
   PLATFORM_ADMIN_EMAILS: process.env.PLATFORM_ADMIN_EMAILS ?? "",
+  /** Logs detalhados de parse de actions da Meta (somente servidor). */
+  DEBUG_META_INSIGHTS: process.env.DEBUG_META_INSIGHTS === "true",
 };

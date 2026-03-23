@@ -15,13 +15,32 @@ export interface MetaAdsMetricsSummary {
   impressions: number;
   clicks: number;
   spend: number;
-  /** Leads (Meta: formulário, lead ads, etc.) */
+  /** Leads (formulários, contatos etc.) — sem conversas iniciadas no WhatsApp */
   leads: number;
   /** Compras / conversões de compra rastreadas pelo pixel */
   purchases: number;
   /** Valor atribuído a compras (moeda da conta), quando disponível */
   purchaseValue?: number;
   conversions?: number;
+  /** Alcance (soma entre contas; pode sobrepor audiência entre contas) */
+  reach?: number;
+  /** Frequência média ponderada por impressões */
+  frequency?: number;
+  /** Cliques no link (inline_link_clicks) */
+  linkClicks?: number;
+  /** Visualizações de página de destino (ações Meta) */
+  landingPageViews?: number;
+  /** Conversas iniciadas (ex.: WhatsApp 7d/28d) */
+  messagingConversationsStarted?: number;
+  /** Métricas derivadas (percentuais 0–100 onde aplicável) */
+  ctrPct?: number;
+  linkCtrPct?: number;
+  cpc?: number;
+  cpm?: number;
+  linkCpc?: number;
+  cplLeads?: number;
+  costPerPurchase?: number;
+  roas?: number;
 }
 
 export interface MetaAdsCampaignRow {
@@ -34,6 +53,11 @@ export interface MetaAdsCampaignRow {
   purchases: number;
   purchaseValue?: number;
   conversions?: number;
+  reach?: number;
+  frequency?: number;
+  linkClicks?: number;
+  landingPageViews?: number;
+  messagingConversationsStarted?: number;
 }
 
 export interface MetaAdsDailyRow {
@@ -43,6 +67,9 @@ export interface MetaAdsDailyRow {
   spend: number;
   leads: number;
   purchases: number;
+  linkClicks?: number;
+  landingPageViews?: number;
+  messagingConversationsStarted?: number;
 }
 
 export type MetaAdsMetricsResult =
@@ -171,11 +198,26 @@ function parseFloatSafe(v: string | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function aggregateActions(actions?: ActionEntry[]): { leads: number; purchases: number } {
+function isLandingPageViewAction(t: string): boolean {
+  return (
+    t === "landing_page_view" ||
+    t === "onsite_conversion.landing_page_view" ||
+    t.includes("landing_page_view")
+  );
+}
+
+/** Leads, compras, conversas (WhatsApp etc.) e LPV — conversas não entram em `leads`. */
+function aggregateEngagement(actions?: ActionEntry[]): {
+  leads: number;
+  purchases: number;
+  messagingConversationsStarted: number;
+  landingPageViews: number;
+} {
   let leads = 0;
   let purchases = 0;
   let msgStarted7d = 0;
   let msgStarted28d = 0;
+  let landingPageViews = 0;
   for (const a of actions ?? []) {
     const t = a.action_type ?? "";
     const val = parseIntSafe(a.value);
@@ -191,10 +233,14 @@ function aggregateActions(actions?: ActionEntry[]): { leads: number; purchases: 
       purchases += val;
       continue;
     }
+    if (isLandingPageViewAction(t)) {
+      landingPageViews += val;
+      continue;
+    }
     if (isLeadActionType(t)) leads += val;
   }
-  leads += msgStarted7d > 0 ? msgStarted7d : msgStarted28d;
-  return { leads, purchases };
+  const messagingConversationsStarted = msgStarted7d > 0 ? msgStarted7d : msgStarted28d;
+  return { leads, purchases, messagingConversationsStarted, landingPageViews };
 }
 
 function aggregatePurchaseValue(actionValues?: ActionEntry[]): number {
@@ -212,6 +258,9 @@ type DailyAcc = {
   spend: number;
   leads: number;
   purchases: number;
+  linkClicks: number;
+  landingPageViews: number;
+  messagingConversationsStarted: number;
 };
 
 async function fetchMetaDailyForAccount(
@@ -220,11 +269,12 @@ async function fetchMetaDailyForAccount(
   appSecret: string,
   timeRange: string
 ): Promise<Map<string, DailyAcc>> {
-  const path = `/act_${accountNumericId}/insights?fields=date_start,impressions,clicks,spend,actions,action_values&time_range=${encodeURIComponent(timeRange)}&time_increment=1&level=account&limit=500`;
+  const path = `/act_${accountNumericId}/insights?fields=date_start,impressions,clicks,inline_link_clicks,spend,actions,action_values&time_range=${encodeURIComponent(timeRange)}&time_increment=1&level=account&limit=500`;
   const rows = await graphGetAllPages<{
     date_start?: string;
     impressions?: string;
     clicks?: string;
+    inline_link_clicks?: string;
     spend?: string;
     actions?: ActionEntry[];
     action_values?: ActionEntry[];
@@ -236,17 +286,30 @@ async function fetchMetaDailyForAccount(
     if (!d) continue;
     const imp = parseInt(row.impressions ?? "0", 10) || 0;
     const clk = parseInt(row.clicks ?? "0", 10) || 0;
+    const lk = parseInt(row.inline_link_clicks ?? "0", 10) || 0;
     const sp = parseFloat(row.spend ?? "0") || 0;
-    const { leads, purchases } = aggregateActions(row.actions);
+    const { leads, purchases, messagingConversationsStarted, landingPageViews } = aggregateEngagement(row.actions);
     const cur = map.get(d);
     if (cur) {
       cur.impressions += imp;
       cur.clicks += clk;
+      cur.linkClicks += lk;
       cur.spend += sp;
       cur.leads += leads;
       cur.purchases += purchases;
+      cur.messagingConversationsStarted += messagingConversationsStarted;
+      cur.landingPageViews += landingPageViews;
     } else {
-      map.set(d, { impressions: imp, clicks: clk, spend: sp, leads, purchases });
+      map.set(d, {
+        impressions: imp,
+        clicks: clk,
+        linkClicks: lk,
+        spend: sp,
+        leads,
+        purchases,
+        messagingConversationsStarted,
+        landingPageViews,
+      });
     }
   }
   return map;
@@ -289,21 +352,60 @@ export async function fetchMetaAdsMetrics(
     let totalLeads = 0;
     let totalPurchases = 0;
     let totalPurchaseValue = 0;
+    let totalReach = 0;
+    let totalFreqWeight = 0;
+    let totalLinkClicks = 0;
+    let totalLandingPageViews = 0;
+    let totalMessagingConversationsStarted = 0;
     const campaignMap = new Map<string, MetaAdsCampaignRow>();
 
     type InsightRow = {
       impressions?: string;
       clicks?: string;
       spend?: string;
+      reach?: string;
+      frequency?: string;
+      inline_link_clicks?: string;
       campaign_name?: string;
       campaign_id?: string;
       actions?: ActionEntry[];
       action_values?: ActionEntry[];
     };
 
+    function mergeDerivedSummary(): MetaAdsMetricsSummary {
+      const imp = totalImpressions;
+      const clk = totalClicks;
+      const lk = totalLinkClicks;
+      const sp = totalSpend;
+      const s: MetaAdsMetricsSummary = {
+        impressions: imp,
+        clicks: clk,
+        spend: sp,
+        leads: totalLeads,
+        purchases: totalPurchases,
+      };
+      if (totalPurchaseValue > 0) s.purchaseValue = totalPurchaseValue;
+      if (totalReach > 0) s.reach = totalReach;
+      if (imp > 0 && totalFreqWeight > 0) s.frequency = totalFreqWeight / imp;
+      if (lk > 0) s.linkClicks = lk;
+      if (totalLandingPageViews > 0) s.landingPageViews = totalLandingPageViews;
+      if (totalMessagingConversationsStarted > 0) {
+        s.messagingConversationsStarted = totalMessagingConversationsStarted;
+      }
+      if (imp > 0) s.ctrPct = (clk / imp) * 100;
+      if (imp > 0 && lk > 0) s.linkCtrPct = (lk / imp) * 100;
+      if (clk > 0 && sp > 0) s.cpc = sp / clk;
+      if (imp > 0 && sp > 0) s.cpm = (sp / imp) * 1000;
+      if (lk > 0 && sp > 0) s.linkCpc = sp / lk;
+      if (totalLeads > 0 && sp > 0) s.cplLeads = sp / totalLeads;
+      if (totalPurchases > 0 && sp > 0) s.costPerPurchase = sp / totalPurchases;
+      if (totalPurchaseValue > 0 && sp > 0) s.roas = totalPurchaseValue / sp;
+      return s;
+    }
+
     for (const account of accounts) {
       const accountId = account.id.replace("act_", "");
-      const insightsPath = `/act_${accountId}/insights?fields=impressions,clicks,spend,actions,action_values&time_range=${encodeURIComponent(timeRange)}&level=account`;
+      const insightsPath = `/act_${accountId}/insights?fields=impressions,clicks,inline_link_clicks,spend,reach,frequency,actions,action_values&time_range=${encodeURIComponent(timeRange)}&level=account`;
       const accountInsights = await graphGet<{ data: InsightRow[] }>(
         insightsPath,
         config.access_token,
@@ -313,8 +415,13 @@ export async function fetchMetaAdsMetrics(
       if (row) {
         const imp = parseInt(row.impressions ?? "0", 10) || 0;
         const clk = parseInt(row.clicks ?? "0", 10) || 0;
+        const lk = parseInt(row.inline_link_clicks ?? "0", 10) || 0;
         const sp = parseFloat(row.spend ?? "0") || 0;
-        const { leads, purchases } = aggregateActions(row.actions);
+        const rch = parseInt(row.reach ?? "0", 10) || 0;
+        const freq = parseFloat(row.frequency ?? "0") || 0;
+        const { leads, purchases, messagingConversationsStarted, landingPageViews } = aggregateEngagement(
+          row.actions
+        );
         const pVal = aggregatePurchaseValue(row.action_values);
         totalImpressions += imp;
         totalClicks += clk;
@@ -322,9 +429,14 @@ export async function fetchMetaAdsMetrics(
         totalLeads += leads;
         totalPurchases += purchases;
         totalPurchaseValue += pVal;
+        totalReach += rch;
+        if (imp > 0 && freq > 0) totalFreqWeight += freq * imp;
+        totalLinkClicks += lk;
+        totalLandingPageViews += landingPageViews;
+        totalMessagingConversationsStarted += messagingConversationsStarted;
       }
 
-      const campaignPath = `/act_${accountId}/insights?fields=campaign_id,campaign_name,impressions,clicks,spend,actions,action_values&time_range=${encodeURIComponent(timeRange)}&level=campaign&limit=500`;
+      const campaignPath = `/act_${accountId}/insights?fields=campaign_id,campaign_name,impressions,clicks,inline_link_clicks,spend,reach,frequency,actions,action_values&time_range=${encodeURIComponent(timeRange)}&level=campaign&limit=500`;
       const campaigns = await graphGetAllPages<InsightRow & { campaign_id?: string }>(
         campaignPath,
         config.access_token,
@@ -336,16 +448,29 @@ export async function fetchMetaAdsMetrics(
         const existing = campaignMap.get(key);
         const imp = parseInt(c.impressions ?? "0", 10) || 0;
         const clk = parseInt(c.clicks ?? "0", 10) || 0;
+        const lk = parseInt(c.inline_link_clicks ?? "0", 10) || 0;
         const sp = parseFloat(c.spend ?? "0") || 0;
-        const { leads, purchases } = aggregateActions(c.actions);
+        const rch = parseInt(c.reach ?? "0", 10) || 0;
+        const freq = parseFloat(c.frequency ?? "0") || 0;
+        const { leads, purchases, messagingConversationsStarted, landingPageViews } = aggregateEngagement(c.actions);
         const pVal = aggregatePurchaseValue(c.action_values);
         if (existing) {
+          const prevImp = existing.impressions;
+          const prevFreqW = (existing.frequency ?? 0) * prevImp;
           existing.impressions += imp;
           existing.clicks += clk;
           existing.spend += sp;
           existing.leads += leads;
           existing.purchases += purchases;
           existing.purchaseValue = (existing.purchaseValue ?? 0) + pVal;
+          existing.reach = (existing.reach ?? 0) + rch;
+          if (existing.impressions > 0 && (prevFreqW > 0 || (imp > 0 && freq > 0))) {
+            existing.frequency = (prevFreqW + freq * imp) / existing.impressions;
+          }
+          existing.linkClicks = (existing.linkClicks ?? 0) + lk;
+          existing.landingPageViews = (existing.landingPageViews ?? 0) + landingPageViews;
+          existing.messagingConversationsStarted =
+            (existing.messagingConversationsStarted ?? 0) + messagingConversationsStarted;
         } else {
           const cid = (c as InsightRow).campaign_id;
           campaignMap.set(key, {
@@ -357,6 +482,12 @@ export async function fetchMetaAdsMetrics(
             leads,
             purchases,
             purchaseValue: pVal > 0 ? pVal : undefined,
+            reach: rch > 0 ? rch : undefined,
+            frequency: imp > 0 && freq > 0 ? freq : undefined,
+            linkClicks: lk > 0 ? lk : undefined,
+            landingPageViews: landingPageViews > 0 ? landingPageViews : undefined,
+            messagingConversationsStarted:
+              messagingConversationsStarted > 0 ? messagingConversationsStarted : undefined,
           });
         }
       }
@@ -372,9 +503,12 @@ export async function fetchMetaAdsMetrics(
           if (cur) {
             cur.impressions += v.impressions;
             cur.clicks += v.clicks;
+            cur.linkClicks += v.linkClicks;
             cur.spend += v.spend;
             cur.leads += v.leads;
             cur.purchases += v.purchases;
+            cur.messagingConversationsStarted += v.messagingConversationsStarted;
+            cur.landingPageViews += v.landingPageViews;
           } else {
             mergedDaily.set(d, { ...v });
           }
@@ -392,19 +526,17 @@ export async function fetchMetaAdsMetrics(
         spend: v.spend,
         leads: v.leads,
         purchases: v.purchases,
+        ...(v.linkClicks > 0 ? { linkClicks: v.linkClicks } : {}),
+        ...(v.landingPageViews > 0 ? { landingPageViews: v.landingPageViews } : {}),
+        ...(v.messagingConversationsStarted > 0
+          ? { messagingConversationsStarted: v.messagingConversationsStarted }
+          : {}),
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
     return {
       ok: true,
-      summary: {
-        impressions: totalImpressions,
-        clicks: totalClicks,
-        spend: totalSpend,
-        leads: totalLeads,
-        purchases: totalPurchases,
-        purchaseValue: totalPurchaseValue > 0 ? totalPurchaseValue : undefined,
-      },
+      summary: mergeDerivedSummary(),
       campaigns: Array.from(campaignMap.values()),
       daily,
     };
@@ -455,6 +587,7 @@ export type MetaAdsetRow = {
   spend: number;
   leads: number;
   purchases: number;
+  purchaseValue?: number;
 };
 
 export type MetaAdRow = {
@@ -467,6 +600,7 @@ export type MetaAdRow = {
   spend: number;
   leads: number;
   purchases: number;
+  purchaseValue?: number;
 };
 
 export type MetaDemographicRow = {
@@ -508,17 +642,19 @@ export async function fetchMetaAdsetMetrics(
       clicks?: string;
       spend?: string;
       actions?: ActionEntry[];
+      action_values?: ActionEntry[];
     };
     for (const account of accounts) {
       const accountId = account.id.replace("act_", "");
-      const path = `/act_${accountId}/insights?fields=adset_id,adset_name,campaign_name,impressions,clicks,spend,actions&time_range=${encodeURIComponent(timeRange)}&level=adset&limit=500`;
+      const path = `/act_${accountId}/insights?fields=adset_id,adset_name,campaign_name,impressions,clicks,spend,actions,action_values&time_range=${encodeURIComponent(timeRange)}&level=adset&limit=500`;
       const rows = await graphGetAllPages<R>(path, config.access_token, appSecret);
       for (const c of rows) {
         const key = c.adset_id ?? c.adset_name ?? Math.random().toString();
         const imp = parseInt(c.impressions ?? "0", 10) || 0;
         const clk = parseInt(c.clicks ?? "0", 10) || 0;
         const sp = parseFloat(c.spend ?? "0") || 0;
-        const { leads, purchases } = aggregateActions(c.actions);
+        const { leads, purchases } = aggregateEngagement(c.actions);
+        const pVal = aggregatePurchaseValue(c.action_values);
         const existing = map.get(key);
         if (existing) {
           existing.impressions += imp;
@@ -526,6 +662,7 @@ export async function fetchMetaAdsetMetrics(
           existing.spend += sp;
           existing.leads += leads;
           existing.purchases += purchases;
+          existing.purchaseValue = (existing.purchaseValue ?? 0) + pVal;
         } else {
           map.set(key, {
             adsetName: c.adset_name ?? "—",
@@ -536,6 +673,7 @@ export async function fetchMetaAdsetMetrics(
             spend: sp,
             leads,
             purchases,
+            purchaseValue: pVal > 0 ? pVal : undefined,
           });
         }
       }
@@ -577,17 +715,19 @@ export async function fetchMetaAdLevelMetrics(
       clicks?: string;
       spend?: string;
       actions?: ActionEntry[];
+      action_values?: ActionEntry[];
     };
     for (const account of accounts) {
       const accountId = account.id.replace("act_", "");
-      const path = `/act_${accountId}/insights?fields=ad_id,ad_name,adset_name,campaign_name,impressions,clicks,spend,actions&time_range=${encodeURIComponent(timeRange)}&level=ad&limit=500`;
+      const path = `/act_${accountId}/insights?fields=ad_id,ad_name,adset_name,campaign_name,impressions,clicks,spend,actions,action_values&time_range=${encodeURIComponent(timeRange)}&level=ad&limit=500`;
       const rows = await graphGetAllPages<R>(path, config.access_token, appSecret);
       for (const c of rows) {
         const key = c.ad_id ?? c.ad_name ?? Math.random().toString();
         const imp = parseInt(c.impressions ?? "0", 10) || 0;
         const clk = parseInt(c.clicks ?? "0", 10) || 0;
         const sp = parseFloat(c.spend ?? "0") || 0;
-        const { leads, purchases } = aggregateActions(c.actions);
+        const { leads, purchases } = aggregateEngagement(c.actions);
+        const pVal = aggregatePurchaseValue(c.action_values);
         const existing = map.get(key);
         if (existing) {
           existing.impressions += imp;
@@ -595,6 +735,7 @@ export async function fetchMetaAdLevelMetrics(
           existing.spend += sp;
           existing.leads += leads;
           existing.purchases += purchases;
+          existing.purchaseValue = (existing.purchaseValue ?? 0) + pVal;
         } else {
           map.set(key, {
             adName: c.ad_name ?? "—",
@@ -606,6 +747,7 @@ export async function fetchMetaAdLevelMetrics(
             spend: sp,
             leads,
             purchases,
+            purchaseValue: pVal > 0 ? pVal : undefined,
           });
         }
       }

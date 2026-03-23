@@ -82,8 +82,22 @@ export function aggregateMeta(rows: MetaAdsCampaignRow[]) {
       leads: acc.leads + r.leads,
       purchases: acc.purchases + r.purchases,
       purchaseValue: acc.purchaseValue + (r.purchaseValue ?? 0),
+      messagingConversationsStarted:
+        acc.messagingConversationsStarted + (r.messagingConversationsStarted ?? 0),
+      landingPageViews: acc.landingPageViews + (r.landingPageViews ?? 0),
+      linkClicks: acc.linkClicks + (r.linkClicks ?? 0),
     }),
-    { impressions: 0, clicks: 0, spend: 0, leads: 0, purchases: 0, purchaseValue: 0 }
+    {
+      impressions: 0,
+      clicks: 0,
+      spend: 0,
+      leads: 0,
+      purchases: 0,
+      purchaseValue: 0,
+      messagingConversationsStarted: 0,
+      landingPageViews: 0,
+      linkClicks: 0,
+    }
   );
 }
 
@@ -228,7 +242,7 @@ export function splitHotColdLeadsSpend(
   }
   for (const r of metaRows) {
     const h = isHotCampaignName(r.campaignName);
-    const vol = r.leads + r.purchases;
+    const vol = r.leads + (r.messagingConversationsStarted ?? 0) + r.purchases;
     const sp = r.spend;
     if (h) {
       hotLeads += vol;
@@ -256,7 +270,7 @@ export function gradeDistributionFromCampaigns(
     items.push({ ctr, weight: Math.max(1, w) });
   }
   for (const r of metaRows) {
-    const w = r.leads + r.purchases + r.clicks * 0.1;
+    const w = r.leads + (r.messagingConversationsStarted ?? 0) + r.purchases + r.clicks * 0.1;
     if (w <= 0 && r.impressions <= 0) continue;
     const ctr = r.impressions > 0 ? r.clicks / r.impressions : 0;
     items.push({ ctr, weight: Math.max(1, w) });
@@ -330,7 +344,7 @@ export function enrichCampaignsWithGrades(
     });
   }
   for (const r of metaRows) {
-    const w = r.leads + r.purchases + r.clicks * 0.1;
+    const w = r.leads + (r.messagingConversationsStarted ?? 0) + r.purchases + r.clicks * 0.1;
     if (w <= 0 && r.impressions <= 0) continue;
     const ctr = r.impressions > 0 ? r.clicks / r.impressions : 0;
     items.push({

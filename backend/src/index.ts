@@ -10,6 +10,7 @@ import marketingRoutes from "./routes/marketing.routes.js";
 import workspaceRoutes from "./routes/workspace.routes.js";
 import organizationRoutes from "./routes/organization.routes.js";
 import platformRoutes from "./routes/platform.routes.js";
+import resellerRoutes from "./routes/reseller.routes.js";
 
 const app = express();
 
@@ -62,6 +63,7 @@ app.use("/api/marketing", marketingRoutes);
 app.use("/api/workspace", workspaceRoutes);
 app.use("/api/organization", organizationRoutes);
 app.use("/api/platform", platformRoutes);
+app.use("/api/reseller", resellerRoutes);
 
 app.use((_req, res) => {
   res.status(404).json({ message: "Rota não encontrada" });

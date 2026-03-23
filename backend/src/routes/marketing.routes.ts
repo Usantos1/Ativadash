@@ -3,6 +3,7 @@ import { authMiddleware } from "../middlewares/auth.middleware.js";
 import {
   getGoogleAdsMetricsHandler,
   getMetaAdsMetricsHandler,
+  getMarketingDashboardHandler,
   getMarketingSettingsHandler,
   putMarketingSettingsHandler,
   postMarketingInsightsHandler,
@@ -26,6 +27,7 @@ router.get("/google-ads/search-terms", authMiddleware, getGoogleSearchTermsHandl
 router.post("/google-ads/campaign-mutate-stub", authMiddleware, postGoogleCampaignMutateStubHandler);
 
 router.get("/meta-ads/metrics", authMiddleware, getMetaAdsMetricsHandler);
+router.get("/dashboard", authMiddleware, getMarketingDashboardHandler);
 router.get("/meta-ads/adsets", authMiddleware, getMetaAdsetsHandler);
 router.get("/meta-ads/ads", authMiddleware, getMetaAdsLevelHandler);
 router.get("/meta-ads/demographics", authMiddleware, getMetaDemographicsHandler);

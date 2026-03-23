@@ -130,9 +130,9 @@ export function useMarketingFilteredAggregates() {
     [dateRange.startDate, dateRange.endDate, metaDaily, metaScale, chartScale]
   );
 
-  const leadsReais = aggG.conversions + aggM.leads;
+  const leadsReais = aggG.conversions + aggM.leads + aggM.messagingConversationsStarted;
   const prevFilteredSpend = cmpAggG.costMicros / 1_000_000 + cmpAggM.spend;
-  const prevLeadsReais = cmpAggG.conversions + cmpAggM.leads;
+  const prevLeadsReais = cmpAggG.conversions + cmpAggM.leads + cmpAggM.messagingConversationsStarted;
   const prevAttributedRevenue = cmpAggG.conversionsValue + cmpAggM.purchaseValue;
 
   const attributedRevenue = aggG.conversionsValue + aggM.purchaseValue;

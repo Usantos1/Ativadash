@@ -21,3 +21,8 @@ export function formatSpend(value: number): string {
 export function formatNumber(n: number): string {
   return new Intl.NumberFormat("pt-BR").format(n);
 }
+
+export function formatPercent(value: number | null | undefined, fractionDigits = 1): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return `${value.toFixed(fractionDigits).replace(".", ",")}%`;
+}

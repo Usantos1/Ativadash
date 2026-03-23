@@ -1,4 +1,5 @@
-import type { WorkspaceStatus } from "@prisma/client";
+import type { ResellerOrgKind, WorkspaceStatus } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../utils/prisma.js";
 import { slugifyOrganizationName, uniqueOrganizationSlug } from "../utils/org-slug.js";
 import {
@@ -12,7 +13,7 @@ import {
   resolveBillingOrganizationId,
   resolveEffectivePlan,
 } from "./plan-limits.service.js";
-import { mergePlanFeatures } from "../utils/plan-features.js";
+import { mergePlanFeaturesWithOverrides } from "../utils/plan-features.js";
 import { syncSubscriptionFromOrgPlan } from "./platform.service.js";
 
 export async function getOrganizationContext(organizationId: string, userId: string) {
@@ -99,12 +100,13 @@ export async function getOrganizationContext(organizationId: string, userId: str
     };
   }
 
-  const enabledFeatures = mergePlanFeatures(templatePlan);
+  const enabledFeatures = mergePlanFeaturesWithOverrides(templatePlan, org.featureOverrides);
 
   return {
     id: org.id,
     name: org.name,
     slug: org.slug,
+    featureOverrides: org.featureOverrides ?? null,
     parentOrganization: org.parentOrganization,
     plan: planContext.plan,
     planSource: planContext.planSource,
@@ -141,7 +143,12 @@ export async function createChildOrganization(
   parentOrganizationId: string,
   userId: string,
   name: string,
-  options?: { inheritPlanFromParent?: boolean; planId?: string | null; workspaceNote?: string | null }
+  options?: {
+    inheritPlanFromParent?: boolean;
+    planId?: string | null;
+    workspaceNote?: string | null;
+    resellerOrgKind?: ResellerOrgKind;
+  }
 ) {
   await assertDirectOrgAdmin(userId, parentOrganizationId);
   await assertCanAddChildOrganization(parentOrganizationId);
@@ -161,6 +168,7 @@ export async function createChildOrganization(
       inheritPlanFromParent: inherit,
       planId,
       workspaceNote: note && note.length > 0 ? note : null,
+      resellerOrgKind: options?.resellerOrgKind ?? "CLIENT",
     },
   });
   if (!inherit && planId) {
@@ -174,6 +182,7 @@ export async function createChildOrganization(
     planId: org.planId,
     workspaceStatus: org.workspaceStatus,
     workspaceNote: org.workspaceNote,
+    resellerOrgKind: org.resellerOrgKind,
   };
 }
 
@@ -220,7 +229,13 @@ export async function updateChildOrganizationByParent(
   parentOrganizationId: string,
   userId: string,
   childId: string,
-  data: { name?: string; workspaceStatus?: WorkspaceStatus; workspaceNote?: string | null }
+  data: {
+    name?: string;
+    workspaceStatus?: WorkspaceStatus;
+    workspaceNote?: string | null;
+    resellerOrgKind?: ResellerOrgKind;
+    featureOverrides?: Record<string, boolean> | null;
+  }
 ) {
   await assertDirectOrgAdmin(userId, parentOrganizationId);
   const child = await prisma.organization.findFirst({
@@ -233,6 +248,8 @@ export async function updateChildOrganizationByParent(
     name?: string;
     workspaceStatus?: WorkspaceStatus;
     workspaceNote?: string | null;
+    resellerOrgKind?: ResellerOrgKind;
+    featureOverrides?: Prisma.InputJsonValue | typeof Prisma.JsonNull;
   } = {};
   if (data.name !== undefined) {
     patch.name = data.name.trim();
@@ -244,6 +261,13 @@ export async function updateChildOrganizationByParent(
     const n = data.workspaceNote?.trim();
     patch.workspaceNote = n && n.length > 0 ? n : null;
   }
+  if (data.resellerOrgKind !== undefined) {
+    patch.resellerOrgKind = data.resellerOrgKind;
+  }
+  if (data.featureOverrides !== undefined) {
+    patch.featureOverrides =
+      data.featureOverrides === null ? Prisma.DbNull : (data.featureOverrides as Prisma.InputJsonValue);
+  }
   const updated = await prisma.organization.update({
     where: { id: childId },
     data: patch,
@@ -254,6 +278,8 @@ export async function updateChildOrganizationByParent(
       inheritPlanFromParent: true,
       workspaceStatus: true,
       workspaceNote: true,
+      resellerOrgKind: true,
+      featureOverrides: true,
       createdAt: true,
     },
   });
@@ -296,6 +322,26 @@ export async function listChildOrganizationsOperationsDashboard(
     inheritPlanFromParent: boolean;
     workspaceStatus: WorkspaceStatus;
     workspaceNote: string | null;
+    resellerOrgKind: ResellerOrgKind | null;
+    planId: string | null;
+    plan: { id: string; name: string; slug: string } | null;
+    featureOverrides: unknown;
+    subscription: {
+      id: string;
+      billingMode: string;
+      status: string;
+      renewsAt: string | null;
+      startedAt: string;
+      planId: string;
+    } | null;
+    limitsOverride: {
+      maxUsers: number | null;
+      maxIntegrations: number | null;
+      maxDashboards: number | null;
+      maxClientAccounts: number | null;
+      maxChildOrganizations: number | null;
+      notes: string | null;
+    } | null;
     memberCount: number;
     pendingInvitationsCount: number;
     dashboardCount: number;
@@ -336,6 +382,30 @@ export async function listChildOrganizationsOperationsDashboard(
       inheritPlanFromParent: true,
       workspaceStatus: true,
       workspaceNote: true,
+      resellerOrgKind: true,
+      planId: true,
+      featureOverrides: true,
+      plan: { select: { id: true, name: true, slug: true } },
+      subscription: {
+        select: {
+          id: true,
+          billingMode: true,
+          status: true,
+          renewsAt: true,
+          startedAt: true,
+          planId: true,
+        },
+      },
+      limitsOverride: {
+        select: {
+          maxUsers: true,
+          maxIntegrations: true,
+          maxDashboards: true,
+          maxClientAccounts: true,
+          maxChildOrganizations: true,
+          notes: true,
+        },
+      },
     },
     orderBy: { name: "asc" },
   });
@@ -512,6 +582,21 @@ export async function listChildOrganizationsOperationsDashboard(
       inheritPlanFromParent: c.inheritPlanFromParent,
       workspaceStatus: c.workspaceStatus,
       workspaceNote: c.workspaceNote,
+      resellerOrgKind: c.resellerOrgKind,
+      planId: c.planId,
+      plan: c.plan,
+      featureOverrides: c.featureOverrides ?? null,
+      subscription: c.subscription
+        ? {
+            id: c.subscription.id,
+            billingMode: c.subscription.billingMode,
+            status: c.subscription.status,
+            renewsAt: c.subscription.renewsAt?.toISOString() ?? null,
+            startedAt: c.subscription.startedAt.toISOString(),
+            planId: c.subscription.planId,
+          }
+        : null,
+      limitsOverride: c.limitsOverride,
       memberCount: m,
       pendingInvitationsCount: pendingInv.get(c.id) ?? 0,
       dashboardCount: d,

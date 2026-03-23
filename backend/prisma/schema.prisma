@@ -15,11 +15,19 @@ enum WorkspaceStatus {
   ARCHIVED
 }
 
+/// Tipo de organização filha no ecossistema da matriz (painel /revenda)
+enum ResellerOrgKind {
+  AGENCY
+  CLIENT
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
   password  String
   name      String
+  /// Suspensão administrativa (matriz / plataforma): bloqueia login
+  suspendedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   deletedAt DateTime?
@@ -54,6 +62,10 @@ model Organization {
   workspaceStatus WorkspaceStatus @default(ACTIVE)
   /// Observação interna visível na gestão de workspaces (matriz)
   workspaceNote   String?         @db.Text
+  /// Filho: agência revenda vs empresa final. Matriz: null.
+  resellerOrgKind ResellerOrgKind?
+  /// Sobrescreve flags do plano (merge parcial sobre Plan.features JSON)
+  featureOverrides Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   deletedAt DateTime?
@@ -72,6 +84,20 @@ model Organization {
   metricsSnapshots MetricsSnapshot[]
 
   @@index([parentOrganizationId])
+}
+
+/// Trilha de auditoria do painel master de revenda (escopo matriz)
+model ResellerAuditLog {
+  id          String   @id @default(cuid())
+  matrixOrgId String
+  actorUserId String
+  action      String
+  entityType  String
+  entityId    String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([matrixOrgId, createdAt])
 }
 
 /// Convite por e-mail para novo membro da organização

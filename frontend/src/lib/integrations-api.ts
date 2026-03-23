@@ -70,7 +70,16 @@ export interface GoogleAdsMetricsResponse {
   daily?: GoogleAdsDailyRow[];
 }
 
-export type GoogleAdsMetricsResult = GoogleAdsMetricsResponse | { ok: false; message: string };
+export type GoogleAdsMetricsErrorCode =
+  | "NOT_CONNECTED"
+  | "MISSING_DEVELOPER_TOKEN"
+  | "TOKEN_REFRESH_FAILED"
+  | "API_PENDING_OR_RESTRICTED"
+  | "UNKNOWN";
+
+export type GoogleAdsMetricsResult =
+  | GoogleAdsMetricsResponse
+  | { ok: false; code: GoogleAdsMetricsErrorCode; message: string };
 
 /** Intervalo em YYYY-MM-DD (fuso da conta / backend). */
 export type MetricsDateRange = { startDate: string; endDate: string };
@@ -105,6 +114,19 @@ export interface MetaAdsMetricsSummary {
   purchases: number;
   purchaseValue?: number;
   conversions?: number;
+  reach?: number;
+  frequency?: number;
+  linkClicks?: number;
+  landingPageViews?: number;
+  messagingConversationsStarted?: number;
+  ctrPct?: number;
+  linkCtrPct?: number;
+  cpc?: number;
+  cpm?: number;
+  linkCpc?: number;
+  cplLeads?: number;
+  costPerPurchase?: number;
+  roas?: number;
 }
 
 export interface MetaAdsCampaignRow {
@@ -117,6 +139,11 @@ export interface MetaAdsCampaignRow {
   purchases: number;
   purchaseValue?: number;
   conversions?: number;
+  reach?: number;
+  frequency?: number;
+  linkClicks?: number;
+  landingPageViews?: number;
+  messagingConversationsStarted?: number;
 }
 
 export interface MetaAdsDailyRow {
@@ -126,7 +153,37 @@ export interface MetaAdsDailyRow {
   spend: number;
   leads: number;
   purchases: number;
+  linkClicks?: number;
+  landingPageViews?: number;
+  messagingConversationsStarted?: number;
 }
+
+export type MetaAdsetRow = {
+  adsetName: string;
+  adsetId?: string;
+  campaignName?: string;
+  impressions: number;
+  clicks: number;
+  spend: number;
+  leads: number;
+  purchases: number;
+  purchaseValue?: number;
+};
+
+export type MetaAdRow = {
+  adName: string;
+  adId?: string;
+  adsetName?: string;
+  campaignName?: string;
+  impressions: number;
+  clicks: number;
+  spend: number;
+  leads: number;
+  purchases: number;
+  purchaseValue?: number;
+};
+
+export type MetaDeepResult<T> = { ok: true; rows: T[] } | { ok: false; message: string };
 
 export interface MetaAdsMetricsResponse {
   ok: true;
@@ -145,6 +202,26 @@ export async function fetchMetaAdsMetrics(
       `/marketing/meta-ads/metrics?${metricsQuery(range)}`
     );
     return res;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchMetaAdsetsMetrics(
+  range: MetricsDateRange
+): Promise<MetaDeepResult<MetaAdsetRow> | null> {
+  try {
+    return await api.get<MetaDeepResult<MetaAdsetRow>>(`/marketing/meta-ads/adsets?${metricsQuery(range)}`);
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchMetaAdsByAdLevel(
+  range: MetricsDateRange
+): Promise<MetaDeepResult<MetaAdRow> | null> {
+  try {
+    return await api.get<MetaDeepResult<MetaAdRow>>(`/marketing/meta-ads/ads?${metricsQuery(range)}`);
   } catch {
     return null;
   }

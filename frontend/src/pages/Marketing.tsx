@@ -257,9 +257,9 @@ export function Marketing() {
     [dateRange.startDate, dateRange.endDate, metaDaily, metaScale, chartScale]
   );
 
-  const leadsReais = aggG.conversions + aggM.leads;
+  const leadsReais = aggG.conversions + aggM.leads + aggM.messagingConversationsStarted;
   const prevFilteredSpend = cmpAggG.costMicros / 1_000_000 + cmpAggM.spend;
-  const prevLeadsReais = cmpAggG.conversions + cmpAggM.leads;
+  const prevLeadsReais = cmpAggG.conversions + cmpAggM.leads + cmpAggM.messagingConversationsStarted;
   const prevAttributedRevenue = cmpAggG.conversionsValue + cmpAggM.purchaseValue;
 
   const attributedRevenue = aggG.conversionsValue + aggM.purchaseValue;
@@ -313,7 +313,10 @@ export function Marketing() {
   }, [metrics?.ok, metaMetrics?.ok, googleCampaignsFiltered, metaCampaignsFiltered]);
 
   const mqlNumerator = aggG.conversions + aggM.purchases;
-  const mqlDen = Math.max(1, aggG.conversions + aggM.leads + aggM.purchases);
+  const mqlDen = Math.max(
+    1,
+    aggG.conversions + aggM.leads + aggM.messagingConversationsStarted + aggM.purchases
+  );
   const mqlPct = (mqlNumerator / mqlDen) * 100;
   const cpaTrafego = leadsReais > 0 ? filteredSpend / leadsReais : 0;
   const surveyRatePct = clicksT > 0 ? (leadsReais / clicksT) * 100 : null;

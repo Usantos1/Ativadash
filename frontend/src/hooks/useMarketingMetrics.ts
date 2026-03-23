@@ -17,8 +17,21 @@ import {
   type MarketingPresetId,
 } from "@/lib/marketing-date-presets";
 import type { DateFilterApplyPayload } from "@/components/marketing/MarketingDateRangeDialog";
+import type { MarketingDashboardSummary } from "@/lib/marketing-dashboard-api";
+import { buildInsightTotalsFromDashboardSummary } from "@/lib/marketing-totals";
 
-export function useMarketingMetrics() {
+export type InsightTotalsInput = {
+  totalSpendBrl: number;
+  totalResults: number;
+  totalAttributedValueBrl: number;
+} | null;
+
+export function useMarketingMetrics(opts?: {
+  /** Se definido, substitui buildInsightTotals (ex.: totais vindos de GET /marketing/dashboard). */
+  insightTotalsOverride?: InsightTotalsInput | undefined;
+  /** Resumo Meta do dashboard agregado; combinado com Google de `metrics` para alertas. */
+  dashboardMetaSummary?: MarketingDashboardSummary | undefined;
+}) {
   const [dateRange, setDateRange] = useState<MetricsDateRange>(() => defaultLast30ApiRange());
   const [dateRangeLabel, setDateRangeLabel] = useState("Últimos 30 dias");
   const [presetId, setPresetId] = useState<MarketingPresetId>("last_30d");
@@ -73,7 +86,7 @@ export function useMarketingMetrics() {
       if (!data) {
         setMetrics(null);
         setMetricsError(
-          "Não foi possível carregar os dados. Verifique se o Developer Token do Google Ads está configurado no servidor."
+          "Não foi possível sincronizar o Google Ads agora. O painel segue com os dados da Meta Ads."
         );
       } else if (!data.ok) {
         setMetrics(null);
@@ -99,10 +112,14 @@ export function useMarketingMetrics() {
       const data = await fetchMetaAdsMetrics(dateRange);
       if (!data) {
         setMetaMetrics(null);
-        setMetaMetricsError("Não foi possível carregar os dados do Meta Ads.");
+        setMetaMetricsError("Não foi possível carregar os dados do Meta Ads. Tente atualizar em instantes.");
       } else if (!data.ok) {
         setMetaMetrics(null);
-        setMetaMetricsError(data.message);
+        setMetaMetricsError(
+          data.message.includes("META_APP_SECRET")
+            ? "Dados da Meta temporariamente indisponíveis neste ambiente."
+            : data.message
+        );
       } else {
         setMetaMetrics(data);
         setMetaMetricsError(null);
@@ -160,7 +177,18 @@ export function useMarketingMetrics() {
   }, [compareEnabled, compareRange, hasGoogle, hasMeta, loadComparison]);
 
   const insightPeriod = inferInsightPeriod(dateRange.startDate, dateRange.endDate);
-  const insightTotals = useMemo(() => buildInsightTotals(metrics, metaMetrics), [metrics, metaMetrics]);
+  const insightTotals = useMemo(() => {
+    if (opts?.insightTotalsOverride !== undefined) {
+      return opts.insightTotalsOverride;
+    }
+    if (opts?.dashboardMetaSummary != null) {
+      return buildInsightTotalsFromDashboardSummary(
+        opts.dashboardMetaSummary,
+        metrics?.ok === true ? metrics : null
+      );
+    }
+    return buildInsightTotals(metrics, metaMetrics);
+  }, [opts?.insightTotalsOverride, opts?.dashboardMetaSummary, metrics, metaMetrics]);
   const { data: insightData, loading: insightLoading } = usePerformanceInsights(
     insightPeriod,
     insightTotals,

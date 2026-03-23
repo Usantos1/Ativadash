@@ -253,6 +253,9 @@ export async function login(data: LoginInput) {
   if (!valid) {
     throw new Error("E-mail ou senha inválidos");
   }
+  if (user.suspendedAt) {
+    throw new Error("Conta suspensa. Contate o administrador da sua empresa.");
+  }
   const membership = await prisma.membership.findFirst({
     where: { userId: user.id },
     orderBy: { createdAt: "asc" },
@@ -352,6 +355,9 @@ export async function switchActiveOrganization(userId: string, targetOrganizatio
   });
   if (!user) {
     throw new Error("Usuário não encontrado");
+  }
+  if (user.suspendedAt) {
+    throw new Error("Conta suspensa. Contate o administrador da sua empresa.");
   }
   const { accessToken, refreshToken } = await createTokens(userId, user.email, targetOrganizationId);
   await saveRefreshToken(userId, refreshToken);
