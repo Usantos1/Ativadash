@@ -1,5 +1,5 @@
 import { prisma } from "../utils/prisma.js";
-import { env } from "../config/env.js";
+import { computeGoogleAdsIntegrationUiStatus } from "../utils/google-ads-readiness.js";
 import {
   fetchMarketingDashboardPayload,
   type MarketingDashboardPayload,
@@ -91,10 +91,7 @@ export async function getDashboardIntegrationStatusCached(
   const metaInt = integrations.find((i) => i.slug === META_SLUG);
   const googleInt = integrations.find((i) => i.slug === GOOGLE_SLUG);
   const googleConnected = googleInt?.status === "connected";
-  let googleStatus: "pending_approval" | "connected" | "not_connected" = googleConnected
-    ? "connected"
-    : "not_connected";
-  if (env.GOOGLE_ADS_UX_PENDING) googleStatus = "pending_approval";
+  const googleStatus = computeGoogleAdsIntegrationUiStatus(googleConnected);
 
   const value: DashboardIntegrationPayload = {
     ok: true,

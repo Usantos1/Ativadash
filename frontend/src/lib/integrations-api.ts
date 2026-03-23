@@ -72,6 +72,8 @@ export interface GoogleAdsMetricsResponse {
 
 export type GoogleAdsMetricsErrorCode =
   | "NOT_CONNECTED"
+  | "pending_configuration"
+  | "api_not_ready"
   | "MISSING_DEVELOPER_TOKEN"
   | "TOKEN_REFRESH_FAILED"
   | "API_PENDING_OR_RESTRICTED"

@@ -9,6 +9,7 @@
 | 00 | `00-indice-e-resumo-executivo.md` | Este arquivo |
 | — | [`DECISOES-FECHADAS-FASE1.md`](DECISOES-FECHADAS-FASE1.md) | **Decisões congeladas** para implementação (org, subscription, grants, contexto) |
 | — | [`FASE1-IMPLEMENTACAO.md`](FASE1-IMPLEMENTACAO.md) | **Entrega Fase 1** no backend (migrations, APIs, autorização, testes) |
+| — | [`CHECKLIST-VALIDACAO-POS-FASE1.md`](CHECKLIST-VALIDACAO-POS-FASE1.md) | **Validação** pós-deploy (endpoints, SQL, tenancy, Google Ads) |
 | 01 | [`01-schema-prisma-dominio.md`](01-schema-prisma-dominio.md) | Schema Prisma alvo: modelos, campos, índices, relações, regras |
 | 02 | [`02-matriz-permissoes.md`](02-matriz-permissoes.md) | RBAC, capabilities, grants, casos de uso |
 | 03 | [`03-contrato-apis.md`](03-contrato-apis.md) | Endpoints: método, payload, resposta, permissão, auditoria |

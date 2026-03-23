@@ -104,7 +104,7 @@ export function buildDashboardQuickInsights(params: {
     list.push({
       id: "google",
       icon: Plug,
-      text: "Google Ads em ativação.",
+      text: "Google Ads: aguardando configuração do servidor ou liberação da API.",
       tone: "muted",
     });
   }

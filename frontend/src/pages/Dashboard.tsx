@@ -50,8 +50,19 @@ import {
   DashboardQuickInsightsStrip,
 } from "@/components/dashboard/dashboard-quick-insights";
 
-const GOOGLE_ADS_ACTIVATION_COPY =
-  "Google Ads em ativação. A integração ainda está em análise. Quando for aprovada, os dados aparecerão automaticamente aqui.";
+const GOOGLE_ADS_API_NOT_READY_COPY =
+  "Google Ads em preparação neste ambiente. Quando a API estiver liberada, os dados aparecerão automaticamente.";
+
+const GOOGLE_ADS_PENDING_CONFIGURATION_COPY =
+  "Google Ads conectado, mas o servidor ainda não tem o Developer Token (GOOGLE_ADS_DEVELOPER_TOKEN). Configure na API para habilitar métricas.";
+
+function googleAdsPendingHint(
+  status: "api_not_ready" | "pending_configuration" | "connected" | "not_connected"
+): string {
+  if (status === "pending_configuration") return GOOGLE_ADS_PENDING_CONFIGURATION_COPY;
+  if (status === "api_not_ready") return GOOGLE_ADS_API_NOT_READY_COPY;
+  return GOOGLE_ADS_API_NOT_READY_COPY;
+}
 
 function relDelta(
   current: number,
@@ -160,7 +171,9 @@ export function Dashboard() {
   const displayUpdatedAt = dashUpdatedAt ?? null;
 
   const googlePending =
-    metaOk && dash.integrationStatus.googleAds.status === "pending_approval";
+    metaOk &&
+    (dash.integrationStatus.googleAds.status === "api_not_ready" ||
+      dash.integrationStatus.googleAds.status === "pending_configuration");
 
   const quickInsights = useMemo(() => {
     if (!metaOk || !dash || dash.ok !== true) return [];
@@ -750,7 +763,9 @@ export function Dashboard() {
                     </span>
                   </div>
                   {googlePending ? (
-                    <p className="text-xs leading-relaxed text-muted-foreground">{GOOGLE_ADS_ACTIVATION_COPY}</p>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      {googleAdsPendingHint(dash.integrationStatus.googleAds.status)}
+                    </p>
                   ) : hasGoogle && !googleOk && !metricsLoading ? (
                     <p className="text-xs leading-relaxed text-muted-foreground">
                       {metricsError ?? "Métricas de busca indisponíveis no momento."}

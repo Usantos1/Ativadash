@@ -1,5 +1,9 @@
 import { env } from "../config/env.js";
 import { prisma } from "../utils/prisma.js";
+import {
+  isGoogleAdsDeveloperTokenConfigured,
+  isGoogleAdsUxPending,
+} from "../utils/google-ads-readiness.js";
 
 const GOOGLE_ADS_SLUG = "google-ads";
 const API_VERSION = "v20";
@@ -39,6 +43,9 @@ export interface GoogleAdsDailyRow {
 
 export type GoogleAdsMetricsErrorCode =
   | "NOT_CONNECTED"
+  | "pending_configuration"
+  | "api_not_ready"
+  /** @deprecated use pending_configuration */
   | "MISSING_DEVELOPER_TOKEN"
   | "TOKEN_REFRESH_FAILED"
   | "API_PENDING_OR_RESTRICTED"
@@ -54,12 +61,39 @@ const MSG_GOOGLE_PENDING =
 const MSG_GOOGLE_SOFT_UNAVAILABLE =
   "Não foi possível carregar o Google Ads agora. O painel segue com os dados da Meta Ads; tentaremos novamente quando a integração estiver liberada.";
 
+const MSG_PENDING_CONFIGURATION =
+  "Google Ads: o servidor ainda não tem o Developer Token configurado. Defina GOOGLE_ADS_DEVELOPER_TOKEN no ambiente da API para habilitar as consultas.";
+
+const MSG_API_NOT_READY =
+  "Google Ads: integração em preparação neste ambiente. Os dados aparecerão quando a API estiver liberada.";
+
+/** Evita spam de log em erros repetidos (ex.: painel em polling). */
+const googleAdsLogThrottle = new Map<string, number>();
+const GOOGLE_ADS_LOG_THROTTLE_MS = 120_000;
+
+function shouldLogGoogleAdsTechnical(key: string): boolean {
+  const now = Date.now();
+  const prev = googleAdsLogThrottle.get(key) ?? 0;
+  if (now - prev < GOOGLE_ADS_LOG_THROTTLE_MS) return false;
+  googleAdsLogThrottle.set(key, now);
+  return true;
+}
+
+const SILENT_FAILURE_CODES = new Set<GoogleAdsMetricsErrorCode>([
+  "NOT_CONNECTED",
+  "pending_configuration",
+  "api_not_ready",
+  "MISSING_DEVELOPER_TOKEN",
+]);
+
 function googleAdsFailure(
   code: GoogleAdsMetricsErrorCode,
   message: string,
   technical?: string
 ): GoogleAdsMetricsResult {
-  if (technical) console.error("[Google Ads]", code, technical);
+  if (technical && !SILENT_FAILURE_CODES.has(code) && shouldLogGoogleAdsTechnical(`fail:${code}`)) {
+    console.warn("[Google Ads]", code, technical.length > 400 ? `${technical.slice(0, 400)}…` : technical);
+  }
   return { ok: false, code, message };
 }
 
@@ -77,7 +111,10 @@ function classifyGoogleAdsError(raw: string): GoogleAdsMetricsResult {
     t.includes("basic access") ||
     t.includes("standard access")
   ) {
-    return googleAdsFailure("API_PENDING_OR_RESTRICTED", MSG_GOOGLE_PENDING, raw);
+    if (shouldLogGoogleAdsTechnical("classify:api_restricted")) {
+      console.warn("[Google Ads] API_PENDING_OR_RESTRICTED", raw.length > 400 ? `${raw.slice(0, 400)}…` : raw);
+    }
+    return googleAdsFailure("API_PENDING_OR_RESTRICTED", MSG_GOOGLE_PENDING);
   }
   if (t.includes("invalid_grant") || t.includes("unauthorized") || t.includes("401")) {
     return googleAdsFailure("TOKEN_REFRESH_FAILED", MSG_GOOGLE_SOFT_UNAVAILABLE, raw);
@@ -134,10 +171,15 @@ async function refreshAndSaveGoogleAdsToken(
   return config.access_token;
 }
 
-async function listAccessibleCustomers(accessToken: string): Promise<string[]> {
+async function listAccessibleCustomers(accessToken: string, developerToken: string): Promise<string[]> {
   const res = await fetch(
     `https://googleads.googleapis.com/${API_VERSION}/customers:listAccessibleCustomers`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "developer-token": developerToken,
+      },
+    }
   );
   if (!res.ok) {
     const text = await res.text();
@@ -316,17 +358,15 @@ export async function fetchGoogleAdsMetrics(
     );
   }
 
-  if (env.GOOGLE_ADS_UX_PENDING) {
-    return googleAdsFailure("API_PENDING_OR_RESTRICTED", MSG_GOOGLE_PENDING, "GOOGLE_ADS_UX_PENDING=true");
+  if (isGoogleAdsUxPending()) {
+    return googleAdsFailure("api_not_ready", MSG_API_NOT_READY);
   }
 
-  if (!env.GOOGLE_ADS_DEVELOPER_TOKEN) {
-    return googleAdsFailure(
-      "MISSING_DEVELOPER_TOKEN",
-      MSG_GOOGLE_PENDING,
-      "GOOGLE_ADS_DEVELOPER_TOKEN ausente"
-    );
+  if (!isGoogleAdsDeveloperTokenConfigured()) {
+    return googleAdsFailure("pending_configuration", MSG_PENDING_CONFIGURATION);
   }
+
+  const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN.trim();
 
   let accessToken = config.access_token;
   const now = Date.now();
@@ -341,7 +381,7 @@ export async function fetchGoogleAdsMetrics(
   }
 
   try {
-    const customerIds = await listAccessibleCustomers(accessToken);
+    const customerIds = await listAccessibleCustomers(accessToken, developerToken);
     if (customerIds.length === 0) {
       return {
         ok: true,
@@ -351,17 +391,14 @@ export async function fetchGoogleAdsMetrics(
       };
     }
     const customerId = customerIds[0];
-    const { summary, campaigns } = await searchStream(
-      accessToken,
-      env.GOOGLE_ADS_DEVELOPER_TOKEN,
-      customerId,
-      range
-    );
+    const { summary, campaigns } = await searchStream(accessToken, developerToken, customerId, range);
     let daily: GoogleAdsDailyRow[] = [];
     try {
-      daily = await searchStreamDaily(accessToken, env.GOOGLE_ADS_DEVELOPER_TOKEN, customerId, range);
+      daily = await searchStreamDaily(accessToken, developerToken, customerId, range);
     } catch (e) {
-      console.error("[Google Ads] daily series:", e instanceof Error ? e.message : e);
+      if (shouldLogGoogleAdsTechnical("daily:series")) {
+        console.warn("[Google Ads] daily series:", e instanceof Error ? e.message : e);
+      }
     }
     return { ok: true, summary, campaigns, daily };
   } catch (e) {
@@ -402,22 +439,23 @@ async function googleSearchStreamResults(
   return results;
 }
 
-async function resolveGoogleAdsCustomer(
-  organizationId: string
-): Promise<
+export type ResolveGoogleAdsCustomerResult =
   | { ok: true; accessToken: string; customerId: string }
-  | { ok: false; message: string }
-> {
+  | { ok: false; code: GoogleAdsMetricsErrorCode; message: string };
+
+async function resolveGoogleAdsCustomer(organizationId: string): Promise<ResolveGoogleAdsCustomerResult> {
   const config = await getGoogleAdsConfig(organizationId);
   if (!config) {
-    return { ok: false, message: "Google Ads não conectado para esta organização." };
+    return { ok: false, code: "NOT_CONNECTED", message: "Google Ads não conectado para esta organização." };
   }
-  if (!env.GOOGLE_ADS_DEVELOPER_TOKEN) {
-    return {
-      ok: false,
-      message: "Developer Token do Google Ads não configurado (GOOGLE_ADS_DEVELOPER_TOKEN).",
-    };
+  if (isGoogleAdsUxPending()) {
+    return { ok: false, code: "api_not_ready", message: MSG_API_NOT_READY };
   }
+  if (!isGoogleAdsDeveloperTokenConfigured()) {
+    return { ok: false, code: "pending_configuration", message: MSG_PENDING_CONFIGURATION };
+  }
+  const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN.trim();
+
   let accessToken = config.access_token;
   const now = Date.now();
   const margin = 5 * 60 * 1000;
@@ -425,20 +463,27 @@ async function resolveGoogleAdsCustomer(
     try {
       accessToken = await refreshAndSaveGoogleAdsToken(organizationId, config);
     } catch (e) {
-      return {
-        ok: false,
-        message: e instanceof Error ? e.message : "Falha ao renovar token do Google Ads.",
-      };
+      const raw = e instanceof Error ? e.message : String(e);
+      const classified = classifyGoogleAdsError(raw);
+      if (!classified.ok) {
+        return { ok: false, code: classified.code, message: classified.message };
+      }
+      return { ok: false, code: "UNKNOWN", message: raw };
     }
   }
   try {
-    const customerIds = await listAccessibleCustomers(accessToken);
+    const customerIds = await listAccessibleCustomers(accessToken, developerToken);
     if (customerIds.length === 0) {
       return { ok: true, accessToken, customerId: "" };
     }
     return { ok: true, accessToken, customerId: customerIds[0] };
   } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+    const raw = e instanceof Error ? e.message : String(e);
+    const classified = classifyGoogleAdsError(raw);
+    if (!classified.ok) {
+      return { ok: false, code: classified.code, message: classified.message };
+    }
+    return { ok: false, code: "UNKNOWN", message: raw };
   }
 }
 
@@ -459,15 +504,18 @@ export type GoogleAdsSearchTermRow = {
   costMicros: number;
 };
 
-export type GoogleAdsDeepResult<T> = { ok: true; rows: T[] } | { ok: false; message: string };
+export type GoogleAdsDeepResult<T> =
+  | { ok: true; rows: T[] }
+  | { ok: false; code: GoogleAdsMetricsErrorCode; message: string };
 
 export async function fetchGoogleAdsAdGroupMetrics(
   organizationId: string,
   range: { start: string; end: string }
 ): Promise<GoogleAdsDeepResult<GoogleAdsAdGroupRow>> {
   const ctx = await resolveGoogleAdsCustomer(organizationId);
-  if (!ctx.ok) return ctx;
+  if (!ctx.ok) return { ok: false, code: ctx.code, message: ctx.message };
   if (!ctx.customerId) return { ok: true, rows: [] };
+  const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN.trim();
   const query = `
     SELECT
       campaign.name,
@@ -484,7 +532,7 @@ export async function fetchGoogleAdsAdGroupMetrics(
   try {
     const results = await googleSearchStreamResults(
       ctx.accessToken,
-      env.GOOGLE_ADS_DEVELOPER_TOKEN,
+      developerToken,
       ctx.customerId,
       query
     );
@@ -513,7 +561,12 @@ export async function fetchGoogleAdsAdGroupMetrics(
     }
     return { ok: true, rows };
   } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+    const raw = e instanceof Error ? e.message : String(e);
+    const classified = classifyGoogleAdsError(raw);
+    if (!classified.ok) {
+      return { ok: false, code: classified.code, message: classified.message };
+    }
+    return { ok: false, code: "UNKNOWN", message: raw };
   }
 }
 
@@ -522,8 +575,9 @@ export async function fetchGoogleAdsSearchTerms(
   range: { start: string; end: string }
 ): Promise<GoogleAdsDeepResult<GoogleAdsSearchTermRow>> {
   const ctx = await resolveGoogleAdsCustomer(organizationId);
-  if (!ctx.ok) return ctx;
+  if (!ctx.ok) return { ok: false, code: ctx.code, message: ctx.message };
   if (!ctx.customerId) return { ok: true, rows: [] };
+  const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN.trim();
   const query = `
     SELECT
       search_term_view.search_term,
@@ -536,7 +590,7 @@ export async function fetchGoogleAdsSearchTerms(
   try {
     const results = await googleSearchStreamResults(
       ctx.accessToken,
-      env.GOOGLE_ADS_DEVELOPER_TOKEN,
+      developerToken,
       ctx.customerId,
       query
     );
@@ -557,7 +611,12 @@ export async function fetchGoogleAdsSearchTerms(
     }
     return { ok: true, rows };
   } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+    const raw = e instanceof Error ? e.message : String(e);
+    const classified = classifyGoogleAdsError(raw);
+    if (!classified.ok) {
+      return { ok: false, code: classified.code, message: classified.message };
+    }
+    return { ok: false, code: "UNKNOWN", message: raw };
   }
 }
 

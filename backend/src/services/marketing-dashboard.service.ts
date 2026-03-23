@@ -3,8 +3,8 @@
  * Summary alinhado à soma da série diária para métricas aditivas (spend, impressions, clicks, etc.).
  */
 
-import { env } from "../config/env.js";
 import { prisma } from "../utils/prisma.js";
+import { computeGoogleAdsIntegrationUiStatus } from "../utils/google-ads-readiness.js";
 import { metaGraphGet, metaGraphGetAllPages, getMetaAppSecret } from "./meta/meta-graph.js";
 import {
   type ActionEntry,
@@ -308,7 +308,7 @@ export type MarketingDashboardPayload =
         metaAds: { connected: boolean; healthy: boolean };
         googleAds: {
           connected: boolean;
-          status: "pending_approval" | "connected" | "not_connected";
+          status: import("../utils/google-ads-readiness.js").GoogleAdsIntegrationUiStatus;
         };
       };
     }
@@ -419,10 +419,7 @@ export async function fetchMarketingDashboardPayload(
   const metaInt = integrations.find((i) => i.slug === META_SLUG);
   const googleInt = integrations.find((i) => i.slug === GOOGLE_SLUG);
   const googleConnected = googleInt?.status === "connected";
-  let googleStatus: "pending_approval" | "connected" | "not_connected" = googleConnected
-    ? "connected"
-    : "not_connected";
-  if (env.GOOGLE_ADS_UX_PENDING) googleStatus = "pending_approval";
+  const googleStatus = computeGoogleAdsIntegrationUiStatus(googleConnected);
 
   try {
     const adAccountsRes = await metaGraphGet<{ data: { id: string; name: string; account_id: string }[] }>(

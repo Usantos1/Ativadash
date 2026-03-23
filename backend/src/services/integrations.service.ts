@@ -70,6 +70,7 @@ export async function exchangeGoogleAdsCode(code: string, state: string): Promis
     await assertCanAddIntegration(organizationId);
   }
 
+  // Upsert por @@unique([organizationId, slug]) → constraint "Integration_organizationId_slug_key" no Postgres.
   await prisma.integration.upsert({
     where: {
       organizationId_slug: { organizationId, slug: GOOGLE_ADS_SLUG },
@@ -157,6 +158,7 @@ export async function exchangeMetaAdsCode(code: string, state: string): Promise<
     await assertCanAddIntegration(organizationId);
   }
 
+  // Mesma constraint composta que o Google Ads (`organizationId` + `slug`).
   await prisma.integration.upsert({
     where: {
       organizationId_slug: { organizationId, slug: META_ADS_SLUG },

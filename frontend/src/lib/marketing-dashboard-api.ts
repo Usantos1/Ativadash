@@ -103,7 +103,7 @@ export type MarketingDashboardPayload =
         metaAds: { connected: boolean; healthy: boolean };
         googleAds: {
           connected: boolean;
-          status: "pending_approval" | "connected" | "not_connected";
+          status: "connected" | "not_connected" | "pending_configuration" | "api_not_ready";
         };
       };
     }

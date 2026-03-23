@@ -408,6 +408,8 @@ model Integration {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  /// Chave composta usada pelo Prisma em `upsert` / `where: { organizationId_slug: { ... } }`.
+  /// No PostgreSQL: índice único `Integration_organizationId_slug_key` (migration `20260320170000_add_integration_organization_slug_unique`).
   @@unique([organizationId, slug])
   @@index([organizationId])
   @@index([organizationId, slug])
