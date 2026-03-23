@@ -244,13 +244,7 @@ export async function updateChildOrganizationByParent(
   if (!child) {
     throw new Error("Workspace filho não encontrado");
   }
-  const patch: {
-    name?: string;
-    workspaceStatus?: WorkspaceStatus;
-    workspaceNote?: string | null;
-    resellerOrgKind?: ResellerOrgKind;
-    featureOverrides?: Prisma.InputJsonValue | typeof Prisma.JsonNull;
-  } = {};
+  const patch: Prisma.OrganizationUpdateInput = {};
   if (data.name !== undefined) {
     patch.name = data.name.trim();
   }
@@ -265,8 +259,9 @@ export async function updateChildOrganizationByParent(
     patch.resellerOrgKind = data.resellerOrgKind;
   }
   if (data.featureOverrides !== undefined) {
+    // JsonNull (não DbNull): compatível com OrganizationUpdateInput em todas as versões do client gerado.
     patch.featureOverrides =
-      data.featureOverrides === null ? Prisma.DbNull : (data.featureOverrides as Prisma.InputJsonValue);
+      data.featureOverrides === null ? Prisma.JsonNull : (data.featureOverrides as Prisma.InputJsonValue);
   }
   const updated = await prisma.organization.update({
     where: { id: childId },
