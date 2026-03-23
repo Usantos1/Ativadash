@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
+import { requireJwtOrganizationAccess } from "../middlewares/organization-context.middleware.js";
 import * as workspace from "../controllers/workspace.controller.js";
 
 const router = Router();
 
-router.use(authMiddleware);
+router.use(authMiddleware, requireJwtOrganizationAccess);
 
 router.get("/clients", workspace.clientsList);
 router.post("/clients", workspace.clientsCreate);

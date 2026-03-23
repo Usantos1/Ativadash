@@ -21,6 +21,22 @@ enum ResellerOrgKind {
   CLIENT
 }
 
+/// Fonte primária do tipo de tenant (novos fluxos). `resellerOrgKind` é legado.
+enum OrganizationKind {
+  MATRIX
+  DIRECT
+  CLIENT_WORKSPACE
+}
+
+/// Conta ou ativo externo sujeito a AssetAccessGrant
+enum GrantAssetType {
+  META_AD_ACCOUNT
+  META_BUSINESS
+  GOOGLE_ADS_CUSTOMER
+  GOOGLE_MCC
+  WEBHOOK_ENDPOINT
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -41,6 +57,8 @@ model User {
   memberships Membership[]
   refreshTokens RefreshToken[]
   invitationsSent Invitation[] @relation("InvitationInvitedBy")
+  matrixWorkspaceGrants MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantUser")
+  assetAccessGrants     AssetAccessGrant[]     @relation("AssetAccessGrantUser")
 }
 
 model RefreshToken {
@@ -56,6 +74,8 @@ model Organization {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
+  /// Tipo de tenant (matriz, empresa direta ou workspace de cliente). Fonte primária.
+  organizationKind OrganizationKind @default(DIRECT)
   /// Agência/revenda: empresas filhas (cada uma com dados isolados)
   parentOrganizationId String?
   parentOrganization     Organization?  @relation("OrgHierarchy", fields: [parentOrganizationId], references: [id], onDelete: SetNull)
@@ -104,7 +124,67 @@ model Organization {
   invitations   Invitation[]
   metricsSnapshots MetricsSnapshot[]
 
+  matrixGrantsAsMatrix   MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantMatrix")
+  matrixGrantsAsWorkspace MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantWorkspace")
+  assetAccessGrants      AssetAccessGrant[]
+
   @@index([parentOrganizationId])
+  @@index([organizationKind])
+}
+
+/// Usuário da matriz com acesso a um workspace filho (escopo agency_ops ou refinamento de owner/admin).
+model MatrixWorkspaceGrant {
+  id                      String   @id @default(cuid())
+  userId                  String
+  user                    User     @relation("MatrixWorkspaceGrantUser", fields: [userId], references: [id], onDelete: Cascade)
+  matrixOrganizationId    String
+  matrixOrganization      Organization @relation("MatrixWorkspaceGrantMatrix", fields: [matrixOrganizationId], references: [id], onDelete: Cascade)
+  workspaceOrganizationId String
+  workspaceOrganization   Organization @relation("MatrixWorkspaceGrantWorkspace", fields: [workspaceOrganizationId], references: [id], onDelete: Cascade)
+  /// Canais permitidos (strings estáveis: META, GOOGLE, …). Vazio + política em código.
+  allowedChannels         String[] @default([])
+  createdByUserId         String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@unique([userId, workspaceOrganizationId])
+  @@index([matrixOrganizationId])
+  @@index([workspaceOrganizationId])
+}
+
+/// Restrição fina por conta de anúncio (ou outro ativo) dentro do workspace.
+model AssetAccessGrant {
+  id             String         @id @default(cuid())
+  userId         String
+  user           User           @relation("AssetAccessGrantUser", fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assetType      GrantAssetType
+  externalId     String
+  label          String?
+  createdByUserId String?
+  createdAt      DateTime       @default(now())
+
+  @@unique([userId, organizationId, assetType, externalId])
+  @@index([organizationId, assetType])
+}
+
+/// Auditoria genérica (plataforma, matriz, workspace).
+model AuditLog {
+  id             String   @id @default(cuid())
+  actorUserId    String
+  organizationId String?
+  action         String
+  entityType     String
+  entityId       String?
+  metadata       Json?
+  ip             String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
 }
 
 /// Trilha de auditoria do painel master de revenda (escopo matriz)

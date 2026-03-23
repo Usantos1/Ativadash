@@ -125,10 +125,12 @@ async function main() {
     create: {
       name: "Organização Demo",
       slug: "demo-org",
-      planId: professional.id,
+      planId: starter.id,
+      organizationKind: "DIRECT",
     },
     update: {
-      planId: professional.id,
+      planId: starter.id,
+      organizationKind: "DIRECT",
     },
   });
 
@@ -156,13 +158,13 @@ async function main() {
     create: {
       userId: demoUser.id,
       organizationId: demoOrg.id,
-      role: "owner",
+      role: "workspace_owner",
     },
     update: {},
   });
 
   for (const o of await prisma.organization.findMany({
-    where: { deletedAt: null, planId: { not: null } },
+    where: { deletedAt: null, planId: { not: null }, organizationKind: { not: "CLIENT_WORKSPACE" } },
   })) {
     await prisma.subscription.upsert({
       where: { organizationId: o.id },

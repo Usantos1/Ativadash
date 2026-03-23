@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../utils/prisma.js";
 import { appendResellerAudit } from "../utils/reseller-audit.js";
 import { assertDirectOrgAdmin } from "./auth.service.js";
+import { demoteOwnerRoleForMove } from "../constants/roles.js";
 import {
   collectDescendantOrganizationIds,
   createDescendantByMatrixAdmin,
@@ -150,32 +151,33 @@ export async function resellerCreateChild(
 ) {
   const matrixId = await resolveResellerMatrixOrganizationId(actorUserId, activeOrganizationId);
   const parentId = data.parentOrganizationId ?? matrixId;
-  const kind = data.resellerOrgKind ?? "CLIENT";
+
+  if (data.resellerOrgKind === "AGENCY") {
+    throw new Error("Criação de agência filha não é permitida; use apenas workspaces cliente");
+  }
 
   let clientProfile: OrganizationClientProfile | null = null;
   let initialOwner: { email: string; name: string; passwordHash: string } | null = null;
 
-  if (kind !== "AGENCY") {
-    const email = (data.ownerEmail ?? "").trim().toLowerCase();
-    const password = data.ownerPassword ?? "";
-    clientProfile = {
-      legalName: data.legalName?.trim() ? data.legalName.trim() : null,
-      taxId: (data.taxId ?? "").replace(/\D/g, "") || null,
-      contactEmail: email || null,
-      phoneWhatsapp: (data.phoneWhatsapp ?? "").replace(/\D/g, "") || null,
-      addressLine1: (data.addressLine1 ?? "").trim() || null,
-      addressNumber: (data.addressNumber ?? "").trim() || null,
-      addressDistrict: data.addressDistrict?.trim() ? data.addressDistrict.trim() : null,
-      addressCity: (data.addressCity ?? "").trim() || null,
-      addressState: (data.addressState ?? "").trim().toUpperCase() || null,
-      addressPostalCode: (data.addressPostalCode ?? "").replace(/\D/g, "") || null,
-    };
-    initialOwner = {
-      email,
-      name: (data.ownerName ?? "").trim(),
-      passwordHash: await bcrypt.hash(password, SALT_ROUNDS),
-    };
-  }
+  const email = (data.ownerEmail ?? "").trim().toLowerCase();
+  const password = data.ownerPassword ?? "";
+  clientProfile = {
+    legalName: data.legalName?.trim() ? data.legalName.trim() : null,
+    taxId: (data.taxId ?? "").replace(/\D/g, "") || null,
+    contactEmail: email || null,
+    phoneWhatsapp: (data.phoneWhatsapp ?? "").replace(/\D/g, "") || null,
+    addressLine1: (data.addressLine1 ?? "").trim() || null,
+    addressNumber: (data.addressNumber ?? "").trim() || null,
+    addressDistrict: data.addressDistrict?.trim() ? data.addressDistrict.trim() : null,
+    addressCity: (data.addressCity ?? "").trim() || null,
+    addressState: (data.addressState ?? "").trim().toUpperCase() || null,
+    addressPostalCode: (data.addressPostalCode ?? "").replace(/\D/g, "") || null,
+  };
+  initialOwner = {
+    email,
+    name: (data.ownerName ?? "").trim(),
+    passwordHash: await bcrypt.hash(password, SALT_ROUNDS),
+  };
 
   const org = await createDescendantByMatrixAdmin(matrixId, actorUserId, parentId, data.name, {
     inheritPlanFromParent: data.inheritPlanFromParent,
@@ -189,7 +191,7 @@ export async function resellerCreateChild(
     name: data.name,
     resellerOrgKind: org.resellerOrgKind ?? "CLIENT",
     parentOrganizationId: parentId,
-    hasInitialOwner: kind !== "AGENCY",
+    hasInitialOwner: true,
   });
   return org;
 }
@@ -623,7 +625,7 @@ export async function resellerMoveMembership(
       data: {
         userId: targetUserId,
         organizationId: toOrganizationId,
-        role: fromMem.role === "owner" ? "admin" : fromMem.role,
+        role: demoteOwnerRoleForMove(fromMem.role),
       },
     }),
   ]);
@@ -812,7 +814,22 @@ export async function resellerCreateUserWithMembership(
 
   const hashed = await bcrypt.hash(data.password, SALT_ROUNDS);
   const role = data.role.trim();
-  const allowed = new Set(["owner", "admin", "member", "media_manager", "analyst"]);
+  const allowed = new Set([
+    "owner",
+    "admin",
+    "member",
+    "media_manager",
+    "analyst",
+    "agency_owner",
+    "agency_admin",
+    "agency_ops",
+    "workspace_owner",
+    "workspace_admin",
+    "report_viewer",
+    "media_meta_manager",
+    "media_google_manager",
+    "performance_analyst",
+  ]);
   if (!allowed.has(role)) {
     throw new Error("Papel inválido");
   }

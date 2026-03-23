@@ -27,6 +27,12 @@ import {
   resellerUpdatePlan,
 } from "../services/reseller.service.js";
 import {
+  deleteMatrixWorkspaceGrant,
+  listMatrixWorkspaceGrants,
+  upsertMatrixWorkspaceGrant,
+} from "../services/matrix-workspace-grants.service.js";
+import {
+  matrixWorkspaceGrantUpsertSchema,
   resellerAuditQuerySchema,
   resellerCreateChildSchema,
   resellerCreateUserSchema,
@@ -450,5 +456,51 @@ export async function resellerCreateInvitationHandler(req: Request, res: Respons
     return res.status(201).json(out);
   } catch (e) {
     return res.status(400).json({ message: e instanceof Error ? e.message : "Erro" });
+  }
+}
+
+export async function resellerMatrixGrantsListHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  try {
+    const grants = await listMatrixWorkspaceGrants(user.userId, user.organizationId);
+    return res.json({ grants });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Sem permissão";
+    return res.status(403).json({ message: msg });
+  }
+}
+
+export async function resellerMatrixGrantsUpsertHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const parsed = matrixWorkspaceGrantUpsertSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: firstErrorMessage(parsed.error) });
+  }
+  try {
+    const row = await upsertMatrixWorkspaceGrant(user.userId, user.organizationId, parsed.data, {
+      ip: req.ip,
+      userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : null,
+    });
+    return res.status(200).json({ grant: row });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Erro";
+    const status = msg.includes("Sem ") || msg.includes("permissão") || msg.includes("Matriz") ? 403 : 400;
+    return res.status(status).json({ message: msg });
+  }
+}
+
+export async function resellerMatrixGrantsDeleteHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const { grantId } = req.params;
+  if (!grantId) return res.status(400).json({ message: "ID obrigatório" });
+  try {
+    await deleteMatrixWorkspaceGrant(user.userId, user.organizationId, grantId, {
+      ip: req.ip,
+      userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : null,
+    });
+    return res.json({ ok: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Erro";
+    return res.status(403).json({ message: msg });
   }
 }

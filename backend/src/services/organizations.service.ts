@@ -2,11 +2,8 @@ import type { ResellerOrgKind, WorkspaceStatus } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../utils/prisma.js";
 import { slugifyOrganizationName, uniqueOrganizationSlug } from "../utils/org-slug.js";
-import {
-  assertDirectOrgAdmin,
-  canManageOrganization,
-  userHasEffectiveAccess,
-} from "./auth.service.js";
+import { assertDirectOrgAdmin, canManageOrganization } from "./auth.service.js";
+import { userHasEffectiveAccess } from "./tenancy-access.service.js";
 import {
   assertCanAddChildOrganization,
   getOrganizationPlanContext,
@@ -169,6 +166,7 @@ export async function createChildOrganization(
       planId,
       workspaceNote: note && note.length > 0 ? note : null,
       resellerOrgKind: options?.resellerOrgKind ?? "CLIENT",
+      organizationKind: "CLIENT_WORKSPACE",
     },
   });
   if (!inherit && planId) {
@@ -256,6 +254,9 @@ export async function updateChildOrganizationByParent(
     patch.workspaceNote = n && n.length > 0 ? n : null;
   }
   if (data.resellerOrgKind !== undefined) {
+    if (data.resellerOrgKind === "AGENCY") {
+      throw new Error("Não é permitido alterar para tipo agência filha");
+    }
     patch.resellerOrgKind = data.resellerOrgKind;
   }
   if (data.featureOverrides !== undefined) {
@@ -330,8 +331,7 @@ export type OrganizationClientProfile = {
 };
 
 /**
- * Admin da matriz cria org sob a matriz ou sob uma agência do ecossistema.
- * Sob agência: apenas empresas (CLIENT).
+ * Admin da matriz cria workspace cliente como filho direto da matriz (sem agência intermediária).
  */
 export async function createDescendantByMatrixAdmin(
   matrixOrganizationId: string,
@@ -348,6 +348,20 @@ export async function createDescendantByMatrixAdmin(
   }
 ) {
   await assertDirectOrgAdmin(actorUserId, matrixOrganizationId);
+  const matrixRow = await prisma.organization.findFirst({
+    where: { id: matrixOrganizationId, deletedAt: null },
+    select: { organizationKind: true },
+  });
+  if (matrixRow?.organizationKind !== "MATRIX") {
+    throw new Error("Operação válida apenas para organização matriz");
+  }
+  if (parentOrganizationId !== matrixOrganizationId) {
+    throw new Error("Novos workspaces devem ser filhos diretos da matriz");
+  }
+  if (options?.resellerOrgKind === "AGENCY") {
+    throw new Error("Não é permitido criar agência filha");
+  }
+
   const parentOk = await isOrganizationUnderMatrix(parentOrganizationId, matrixOrganizationId);
   if (!parentOk) {
     throw new Error("Organização pai fora do ecossistema");
@@ -361,13 +375,7 @@ export async function createDescendantByMatrixAdmin(
     throw new Error("Organização pai não encontrada");
   }
 
-  let resellerOrgKind: ResellerOrgKind = options?.resellerOrgKind ?? "CLIENT";
-  if (parentOrganizationId !== matrixOrganizationId) {
-    if (parent.resellerOrgKind !== "AGENCY") {
-      throw new Error("Novas empresas só podem ser vinculadas sob uma agência");
-    }
-    resellerOrgKind = "CLIENT";
-  }
+  const resellerOrgKind: ResellerOrgKind = "CLIENT";
 
   await assertCanAddChildOrganization(parentOrganizationId, actorUserId);
 
@@ -384,6 +392,7 @@ export async function createDescendantByMatrixAdmin(
     inheritPlanFromParent: inherit,
     planId,
     workspaceNote: note && note.length > 0 ? note : null,
+    organizationKind: "CLIENT_WORKSPACE" as const,
     resellerOrgKind,
     legalName: cp?.legalName ?? null,
     taxId: cp?.taxId ?? null,
@@ -442,7 +451,7 @@ export async function createDescendantByMatrixAdmin(
         data: {
           userId: user.id,
           organizationId: o.id,
-          role: "owner",
+          role: "workspace_owner",
         },
       });
       return o;
@@ -501,6 +510,9 @@ export async function updateDescendantByMatrixAdmin(
     patch.workspaceNote = n && n.length > 0 ? n : null;
   }
   if (data.resellerOrgKind !== undefined) {
+    if (data.resellerOrgKind === "AGENCY") {
+      throw new Error("Não é permitido alterar para tipo agência filha");
+    }
     patch.resellerOrgKind = data.resellerOrgKind;
   }
   if (data.featureOverrides !== undefined) {

@@ -6,6 +6,7 @@ import {
   getAuthProfileExtended,
   switchActiveOrganization,
   updateProfile,
+  getMeContext,
 } from "../services/auth.service.js";
 import {
   loginSchema,
@@ -115,7 +116,11 @@ export async function switchOrganization(req: Request, res: Response) {
     });
   }
   try {
-    const result = await switchActiveOrganization(jwtUser.userId, parsed.data.organizationId);
+    const result = await switchActiveOrganization(jwtUser.userId, parsed.data.organizationId, {
+      previousOrganizationId: jwtUser.organizationId,
+      ip: req.ip,
+      userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : null,
+    });
     return res.json(result);
   } catch (e) {
     if (respondIfDatabaseUnavailable(res, e, "POST /api/auth/switch-organization")) return;
@@ -123,6 +128,26 @@ export async function switchOrganization(req: Request, res: Response) {
       message: e instanceof Error ? e.message : "Não foi possível trocar de empresa",
     });
   }
+}
+
+export async function meContext(req: Request, res: Response) {
+  const jwtUser = (req as Request & { user: JwtUser }).user;
+  try {
+    const ctx = await getMeContext(jwtUser.userId, jwtUser.organizationId);
+    if (!ctx) {
+      return res.status(403).json({ message: "Contexto organizacional inválido para esta sessão." });
+    }
+    return res.json(ctx);
+  } catch (e) {
+    if (respondIfDatabaseUnavailable(res, e, "GET /api/auth/me/context")) return;
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao carregar contexto" });
+  }
+}
+
+/** Alias canônico da troca de contexto (mesmo comportamento que switch-organization). */
+export async function activeOrganization(req: Request, res: Response) {
+  return switchOrganization(req, res);
 }
 
 export async function patchProfile(req: Request, res: Response) {

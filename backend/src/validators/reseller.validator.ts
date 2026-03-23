@@ -56,9 +56,14 @@ export const resellerCreateChildSchema = z
     addressPostalCode: z.string().max(12).optional(),
   })
   .superRefine((data, ctx) => {
-    const kind = data.resellerOrgKind ?? "CLIENT";
-    if (kind === "AGENCY") return;
-
+    if (data.resellerOrgKind === "AGENCY") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["resellerOrgKind"],
+        message: "Tipo AGENCY não é permitido; crie apenas workspace cliente.",
+      });
+      return;
+    }
     const cnpj = (data.taxId ?? "").replace(/\D/g, "");
     if (cnpj.length > 0 && cnpj.length !== 14) {
       ctx.addIssue({
@@ -195,13 +200,46 @@ export const resellerCreateUserSchema = z.object({
   name: z.string().min(1).max(120),
   password: z.string().min(8).max(128),
   organizationId: z.string().min(1),
-  role: z.enum(["owner", "admin", "member", "media_manager", "analyst"]),
+  role: z.enum([
+    "owner",
+    "admin",
+    "member",
+    "media_manager",
+    "analyst",
+    "agency_owner",
+    "agency_admin",
+    "agency_ops",
+    "workspace_owner",
+    "workspace_admin",
+    "report_viewer",
+    "media_meta_manager",
+    "media_google_manager",
+    "performance_analyst",
+  ]),
 });
 
 export const resellerInvitationSchema = z.object({
   organizationId: z.string().min(1),
   email: z.string().email(),
-  role: z.enum(["admin", "member", "media_manager", "analyst"]),
+  role: z.enum([
+    "admin",
+    "member",
+    "media_manager",
+    "analyst",
+    "agency_admin",
+    "agency_ops",
+    "workspace_admin",
+    "report_viewer",
+    "media_meta_manager",
+    "media_google_manager",
+    "performance_analyst",
+  ]),
+});
+
+export const matrixWorkspaceGrantUpsertSchema = z.object({
+  userId: z.string().min(1),
+  workspaceOrganizationId: z.string().min(1),
+  allowedChannels: z.array(z.string().min(1)).optional(),
 });
 
 export const resellerEcosystemUsersQuerySchema = z.object({

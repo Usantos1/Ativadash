@@ -251,7 +251,9 @@ export async function listOrganizationMembers(organizationId: string): Promise<M
   const agencyRows = await prisma.membership.findMany({
     where: {
       organizationId: org.parentOrganizationId,
-      role: { in: ["owner", "admin"] },
+      role: {
+        in: ["owner", "admin", "agency_owner", "agency_admin", "workspace_owner", "workspace_admin"],
+      },
     },
     include: {
       user: {

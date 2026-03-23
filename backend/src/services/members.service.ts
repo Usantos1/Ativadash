@@ -1,7 +1,20 @@
 import { prisma } from "../utils/prisma.js";
 import { assertOrgAdminOrParentAgency } from "./auth.service.js";
+import { isPrimaryOwnerRole } from "../constants/roles.js";
 
-const ASSIGNABLE_ROLES = new Set(["admin", "member", "media_manager", "analyst"]);
+const ASSIGNABLE_ROLES = new Set([
+  "admin",
+  "member",
+  "media_manager",
+  "analyst",
+  "agency_admin",
+  "agency_ops",
+  "workspace_admin",
+  "report_viewer",
+  "media_meta_manager",
+  "media_google_manager",
+  "performance_analyst",
+]);
 
 export async function updateMemberRole(
   organizationId: string,
@@ -56,9 +69,12 @@ export async function removeMember(
     return { ok: false, message: "Membro não encontrado nesta empresa" };
   }
 
-  if (target.role === "owner") {
+  if (isPrimaryOwnerRole(target.role)) {
     const owners = await prisma.membership.count({
-      where: { organizationId, role: "owner" },
+      where: {
+        organizationId,
+        role: { in: ["owner", "workspace_owner", "agency_owner"] },
+      },
     });
     if (owners <= 1) {
       return { ok: false, message: "Não é possível remover o único proprietário" };

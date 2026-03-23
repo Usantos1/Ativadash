@@ -6,6 +6,15 @@ import { slugifyOrganizationName, uniqueOrganizationSlug } from "../utils/org-sl
 import type { LoginInput, RegisterInput } from "../validators/auth.validator.js";
 import type { JwtPayload } from "../middlewares/auth.middleware.js";
 import { isPlatformAdminEmail } from "../utils/platform-admin.js";
+import { userHasEffectiveAccess } from "./tenancy-access.service.js";
+import { appendAuditLog } from "./audit-log.service.js";
+import {
+  isMatrixWideAdminRole,
+  isResellerMatrixAdminRole,
+  isWorkspaceAdminRole,
+  isWorkspaceTeamManagerRole,
+} from "../constants/roles.js";
+import { resolveBillingOrganizationId, resolveEffectivePlan } from "./plan-limits.service.js";
 
 const SALT_ROUNDS = 10;
 
@@ -25,6 +34,7 @@ export type MembershipSummaryDto = {
   organizationId: string;
   role: string;
   organization: AuthOrganizationDto;
+  organizationKind: import("@prisma/client").OrganizationKind;
 };
 
 export type AuthProfileExtendedDto = AuthUserDto & {
@@ -78,6 +88,7 @@ async function listMembershipSummaries(userId: string): Promise<MembershipSummar
         name: m.organization.name,
         slug: m.organization.slug,
       },
+      organizationKind: m.organization.organizationKind,
     }));
 }
 
@@ -120,7 +131,7 @@ async function listManagedOrganizationsForActiveContext(
     const mem = await prisma.membership.findUnique({
       where: { userId_organizationId: { userId, organizationId: cursor } },
     });
-    if (mem && ["owner", "admin"].includes(mem.role)) {
+    if (mem && isResellerMatrixAdminRole(mem.role)) {
       adminAnchor = cursor;
       break;
     }
@@ -156,32 +167,7 @@ async function listManagedOrganizationsForActiveContext(
   });
 }
 
-/** Acesso direto (qualquer papel) ou revenda: owner/admin em qualquer ancestral. */
-export async function userHasEffectiveAccess(userId: string, organizationId: string): Promise<boolean> {
-  const direct = await prisma.membership.findUnique({
-    where: { userId_organizationId: { userId, organizationId } },
-    include: { organization: true },
-  });
-  if (direct && !direct.organization.deletedAt) return true;
-
-  let walk: string | null = organizationId;
-  for (let i = 0; i < 32 && walk; i++) {
-    const parentLink: { parentOrganizationId: string | null } | null = await prisma.organization.findFirst({
-      where: { id: walk, deletedAt: null },
-      select: { parentOrganizationId: true },
-    });
-    const parentId: string | null = parentLink?.parentOrganizationId ?? null;
-    if (!parentId) break;
-    const parentMem = await prisma.membership.findUnique({
-      where: { userId_organizationId: { userId, organizationId: parentId } },
-    });
-    if (parentMem && ["owner", "admin"].includes(parentMem.role)) return true;
-    walk = parentId;
-  }
-  return false;
-}
-
-/** Gerir org: owner/admin na própria org ou em qualquer ancestral (matriz → agência → cliente). */
+/** Gerir org: papéis elevados na própria org ou em qualquer ancestral. */
 export async function canManageOrganization(userId: string, organizationId: string): Promise<boolean> {
   let walk: string | null = organizationId;
   for (let i = 0; i < 32 && walk; i++) {
@@ -193,7 +179,7 @@ export async function canManageOrganization(userId: string, organizationId: stri
       mem &&
       mem.organization &&
       !mem.organization.deletedAt &&
-      ["owner", "admin"].includes(mem.role)
+      (isWorkspaceAdminRole(mem.role) || isMatrixWideAdminRole(mem.role))
     ) {
       return true;
     }
@@ -211,7 +197,7 @@ export async function assertDirectOrgAdmin(userId: string, organizationId: strin
   const m = await prisma.membership.findUnique({
     where: { userId_organizationId: { userId, organizationId } },
   });
-  if (!m || !["owner", "admin"].includes(m.role)) {
+  if (!m || !isResellerMatrixAdminRole(m.role)) {
     throw new Error("Sem permissão para gerenciar empresas vinculadas");
   }
 }
@@ -221,7 +207,7 @@ export async function assertOrgAdminOrParentAgency(userId: string, organizationI
   const direct = await prisma.membership.findUnique({
     where: { userId_organizationId: { userId, organizationId } },
   });
-  if (direct && ["owner", "admin"].includes(direct.role)) return;
+  if (direct && (isWorkspaceTeamManagerRole(direct.role) || isMatrixWideAdminRole(direct.role))) return;
 
   let walk: string | null = organizationId;
   for (let i = 0; i < 32 && walk; i++) {
@@ -234,7 +220,7 @@ export async function assertOrgAdminOrParentAgency(userId: string, organizationI
     const pm = await prisma.membership.findUnique({
       where: { userId_organizationId: { userId, organizationId: parentId } },
     });
-    if (pm && ["owner", "admin"].includes(pm.role)) return;
+    if (pm && (isWorkspaceTeamManagerRole(pm.role) || isMatrixWideAdminRole(pm.role))) return;
     walk = parentId;
   }
   throw new Error("Sem permissão para gerenciar equipe desta empresa");
@@ -255,6 +241,7 @@ export async function register(data: RegisterInput) {
       name: orgDisplayName,
       slug,
       planId: starterPlan?.id,
+      organizationKind: "DIRECT",
     },
   });
   if (starterPlan?.id) {
@@ -278,7 +265,7 @@ export async function register(data: RegisterInput) {
     data: {
       userId: user.id,
       organizationId: org.id,
-      role: "owner",
+      role: "workspace_owner",
     },
   });
   const { accessToken, refreshToken } = await createTokens(user.id, user.email, org.id);
@@ -400,7 +387,11 @@ export async function refreshAccessToken(refreshTokenStr: string) {
   };
 }
 
-export async function switchActiveOrganization(userId: string, targetOrganizationId: string) {
+export async function switchActiveOrganization(
+  userId: string,
+  targetOrganizationId: string,
+  audit?: { previousOrganizationId: string; ip?: string | null; userAgent?: string | null }
+) {
   const allowed = await userHasEffectiveAccess(userId, targetOrganizationId);
   if (!allowed) {
     throw new Error("Sem acesso a esta empresa");
@@ -413,6 +404,21 @@ export async function switchActiveOrganization(userId: string, targetOrganizatio
   }
   if (user.suspendedAt) {
     throw new Error("Conta suspensa. Contate o administrador da sua empresa.");
+  }
+  if (audit && audit.previousOrganizationId !== targetOrganizationId) {
+    await appendAuditLog({
+      actorUserId: userId,
+      organizationId: targetOrganizationId,
+      action: "session.active_organization.changed",
+      entityType: "UserSession",
+      entityId: userId,
+      metadata: {
+        fromOrganizationId: audit.previousOrganizationId,
+        toOrganizationId: targetOrganizationId,
+      },
+      ip: audit.ip,
+      userAgent: audit.userAgent,
+    });
   }
   const { accessToken, refreshToken } = await createTokens(userId, user.email, targetOrganizationId);
   await saveRefreshToken(userId, refreshToken);
@@ -467,19 +473,13 @@ export async function getAuthProfile(userId: string, organizationId: string): Pr
     };
   }
 
+  const allowed = await userHasEffectiveAccess(userId, organizationId);
+  if (!allowed) return null;
+
   const org = await prisma.organization.findFirst({
     where: { id: organizationId, deletedAt: null },
   });
-  if (!org?.parentOrganizationId) return null;
-
-  const parentMembership = await prisma.membership.findUnique({
-    where: {
-      userId_organizationId: { userId, organizationId: org.parentOrganizationId },
-    },
-  });
-  if (!parentMembership || !["owner", "admin"].includes(parentMembership.role)) {
-    return null;
-  }
+  if (!org) return null;
 
   const user = await prisma.user.findFirst({
     where: { id: userId, deletedAt: null },
@@ -534,6 +534,38 @@ async function saveRefreshToken(userId: string, token: string) {
   });
 }
 
+export type MeContextDto = {
+  user: AuthUserDto;
+  memberships: MembershipSummaryDto[];
+  managedOrganizations: AuthOrganizationDto[];
+  activeOrganizationId: string;
+  organizationKind: import("@prisma/client").OrganizationKind | null;
+  billingOrganizationId: string;
+  plan: { slug: string; name: string } | null;
+  platformAdmin: boolean;
+};
+
+export async function getMeContext(userId: string, organizationId: string): Promise<MeContextDto | null> {
+  const profile = await getAuthProfile(userId, organizationId);
+  if (!profile) return null;
+  const billingOrganizationId = await resolveBillingOrganizationId(organizationId);
+  const org = await prisma.organization.findFirst({
+    where: { id: organizationId, deletedAt: null },
+    select: { organizationKind: true },
+  });
+  const { plan } = await resolveEffectivePlan(organizationId);
+  return {
+    user: profile,
+    memberships: await listMembershipSummaries(userId),
+    managedOrganizations: await listManagedOrganizationsForActiveContext(userId, organizationId),
+    activeOrganizationId: organizationId,
+    organizationKind: org?.organizationKind ?? null,
+    billingOrganizationId,
+    plan: plan ? { slug: plan.slug, name: plan.name } : null,
+    platformAdmin: isPlatformAdminEmail(profile.email),
+  };
+}
+
 /** Login completo após convite ou fluxos que já criaram membership. */
 export async function finalizeSessionForUser(userId: string, organizationId: string) {
   const user = await prisma.user.findFirst({
@@ -559,3 +591,5 @@ export async function finalizeSessionForUser(userId: string, organizationId: str
     refreshToken,
   };
 }
+
+export { userHasEffectiveAccess };

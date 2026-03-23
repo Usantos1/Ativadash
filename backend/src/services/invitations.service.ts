@@ -7,7 +7,20 @@ import { assertCanAddDirectMemberOrInvitation } from "./plan-limits.service.js";
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const SALT_ROUNDS = 10;
 
-const ALLOWED_ROLES = new Set(["owner", "admin", "member", "media_manager", "analyst"]);
+const ALLOWED_ROLES = new Set([
+  "owner",
+  "admin",
+  "member",
+  "media_manager",
+  "analyst",
+  "agency_admin",
+  "agency_ops",
+  "workspace_admin",
+  "report_viewer",
+  "media_meta_manager",
+  "media_google_manager",
+  "performance_analyst",
+]);
 
 export type InvitationRow = {
   id: string;
@@ -29,8 +42,8 @@ export async function createInvitation(
 ): Promise<{ invitation: InvitationRow; inviteLink: string }> {
   await assertOrgAdminOrParentAgency(actorUserId, organizationId);
   const r = role.trim() || "member";
-  if (!ALLOWED_ROLES.has(r) || r === "owner") {
-    throw new Error("Papel inválido para convite (use admin, member, media_manager ou analyst)");
+  if (!ALLOWED_ROLES.has(r) || r === "owner" || r === "agency_owner" || r === "workspace_owner") {
+    throw new Error("Papel inválido para convite");
   }
 
   const norm = normalizeEmail(email);

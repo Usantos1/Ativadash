@@ -39,8 +39,12 @@ const ORGANIZATION_PLATFORM_SELECT = {
 export async function syncSubscriptionFromOrgPlan(organizationId: string): Promise<void> {
   const org = await prisma.organization.findFirst({
     where: { id: organizationId, deletedAt: null },
-    select: { planId: true },
+    select: { planId: true, organizationKind: true },
   });
+  if (org?.organizationKind === "CLIENT_WORKSPACE") {
+    await prisma.subscription.deleteMany({ where: { organizationId } });
+    return;
+  }
   if (!org?.planId) {
     await prisma.subscription.deleteMany({ where: { organizationId } });
     return;
@@ -59,7 +63,7 @@ export async function syncSubscriptionFromOrgPlan(organizationId: string): Promi
 
 export async function syncAllSubscriptionsFromOrgPlans(): Promise<{ synced: number }> {
   const orgs = await prisma.organization.findMany({
-    where: { deletedAt: null, planId: { not: null } },
+    where: { deletedAt: null, planId: { not: null }, organizationKind: { not: "CLIENT_WORKSPACE" } },
     select: { id: true },
   });
   for (const o of orgs) {
@@ -237,6 +241,7 @@ export async function createRootOrganization(data: {
         planId,
         resellerOrgKind: null,
         workspaceStatus: "ACTIVE",
+        organizationKind: "MATRIX",
       },
     });
 
@@ -262,7 +267,7 @@ export async function createRootOrganization(data: {
         },
       });
       await tx.membership.create({
-        data: { userId: user.id, organizationId: o.id, role: "owner" },
+        data: { userId: user.id, organizationId: o.id, role: "agency_owner" },
       });
     }
 
@@ -387,9 +392,12 @@ export async function updateSubscriptionForOrganization(
 ) {
   const org = await prisma.organization.findFirst({
     where: { id: organizationId, deletedAt: null },
-    select: { planId: true },
+    select: { planId: true, organizationKind: true },
   });
   if (!org) throw new Error("Empresa não encontrada");
+  if (org.organizationKind === "CLIENT_WORKSPACE") {
+    throw new Error("Workspace cliente não possui assinatura própria; altere a matriz ou o plano herdado");
+  }
   let planId = org.planId;
   if (data.planId !== undefined) {
     const p = await prisma.plan.findUnique({ where: { id: data.planId } });

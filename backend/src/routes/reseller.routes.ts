@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
+import { requireJwtOrganizationAccess } from "../middlewares/organization-context.middleware.js";
 import * as resellerController from "../controllers/reseller.controller.js";
 
 const router = Router();
 
-router.use(authMiddleware);
+router.use(authMiddleware, requireJwtOrganizationAccess);
 
 router.get("/overview", resellerController.resellerOverview);
 router.get("/operational-health", resellerController.resellerOperationalHealth);
@@ -34,5 +35,9 @@ router.post("/ecosystem/membership/remove", resellerController.resellerRemoveMem
 router.post("/ecosystem/membership/move", resellerController.resellerMoveMembershipHandler);
 
 router.post("/enter-child", resellerController.resellerEnterChildHandler);
+
+router.get("/grants/matrix-workspace", resellerController.resellerMatrixGrantsListHandler);
+router.post("/grants/matrix-workspace", resellerController.resellerMatrixGrantsUpsertHandler);
+router.delete("/grants/matrix-workspace/:grantId", resellerController.resellerMatrixGrantsDeleteHandler);
 
 export default router;

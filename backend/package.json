@@ -16,7 +16,9 @@
     "prisma:generate": "node scripts/run-prisma.mjs generate",
     "prisma:migrate": "node scripts/run-prisma.mjs migrate dev",
     "prisma:seed": "node scripts/run-prisma.mjs db seed",
-    "check:db": "node scripts/check-db.mjs"
+    "check:db": "node scripts/check-db.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -30,6 +32,7 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "vitest": "^2.1.9",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",

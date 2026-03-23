@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
+import { requireJwtOrganizationAccess } from "../middlewares/organization-context.middleware.js";
 import {
   getGoogleAdsMetricsHandler,
   getMetaAdsMetricsHandler,
@@ -25,28 +26,30 @@ import {
 
 const router = Router();
 
-router.get("/google-ads/metrics", authMiddleware, getGoogleAdsMetricsHandler);
-router.get("/google-ads/ad-groups", authMiddleware, getGoogleAdGroupsHandler);
-router.get("/google-ads/search-terms", authMiddleware, getGoogleSearchTermsHandler);
-router.post("/google-ads/campaign-mutate-stub", authMiddleware, postGoogleCampaignMutateStubHandler);
+const authCtx = [authMiddleware, requireJwtOrganizationAccess] as const;
 
-router.get("/meta-ads/metrics", authMiddleware, getMetaAdsMetricsHandler);
-router.get("/dashboard/summary", authMiddleware, getMarketingDashboardSummaryHandler);
-router.get("/dashboard/timeseries", authMiddleware, getMarketingDashboardTimeseriesHandler);
-router.get("/dashboard/performance", authMiddleware, getMarketingDashboardPerformanceHandler);
-router.get("/dashboard/integration-status", authMiddleware, getMarketingDashboardIntegrationHandler);
-router.get("/dashboard", authMiddleware, getMarketingDashboardHandler);
-router.get("/meta-ads/adsets", authMiddleware, getMetaAdsetsHandler);
-router.get("/meta-ads/ads", authMiddleware, getMetaAdsLevelHandler);
-router.get("/meta-ads/demographics", authMiddleware, getMetaDemographicsHandler);
-router.post("/meta-ads/campaigns/:campaignId/status", authMiddleware, postMetaCampaignStatusHandler);
+router.get("/google-ads/metrics", ...authCtx, getGoogleAdsMetricsHandler);
+router.get("/google-ads/ad-groups", ...authCtx, getGoogleAdGroupsHandler);
+router.get("/google-ads/search-terms", ...authCtx, getGoogleSearchTermsHandler);
+router.post("/google-ads/campaign-mutate-stub", ...authCtx, postGoogleCampaignMutateStubHandler);
 
-router.get("/settings", authMiddleware, getMarketingSettingsHandler);
-router.put("/settings", authMiddleware, putMarketingSettingsHandler);
-router.post("/insights/evaluate", authMiddleware, postMarketingInsightsHandler);
-router.post("/ativacrm/test-message", authMiddleware, postAtivaCrmTestHandler);
+router.get("/meta-ads/metrics", ...authCtx, getMetaAdsMetricsHandler);
+router.get("/dashboard/summary", ...authCtx, getMarketingDashboardSummaryHandler);
+router.get("/dashboard/timeseries", ...authCtx, getMarketingDashboardTimeseriesHandler);
+router.get("/dashboard/performance", ...authCtx, getMarketingDashboardPerformanceHandler);
+router.get("/dashboard/integration-status", ...authCtx, getMarketingDashboardIntegrationHandler);
+router.get("/dashboard", ...authCtx, getMarketingDashboardHandler);
+router.get("/meta-ads/adsets", ...authCtx, getMetaAdsetsHandler);
+router.get("/meta-ads/ads", ...authCtx, getMetaAdsLevelHandler);
+router.get("/meta-ads/demographics", ...authCtx, getMetaDemographicsHandler);
+router.post("/meta-ads/campaigns/:campaignId/status", ...authCtx, postMetaCampaignStatusHandler);
 
-router.post("/metrics-snapshot", authMiddleware, postMetricsSnapshotHandler);
-router.get("/metrics-snapshot/latest", authMiddleware, getMetricsSnapshotLatestHandler);
+router.get("/settings", ...authCtx, getMarketingSettingsHandler);
+router.put("/settings", ...authCtx, putMarketingSettingsHandler);
+router.post("/insights/evaluate", ...authCtx, postMarketingInsightsHandler);
+router.post("/ativacrm/test-message", ...authCtx, postAtivaCrmTestHandler);
+
+router.post("/metrics-snapshot", ...authCtx, postMetricsSnapshotHandler);
+router.get("/metrics-snapshot/latest", ...authCtx, getMetricsSnapshotLatestHandler);
 
 export default router;

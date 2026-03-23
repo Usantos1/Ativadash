@@ -233,6 +233,17 @@ export async function assertCanAddChildOrganization(
     }
   }
 
+  const parentOrg = await prisma.organization.findFirst({
+    where: { id: parentOrganizationId, deletedAt: null },
+    select: { organizationKind: true },
+  });
+  if (!parentOrg) {
+    throw new Error("Organização pai não encontrada");
+  }
+  if (parentOrg.organizationKind !== "MATRIX") {
+    throw new Error("Apenas a matriz pode criar workspaces filhos");
+  }
+
   const limits = await getEffectivePlanLimits(parentOrganizationId);
   if (limits.maxChildOrganizations == null) return;
   if (limits.maxChildOrganizations <= 0) {

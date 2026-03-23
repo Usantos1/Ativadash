@@ -3,6 +3,7 @@ import rateLimit from "express-rate-limit";
 import * as authController from "../controllers/auth.controller.js";
 import { env } from "../config/env.js";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
+import { requireJwtOrganizationAccess } from "../middlewares/organization-context.middleware.js";
 
 const router = Router();
 
@@ -23,9 +24,11 @@ router.get("/invite-preview", authController.invitePreview);
 router.post("/register-with-invite", authController.registerWithInvite);
 router.post("/forgot-password", authController.forgotPassword);
 router.post("/refresh", authController.refresh);
-router.get("/me", authMiddleware, authController.me);
-router.post("/accept-invite", authMiddleware, authController.acceptInviteLoggedIn);
+router.get("/me", authMiddleware, requireJwtOrganizationAccess, authController.me);
+router.get("/me/context", authMiddleware, requireJwtOrganizationAccess, authController.meContext);
+router.post("/accept-invite", authMiddleware, requireJwtOrganizationAccess, authController.acceptInviteLoggedIn);
 router.post("/switch-organization", authMiddleware, authController.switchOrganization);
-router.patch("/profile", authMiddleware, authController.patchProfile);
+router.post("/me/active-organization", authMiddleware, authController.activeOrganization);
+router.patch("/profile", authMiddleware, requireJwtOrganizationAccess, authController.patchProfile);
 
 export default router;
