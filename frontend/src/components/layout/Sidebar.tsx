@@ -70,7 +70,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Conta",
     items: [
-      { to: "/revenda", label: "Gestão de workspaces", icon: Layers },
+      { to: "/revenda", label: "Painel revenda", icon: Layers },
       { to: "/configuracoes", label: "Configurações", icon: Settings },
     ],
   },

@@ -16,7 +16,14 @@ import { SettingsHubPage } from "@/pages/SettingsHubPage";
 import { ProfilePage } from "@/pages/ProfilePage";
 import { CompanySettingsPage } from "@/pages/CompanySettingsPage";
 import { TeamPage } from "@/pages/TeamPage";
-import { RevendaWorkspacesPage } from "@/pages/RevendaWorkspacesPage";
+import { RevendaLayout } from "@/pages/revenda/RevendaLayout";
+import { RevendaOverviewPage } from "@/pages/revenda/RevendaOverviewPage";
+import { RevendaTenantsPage } from "@/pages/revenda/RevendaTenantsPage";
+import { RevendaUsersPage } from "@/pages/revenda/RevendaUsersPage";
+import { RevendaPlansPage } from "@/pages/revenda/RevendaPlansPage";
+import { RevendaModulesPage } from "@/pages/revenda/RevendaModulesPage";
+import { RevendaHealthPage } from "@/pages/revenda/RevendaHealthPage";
+import { RevendaAuditPage } from "@/pages/revenda/RevendaAuditPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { PlatformPage } from "@/pages/PlatformPage";
 
@@ -51,7 +58,16 @@ export default function App() {
           <Route path="configuracoes/empresa" element={<CompanySettingsPage />} />
           <Route path="perfil" element={<ProfilePage />} />
           <Route path="usuarios" element={<TeamPage />} />
-          <Route path="revenda" element={<RevendaWorkspacesPage />} />
+          <Route path="revenda" element={<RevendaLayout />}>
+            <Route index element={<RevendaOverviewPage />} />
+            <Route path="empresas" element={<RevendaTenantsPage kind="CLIENT" />} />
+            <Route path="agencias" element={<RevendaTenantsPage kind="AGENCY" />} />
+            <Route path="usuarios" element={<RevendaUsersPage />} />
+            <Route path="planos" element={<RevendaPlansPage />} />
+            <Route path="modulos" element={<RevendaModulesPage />} />
+            <Route path="saude" element={<RevendaHealthPage />} />
+            <Route path="auditoria" element={<RevendaAuditPage />} />
+          </Route>
           <Route path="assinatura" element={<Navigate to="/revenda" replace />} />
           <Route path="planos" element={<Navigate to="/revenda" replace />} />
           <Route path="admin" element={<AdminPage />} />

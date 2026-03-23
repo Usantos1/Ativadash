@@ -22,17 +22,39 @@ const SALT_ROUNDS = 10;
 
 type GovernanceBody = z.infer<typeof resellerGovernancePatchSchema>;
 
-export async function assertResellerMatrixContext(matrixOrgId: string, userId: string): Promise<void> {
-  await assertDirectOrgAdmin(userId, matrixOrgId);
-  const o = await prisma.organization.findFirst({
-    where: { id: matrixOrgId, deletedAt: null },
-    select: { parentOrganizationId: true },
+/**
+ * JWT e contexto ativo podem estar na matriz ou numa filial (após "entrar" na empresa).
+ * O painel master sempre opera sobre a matriz: resolve o ID raiz e exige admin/owner nela.
+ */
+export async function resolveResellerMatrixOrganizationId(
+  userId: string,
+  activeOrganizationId: string
+): Promise<string> {
+  const org = await prisma.organization.findFirst({
+    where: { id: activeOrganizationId, deletedAt: null },
+    select: { id: true, parentOrganizationId: true },
   });
-  if (!o || o.parentOrganizationId !== null) {
+  if (!org) {
+    throw new Error("Organização não encontrada");
+  }
+
+  if (org.parentOrganizationId === null) {
+    await assertDirectOrgAdmin(userId, org.id);
+    return org.id;
+  }
+
+  const parent = await prisma.organization.findFirst({
+    where: { id: org.parentOrganizationId, deletedAt: null },
+    select: { id: true, parentOrganizationId: true },
+  });
+  if (!parent || parent.parentOrganizationId !== null) {
     throw new Error(
-      "O painel master de revenda está disponível apenas na empresa matriz (sem vínculo de filial)"
+      "O painel master de revenda exige hierarquia matriz → filiais. Esta organização não é filha direta da matriz."
     );
   }
+
+  await assertDirectOrgAdmin(userId, parent.id);
+  return parent.id;
 }
 
 async function ecosystemOrganizationIds(matrixId: string): Promise<string[]> {
@@ -65,13 +87,13 @@ async function applyLimitsOverridePatch(
   await putLimitsOverride(childId, merged);
 }
 
-export async function resellerGetOverview(matrixId: string, userId: string) {
-  await assertResellerMatrixContext(matrixId, userId);
+export async function resellerGetOverview(activeOrganizationId: string, userId: string) {
+  const matrixId = await resolveResellerMatrixOrganizationId(userId, activeOrganizationId);
   return listChildOrganizationsOperationsDashboard(matrixId, userId);
 }
 
-export async function resellerGetOperationalHealth(matrixId: string, userId: string) {
-  const dash = await resellerGetOverview(matrixId, userId);
+export async function resellerGetOperationalHealth(activeOrganizationId: string, userId: string) {
+  const dash = await resellerGetOverview(activeOrganizationId, userId);
   const severityRank = { critical: 0, warning: 1, info: 2 };
   const prioritizedAlerts = [...dash.alerts].sort(
     (a, b) => severityRank[a.severity] - severityRank[b.severity]
@@ -83,8 +105,8 @@ export async function resellerGetOperationalHealth(matrixId: string, userId: str
   };
 }
 
-export async function resellerListActivePlans(matrixId: string, userId: string) {
-  await assertResellerMatrixContext(matrixId, userId);
+export async function resellerListActivePlans(activeOrganizationId: string, userId: string) {
+  await resolveResellerMatrixOrganizationId(userId, activeOrganizationId);
   return prisma.plan.findMany({
     where: { active: true },
     orderBy: { name: "asc" },
@@ -105,7 +127,7 @@ export async function resellerListActivePlans(matrixId: string, userId: string) 
 }
 
 export async function resellerCreateChild(
-  matrixId: string,
+  activeOrganizationId: string,
   actorUserId: string,
   data: {
     name: string;
@@ -115,7 +137,7 @@ export async function resellerCreateChild(
     resellerOrgKind?: "AGENCY" | "CLIENT";
   }
 ) {
-  await assertResellerMatrixContext(matrixId, actorUserId);
+  const matrixId = await resolveResellerMatrixOrganizationId(actorUserId, activeOrganizationId);
   const org = await createChildOrganization(matrixId, actorUserId, data.name, {
     inheritPlanFromParent: data.inheritPlanFromParent,
     planId: data.planId,
@@ -130,12 +152,12 @@ export async function resellerCreateChild(
 }
 
 export async function resellerPatchChildGovernance(
-  matrixId: string,
+  activeOrganizationId: string,
   actorUserId: string,
   childId: string,
   body: GovernanceBody
 ) {
-  await assertResellerMatrixContext(matrixId, actorUserId);
+  const matrixId = await resolveResellerMatrixOrganizationId(actorUserId, activeOrganizationId);
   const child = await prisma.organization.findFirst({
     where: { id: childId, parentOrganizationId: matrixId, deletedAt: null },
   });
@@ -198,7 +220,7 @@ export async function resellerPatchChildGovernance(
 }
 
 export async function resellerListEcosystemUsers(
-  matrixId: string,
+  activeOrganizationId: string,
   userId: string,
   filters: {
     organizationId?: string;
@@ -208,7 +230,7 @@ export async function resellerListEcosystemUsers(
     q?: string;
   }
 ) {
-  await assertResellerMatrixContext(matrixId, userId);
+  const matrixId = await resolveResellerMatrixOrganizationId(userId, activeOrganizationId);
   const orgIds = await ecosystemOrganizationIds(matrixId);
   if (filters.organizationId && !orgIds.includes(filters.organizationId)) {
     throw new Error("Empresa fora do ecossistema");
@@ -295,12 +317,12 @@ export async function resellerListEcosystemUsers(
 }
 
 export async function resellerPatchUser(
-  matrixId: string,
+  activeOrganizationId: string,
   actorUserId: string,
   targetUserId: string,
   patch: { email?: string; name?: string; suspended?: boolean }
 ) {
-  await assertResellerMatrixContext(matrixId, actorUserId);
+  const matrixId = await resolveResellerMatrixOrganizationId(actorUserId, activeOrganizationId);
   const orgIds = await ecosystemOrganizationIds(matrixId);
   const inEco = await prisma.membership.findFirst({
     where: { userId: targetUserId, organizationId: { in: orgIds } },
@@ -367,12 +389,12 @@ export async function resellerPatchUser(
 }
 
 export async function resellerResetUserPassword(
-  matrixId: string,
+  activeOrganizationId: string,
   actorUserId: string,
   targetUserId: string,
   newPassword: string
 ) {
-  await assertResellerMatrixContext(matrixId, actorUserId);
+  const matrixId = await resolveResellerMatrixOrganizationId(actorUserId, activeOrganizationId);
   const orgIds = await ecosystemOrganizationIds(matrixId);
   const inEco = await prisma.membership.findFirst({
     where: { userId: targetUserId, organizationId: { in: orgIds } },
@@ -396,13 +418,13 @@ export async function resellerResetUserPassword(
 }
 
 export async function resellerSetMembershipRole(
-  matrixId: string,
+  activeOrganizationId: string,
   actorUserId: string,
   organizationId: string,
   targetUserId: string,
   role: string
 ) {
-  await assertResellerMatrixContext(matrixId, actorUserId);
+  const matrixId = await resolveResellerMatrixOrganizationId(actorUserId, activeOrganizationId);
   const orgIds = await ecosystemOrganizationIds(matrixId);
   if (!orgIds.includes(organizationId)) {
     throw new Error("Empresa fora do ecossistema");
@@ -419,12 +441,12 @@ export async function resellerSetMembershipRole(
 }
 
 export async function resellerRemoveMembership(
-  matrixId: string,
+  activeOrganizationId: string,
   actorUserId: string,
   organizationId: string,
   targetUserId: string
 ) {
-  await assertResellerMatrixContext(matrixId, actorUserId);
+  const matrixId = await resolveResellerMatrixOrganizationId(actorUserId, activeOrganizationId);
   const orgIds = await ecosystemOrganizationIds(matrixId);
   if (!orgIds.includes(organizationId)) {
     throw new Error("Empresa fora do ecossistema");
@@ -440,13 +462,13 @@ export async function resellerRemoveMembership(
 }
 
 export async function resellerMoveMembership(
-  matrixId: string,
+  activeOrganizationId: string,
   actorUserId: string,
   targetUserId: string,
   fromOrganizationId: string,
   toOrganizationId: string
 ) {
-  await assertResellerMatrixContext(matrixId, actorUserId);
+  const matrixId = await resolveResellerMatrixOrganizationId(actorUserId, activeOrganizationId);
   const orgIds = await ecosystemOrganizationIds(matrixId);
   if (!orgIds.includes(fromOrganizationId) || !orgIds.includes(toOrganizationId)) {
     throw new Error("Empresa fora do ecossistema");
@@ -489,8 +511,12 @@ export async function resellerMoveMembership(
   return { ok: true as const };
 }
 
-export async function resellerLogEnterChild(matrixId: string, actorUserId: string, childOrganizationId: string) {
-  await assertResellerMatrixContext(matrixId, actorUserId);
+export async function resellerLogEnterChild(
+  activeOrganizationId: string,
+  actorUserId: string,
+  childOrganizationId: string
+) {
+  const matrixId = await resolveResellerMatrixOrganizationId(actorUserId, activeOrganizationId);
   const child = await prisma.organization.findFirst({
     where: { id: childOrganizationId, parentOrganizationId: matrixId, deletedAt: null },
   });
@@ -503,8 +529,8 @@ export async function resellerLogEnterChild(matrixId: string, actorUserId: strin
   return { ok: true as const };
 }
 
-export async function resellerListAuditLogs(matrixId: string, userId: string, limit: number) {
-  await assertResellerMatrixContext(matrixId, userId);
+export async function resellerListAuditLogs(activeOrganizationId: string, userId: string, limit: number) {
+  const matrixId = await resolveResellerMatrixOrganizationId(userId, activeOrganizationId);
   const rows = await prisma.resellerAuditLog.findMany({
     where: { matrixOrgId: matrixId },
     orderBy: { createdAt: "desc" },

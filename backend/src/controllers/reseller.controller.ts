@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import type { ZodError } from "zod";
 import {
   resellerCreateChild,
   resellerGetOperationalHealth,
@@ -29,8 +30,8 @@ import {
 
 type AuthRequest = Request & { user: { userId: string; organizationId: string } };
 
-function firstErrorMessage(err: { errors: { message?: string }[] }): string {
-  return err.errors[0]?.message ?? "Dados inválidos";
+function firstErrorMessage(err: ZodError): string {
+  return err.issues[0]?.message ?? "Dados inválidos";
 }
 
 export async function resellerOverview(req: Request, res: Response) {

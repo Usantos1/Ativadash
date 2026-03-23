@@ -96,13 +96,19 @@ export async function fetchManagedOrganizations(): Promise<OrganizationSummary[]
 
 export async function createManagedOrganization(
   name: string,
-  options?: { inheritPlanFromParent?: boolean; planId?: string | null; workspaceNote?: string | null }
+  options?: {
+    inheritPlanFromParent?: boolean;
+    planId?: string | null;
+    workspaceNote?: string | null;
+    resellerOrgKind?: ResellerOrgKind;
+  }
 ): Promise<{
   organization: OrganizationSummary & {
     inheritPlanFromParent?: boolean;
     planId?: string | null;
     workspaceStatus?: WorkspaceStatus;
     workspaceNote?: string | null;
+    resellerOrgKind?: ResellerOrgKind | null;
   };
 }> {
   return api.post("/organization/children", {
@@ -112,6 +118,7 @@ export async function createManagedOrganization(
       : {}),
     ...(options?.planId !== undefined ? { planId: options.planId } : {}),
     ...(options?.workspaceNote !== undefined ? { workspaceNote: options.workspaceNote } : {}),
+    ...(options?.resellerOrgKind !== undefined ? { resellerOrgKind: options.resellerOrgKind } : {}),
   });
 }
 
@@ -130,6 +137,8 @@ export async function fetchChildrenPortfolio(): Promise<{
   return api.get("/organization/children/portfolio");
 }
 
+export type ResellerOrgKind = "AGENCY" | "CLIENT";
+
 export type ChildWorkspaceOperationsRow = {
   id: string;
   name: string;
@@ -138,6 +147,26 @@ export type ChildWorkspaceOperationsRow = {
   inheritPlanFromParent: boolean;
   workspaceStatus: WorkspaceStatus;
   workspaceNote: string | null;
+  resellerOrgKind: ResellerOrgKind | null;
+  planId: string | null;
+  plan: { id: string; name: string; slug: string } | null;
+  featureOverrides: unknown;
+  subscription: {
+    id: string;
+    billingMode: string;
+    status: string;
+    renewsAt: string | null;
+    startedAt: string;
+    planId: string;
+  } | null;
+  limitsOverride: {
+    maxUsers: number | null;
+    maxIntegrations: number | null;
+    maxDashboards: number | null;
+    maxClientAccounts: number | null;
+    maxChildOrganizations: number | null;
+    notes: string | null;
+  } | null;
   memberCount: number;
   pendingInvitationsCount: number;
   dashboardCount: number;
@@ -193,6 +222,8 @@ export async function patchChildWorkspace(
     name?: string;
     workspaceStatus?: WorkspaceStatus;
     workspaceNote?: string | null;
+    resellerOrgKind?: ResellerOrgKind;
+    featureOverrides?: Record<string, boolean> | null;
   }
 ): Promise<{
   organization: {
@@ -202,6 +233,8 @@ export async function patchChildWorkspace(
     inheritPlanFromParent: boolean;
     workspaceStatus: WorkspaceStatus;
     workspaceNote: string | null;
+    resellerOrgKind: ResellerOrgKind | null;
+    featureOverrides: unknown;
     createdAt: string;
   };
 }> {
