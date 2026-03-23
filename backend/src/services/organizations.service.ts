@@ -151,7 +151,7 @@ export async function createChildOrganization(
   }
 ) {
   await assertDirectOrgAdmin(userId, parentOrganizationId);
-  await assertCanAddChildOrganization(parentOrganizationId);
+  await assertCanAddChildOrganization(parentOrganizationId, userId);
   const inherit = options?.inheritPlanFromParent !== false;
   const parent = await prisma.organization.findFirst({
     where: { id: parentOrganizationId, deletedAt: null },

@@ -1,5 +1,6 @@
 import { prisma } from "../utils/prisma.js";
 import type { Plan, SubscriptionLimitsOverride } from "@prisma/client";
+import { isPlatformAdminEmail } from "../utils/platform-admin.js";
 
 /** Limites quando a org nao tem plano (fallback tipo Starter). */
 const FALLBACK_LIMITS = {
@@ -218,7 +219,20 @@ export async function assertCanAddClientAccount(organizationId: string): Promise
   }
 }
 
-export async function assertCanAddChildOrganization(parentOrganizationId: string): Promise<void> {
+export async function assertCanAddChildOrganization(
+  parentOrganizationId: string,
+  actorUserId?: string
+): Promise<void> {
+  if (actorUserId) {
+    const actor = await prisma.user.findFirst({
+      where: { id: actorUserId, deletedAt: null },
+      select: { email: true },
+    });
+    if (actor?.email && isPlatformAdminEmail(actor.email)) {
+      return;
+    }
+  }
+
   const limits = await getEffectivePlanLimits(parentOrganizationId);
   if (limits.maxChildOrganizations == null) return;
   if (limits.maxChildOrganizations <= 0) {
