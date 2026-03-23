@@ -44,7 +44,8 @@ export type AdaptiveFunnelModel = {
   scaleMax: number;
   /** Base para funil clássico (impressões). */
   classicBase: number;
-  classicGeometry: ClassicFunnelGeometry | null;
+  /** Geometria do funil (larguras monótonas); sempre presente para o bloco executivo. */
+  classicGeometry: ClassicFunnelGeometry;
 };
 
 function transitionDisplayLabel(fromId: string, toId: string): string {
@@ -141,6 +142,11 @@ export function buildClassicFunnelGeometry(steps: FunnelStep[], base: number): C
   const cx = VB_W / 2;
   const polygons: ClassicFunnelGeometry["polygons"] = [];
 
+  /** Silhueta sempre não crescente: volumes que “crescem” na origem não alargam a faixa. */
+  for (let i = 1; i < halfWidths.length; i++) {
+    halfWidths[i] = Math.min(halfWidths[i], halfWidths[i - 1]);
+  }
+
   for (let i = 0; i < n; i++) {
     const yT = VB_TOP + i * VB_SEG;
     const yB = VB_TOP + (i + 1) * VB_SEG;
@@ -165,6 +171,12 @@ export function buildClassicFunnelGeometry(steps: FunnelStep[], base: number): C
     centerX: cx,
     polygons,
   };
+}
+
+/** Largura de cada faixa em % do topo (100%), para camadas HTML centralizadas — já monótona. */
+export function layerWidthsPercentFromGeometry(geo: ClassicFunnelGeometry): number[] {
+  const top = geo.halfWidths[0] || 1;
+  return geo.halfWidths.map((h) => (h / top) * 100);
 }
 
 export function buildAdaptiveFunnelModel(summary: MarketingDashboardSummary): AdaptiveFunnelModel {
@@ -242,8 +254,7 @@ export function buildAdaptiveFunnelModel(summary: MarketingDashboardSummary): Ad
         : "Algumas etapas superam a anterior: eventos costumam ter origens diferentes na Meta. Compare volumes absolutos.";
   }
 
-  const classicGeometry =
-    mode === "classic" ? buildClassicFunnelGeometry(steps, classicBase) : null;
+  const classicGeometry = buildClassicFunnelGeometry(steps, classicBase);
 
   return {
     mode,

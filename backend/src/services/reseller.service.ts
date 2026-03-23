@@ -220,6 +220,33 @@ export async function resellerPatchChildGovernance(
   });
 }
 
+export async function resellerSoftDeleteChild(
+  activeOrganizationId: string,
+  actorUserId: string,
+  childId: string
+): Promise<void> {
+  const matrixId = await resolveResellerMatrixOrganizationId(actorUserId, activeOrganizationId);
+  if (childId === matrixId) {
+    throw new Error("Não é possível excluir a matriz");
+  }
+  const under = await isOrganizationUnderMatrix(childId, matrixId);
+  if (!under) {
+    throw new Error("Empresa fora do ecossistema");
+  }
+  await assertDirectOrgAdmin(actorUserId, matrixId);
+  const children = await prisma.organization.count({
+    where: { parentOrganizationId: childId, deletedAt: null },
+  });
+  if (children > 0) {
+    throw new Error("Remova ou exclua empresas vinculadas a esta organização antes");
+  }
+  await prisma.organization.update({
+    where: { id: childId },
+    data: { deletedAt: new Date(), workspaceStatus: "ARCHIVED" },
+  });
+  await appendResellerAudit(matrixId, actorUserId, "CHILD_ORG_SOFT_DELETED", "Organization", childId, {});
+}
+
 export async function resellerListEcosystemUsers(
   activeOrganizationId: string,
   userId: string,

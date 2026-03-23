@@ -57,10 +57,13 @@ export async function deletePlatformPlan(id: string): Promise<void> {
   await api.delete(`/platform/plans/${id}`);
 }
 
+export type WorkspaceStatusDto = "ACTIVE" | "PAUSED" | "ARCHIVED";
+
 export type PlatformOrgRow = {
   id: string;
   name: string;
   slug: string;
+  workspaceStatus: WorkspaceStatusDto;
   inheritPlanFromParent: boolean;
   parentOrganizationId: string | null;
   planId: string | null;
@@ -85,6 +88,17 @@ export type PlatformOrgRow = {
 
 export async function fetchPlatformOrganizations(): Promise<{ organizations: PlatformOrgRow[] }> {
   return api.get("/platform/organizations");
+}
+
+export async function patchPlatformOrganization(
+  organizationId: string,
+  body: { name?: string; slug?: string; workspaceStatus?: WorkspaceStatusDto }
+): Promise<{ organization: PlatformOrgRow }> {
+  return api.patch(`/platform/organizations/${organizationId}`, body);
+}
+
+export async function deletePlatformOrganization(organizationId: string): Promise<void> {
+  await api.delete(`/platform/organizations/${organizationId}`);
 }
 
 export async function assignOrgPlan(organizationId: string, planId: string | null): Promise<unknown> {

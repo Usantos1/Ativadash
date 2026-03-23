@@ -24,6 +24,7 @@ router.get("/audit", resellerController.resellerAuditHandler);
 router.post("/children", resellerController.resellerCreateChildHandler);
 router.get("/children/:childId/detail", resellerController.resellerChildDetailHandler);
 router.patch("/children/:childId/governance", resellerController.resellerPatchGovernanceHandler);
+router.delete("/children/:childId", resellerController.resellerDeleteChildHandler);
 
 router.patch("/ecosystem/users/:userId", resellerController.resellerPatchUserHandler);
 router.post("/ecosystem/users/:userId/password", resellerController.resellerResetPasswordHandler);

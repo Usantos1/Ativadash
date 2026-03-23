@@ -1,11 +1,12 @@
 import { useMemo } from "react";
-import { Filter, GitBranch, TrendingDown } from "lucide-react";
+import { GitBranch, TrendingDown } from "lucide-react";
 import { formatNumber, formatPercent, formatSpend } from "@/lib/metrics-format";
 import { cn } from "@/lib/utils";
 import type { MarketingDashboardSummary } from "@/lib/marketing-dashboard-api";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   buildAdaptiveFunnelModel,
+  layerWidthsPercentFromGeometry,
   type AdaptiveFunnelModel,
   type FunnelFlowModel,
   type FunnelStep,
@@ -39,230 +40,23 @@ function Pill({
   );
 }
 
-function ClassicFunnelSvg({
-  geometry,
-  bottleneckTransitionIndex,
-}: {
-  geometry: NonNullable<AdaptiveFunnelModel["classicGeometry"]>;
-  bottleneckTransitionIndex: number | null;
-}) {
-  const { viewWidth, viewHeight, polygons } = geometry;
-  return (
-    <svg
-      viewBox={`0 0 ${viewWidth} ${viewHeight}`}
-      className="h-auto w-full max-w-[280px] shrink-0 text-primary/85"
-      role="img"
-      aria-label="Funil de conversão proporcional às impressões"
-    >
-      <defs>
-        <linearGradient id="funnelFill" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="currentColor" stopOpacity="0.22" />
-          <stop offset="100%" stopColor="currentColor" stopOpacity="0.06" />
-        </linearGradient>
-        <linearGradient id="funnelStroke" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="currentColor" stopOpacity="0.35" />
-          <stop offset="100%" stopColor="currentColor" stopOpacity="0.2" />
-        </linearGradient>
-      </defs>
-      {polygons.map((p, i) => {
-        const isBn = bottleneckTransitionIndex === p.transitionIndex;
-        return (
-          <polygon
-            key={i}
-            points={p.points}
-            fill="url(#funnelFill)"
-            stroke={isBn ? "hsl(var(--destructive) / 0.55)" : "url(#funnelStroke)"}
-            strokeWidth={isBn ? 2.2 : 1}
-            className={cn(isBn && "drop-shadow-sm")}
-          />
-        );
-      })}
-    </svg>
-  );
-}
-
-function ClassicLayout({
-  model,
-  spend,
-  summary,
-}: {
-  model: AdaptiveFunnelModel;
-  spend: number;
-  summary: MarketingDashboardSummary;
-}) {
-  const geo = model.classicGeometry;
-  if (!geo) return null;
-
-  const bnIdx =
-    model.bottleneckKey == null
-      ? null
-      : model.transitions.findIndex((t) => t.key === model.bottleneckKey);
-
-  return (
-    <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(200px,280px)_minmax(0,1.1fr)] lg:items-start">
-      <ul className="order-2 space-y-0 lg:order-1">
-        {model.steps.map((step) => (
-          <li
-            key={step.id}
-            className="flex min-h-[52px] items-center justify-between gap-3 border-b border-border/40 py-3 first:pt-0 last:border-0"
-          >
-            <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                {step.short}
-              </p>
-              <p className="truncate text-xs text-muted-foreground/90">{step.label}</p>
-            </div>
-            <p className="shrink-0 text-right text-lg font-bold tabular-nums text-foreground">
-              {step.unavailable ? (
-                <span className="text-sm font-semibold text-muted-foreground">—</span>
-              ) : step.value != null ? (
-                formatNumber(step.value)
-              ) : (
-                "—"
-              )}
-            </p>
-          </li>
-        ))}
-      </ul>
-
-      <div className="order-1 flex flex-col items-center justify-start gap-4 lg:order-2">
-        <ClassicFunnelSvg
-          geometry={geo}
-          bottleneckTransitionIndex={bnIdx !== null && bnIdx >= 0 ? bnIdx : null}
-        />
-        <p className="max-w-[260px] text-center text-[10px] leading-relaxed text-muted-foreground">
-          Largura de cada faixa proporcional ao volume da etapa em relação às impressões (base do funil).
-        </p>
-      </div>
-
-      <div className="order-3 space-y-0">
-        <p className="mb-3 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-          Taxas entre etapas
-        </p>
-        {model.transitions.map((t) => (
-          <TransitionRow key={t.key} t={t} spend={spend} summary={summary} compact />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function TransitionRow({
-  t,
-  spend,
-  summary,
-  compact,
-}: {
-  t: FunnelTransition;
-  spend: number;
-  summary: MarketingDashboardSummary;
-  compact?: boolean;
-}) {
-  const rateText = formatTransitionRate(t.ratePct);
-  const isBn = t.isBottleneck;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div
-          className={cn(
-            "flex flex-col gap-1 border-b border-border/35 py-3 last:border-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4",
-            compact && "py-2.5"
-          )}
-        >
-          <div className="min-w-0 flex-1">
-            <p
-              className={cn(
-                "text-[10px] font-bold uppercase tracking-wide",
-                isBn ? "text-amber-800 dark:text-amber-200" : "text-muted-foreground"
-              )}
-            >
-              {t.displayLabel}
-            </p>
-            {t.isExpansion && t.ratePct != null ? (
-              <p className="mt-0.5 text-[10px] text-violet-700 dark:text-violet-300">
-                Etapa seguinte maior que a anterior
-              </p>
-            ) : null}
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <span
-              className={cn(
-                "inline-flex min-h-[28px] min-w-[4.5rem] items-center justify-center rounded-lg border px-2.5 py-1 text-sm font-bold tabular-nums",
-                isBn && "border-amber-500/40 bg-amber-500/10 text-amber-950 dark:text-amber-50",
-                !isBn && t.isExpansion && "border-violet-500/30 bg-violet-500/[0.08]",
-                !isBn && !t.isExpansion && "border-border/50 bg-muted/30"
-              )}
-            >
-              {rateText}
-            </span>
-          </div>
-        </div>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-[280px] text-xs leading-relaxed">
-        <p className="font-medium text-foreground">{t.formula}</p>
-        {t.from.id === "lead" && spend > 0 && summary.leads > 0 ? (
-          <p className="mt-2 text-muted-foreground">CPL ≈ {formatSpend(spend / summary.leads)}</p>
-        ) : null}
-        {t.to.id === "pur" && spend > 0 && summary.purchases > 0 ? (
-          <p className="mt-2 text-muted-foreground">
-            Custo/compra ≈ {formatSpend(spend / summary.purchases)}
-          </p>
-        ) : null}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-function HybridLayout({
-  model,
-  spend,
-  summary,
-}: {
-  model: AdaptiveFunnelModel;
-  spend: number;
-  summary: MarketingDashboardSummary;
-}) {
-  return (
-    <div className="mt-6 space-y-6">
-      <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.06] px-4 py-3 text-xs leading-relaxed text-foreground/90">
-        <span className="font-semibold text-violet-950 dark:text-violet-100">Fluxo híbrido.</span>{" "}
-        Algumas etapas usam eventos de origens diferentes ou volumes não decrescentes — a leitura é por
-        volume absoluto e taxas reais, sem forçar um funil visual.
-      </div>
-
-      <div className="space-y-0">
-        {model.steps.map((step, i) => (
-          <div key={step.id} className="space-y-0">
-            <HybridStepRow step={step} scaleMax={model.scaleMax} spend={spend} summary={summary} />
-            {i < model.transitions.length ? (
-              <div className="relative ml-0 border-l-2 border-muted pl-4 sm:ml-6 sm:pl-5">
-                <div className="py-3">
-                  <TransitionRow t={model.transitions[i]} spend={spend} summary={summary} />
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function HybridStepRow({
+function FunnelLayer({
   step,
-  scaleMax,
+  widthPct,
   spend,
   summary,
+  zone,
+  bottleneckStepIds,
 }: {
   step: FunnelStep;
-  scaleMax: number;
+  widthPct: number;
   spend: number;
   summary: MarketingDashboardSummary;
+  zone: "top" | "mid" | "bottom";
+  bottleneckStepIds: Set<string>;
 }) {
   const v = step.value;
-  const barPct =
-    v != null && v > 0 && scaleMax > 0 ? Math.min(100, Math.max(6, (v / scaleMax) * 100)) : 0;
+  const isBn = bottleneckStepIds.has(step.id);
 
   const tooltipExtra =
     step.id === "lead" && spend > 0 && summary.leads > 0
@@ -273,24 +67,42 @@ function HybridStepRow({
           ? `${formatSpend(spend / v)} por unidade (gasto ÷ volume)`
           : null;
 
+  const zoneTint =
+    zone === "top"
+      ? "from-primary/20 via-primary/12 to-primary/8"
+      : zone === "mid"
+        ? "from-primary/14 via-primary/9 to-primary/6"
+        : "from-primary/10 via-primary/7 to-primary/5";
+
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div
-          className={cn(
-            "rounded-2xl border bg-card p-4 shadow-sm sm:p-5",
-            step.unavailable
-              ? "border-dashed border-muted-foreground/35 bg-muted/15"
-              : "border-border/55"
-          )}
-        >
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6">
-            <div className="min-w-0 shrink-0 sm:w-52">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+    <div className="flex w-full justify-center px-1 sm:px-2">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            className="min-w-0 transition-[width] duration-300 ease-out"
+            style={{ width: `${Math.min(100, Math.max(0, widthPct))}%` }}
+          >
+            <div
+              className={cn(
+                "relative overflow-hidden rounded-xl border bg-gradient-to-b px-3 py-2.5 shadow-sm sm:px-4 sm:py-3",
+                zoneTint,
+                step.unavailable
+                  ? "border-dashed border-muted-foreground/40 bg-muted/25"
+                  : "border-border/55",
+                isBn && "ring-2 ring-amber-500/45 ring-offset-2 ring-offset-background"
+              )}
+              style={{
+                clipPath: "polygon(3.5% 0, 96.5% 0, 100% 100%, 0 100%)",
+              }}
+            >
+              <div
+                className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-foreground/12 to-transparent"
+                aria-hidden
+              />
+              <p className="text-center text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground sm:text-[10px]">
                 {step.short}
               </p>
-              <p className="mt-1 text-sm font-medium text-foreground">{step.label}</p>
-              <p className="mt-2 text-2xl font-bold tabular-nums tracking-tight text-foreground">
+              <p className="mt-1 text-center text-xl font-bold tabular-nums leading-none tracking-tight text-foreground sm:text-2xl">
                 {step.unavailable ? (
                   <span className="text-base font-semibold text-muted-foreground">—</span>
                 ) : v != null ? (
@@ -300,33 +112,89 @@ function HybridStepRow({
                 )}
               </p>
               {step.unavailable ? (
-                <p className="mt-1 text-[10px] text-muted-foreground">Meta não retornou</p>
+                <p className="mt-1 text-center text-[9px] text-muted-foreground">Indisponível</p>
               ) : null}
             </div>
-            <div className="min-w-0 flex-1 space-y-2">
-              <div className="h-2.5 overflow-hidden rounded-full bg-muted/80">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-primary/90 to-primary/50"
-                  style={{ width: `${barPct}%` }}
-                />
-              </div>
-              <p className="text-[10px] text-muted-foreground">
-                Magnitude em relação ao maior volume do período
-              </p>
-            </div>
           </div>
-        </div>
-      </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-[240px] leading-snug">
-        <p className="font-semibold">{step.label}</p>
-        {tooltipExtra ? <p className="mt-1 text-xs text-muted-foreground">{tooltipExtra}</p> : null}
-      </TooltipContent>
-    </Tooltip>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[240px] leading-snug">
+          <p className="font-semibold">{step.label}</p>
+          {tooltipExtra ? <p className="mt-1 text-xs text-muted-foreground">{tooltipExtra}</p> : null}
+        </TooltipContent>
+      </Tooltip>
+    </div>
   );
 }
 
+function TransitionGap({
+  t,
+  spend,
+  summary,
+  isBottleneck,
+}: {
+  t: FunnelTransition;
+  spend: number;
+  summary: MarketingDashboardSummary;
+  isBottleneck: boolean;
+}) {
+  const rateText = formatTransitionRate(t.ratePct);
+
+  return (
+    <div className="flex justify-center py-1.5 sm:py-2">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            className={cn(
+              "flex max-w-[min(100%,20rem)] flex-col items-center gap-0.5 rounded-xl border px-3 py-2 text-center shadow-sm sm:flex-row sm:gap-2 sm:px-4",
+              isBottleneck
+                ? "border-amber-500/45 bg-gradient-to-r from-amber-500/15 to-amber-500/5"
+                : t.isExpansion
+                  ? "border-violet-500/25 bg-violet-500/[0.07]"
+                  : "border-border/45 bg-muted/35"
+            )}
+          >
+            <span
+              className={cn(
+                "text-[9px] font-bold uppercase tracking-wide sm:text-[10px]",
+                isBottleneck ? "text-amber-900 dark:text-amber-100" : "text-muted-foreground"
+              )}
+            >
+              {t.displayLabel}
+            </span>
+            <span className="text-sm font-bold tabular-nums text-foreground sm:text-base">{rateText}</span>
+            {t.isExpansion && t.ratePct != null ? (
+              <span className="text-[9px] font-medium text-violet-700 dark:text-violet-300">
+                (real &gt; 100%)
+              </span>
+            ) : null}
+          </div>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-[280px] text-xs leading-relaxed">
+          <p className="font-medium text-foreground">{t.formula}</p>
+          {t.from.id === "lead" && spend > 0 && summary.leads > 0 ? (
+            <p className="mt-2 text-muted-foreground">CPL ≈ {formatSpend(spend / summary.leads)}</p>
+          ) : null}
+          {t.to.id === "pur" && spend > 0 && summary.purchases > 0 ? (
+            <p className="mt-2 text-muted-foreground">
+              Custo/compra ≈ {formatSpend(spend / summary.purchases)}
+            </p>
+          ) : null}
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
+function zoneForStepIndex(i: number, total: number): "top" | "mid" | "bottom" {
+  if (total <= 1) return "mid";
+  const t = i / (total - 1);
+  if (t < 1 / 3) return "top";
+  if (t < 2 / 3) return "mid";
+  return "bottom";
+}
+
 /**
- * Fluxo de conversão: modo funil clássico (SVG) quando volumes decrescem; modo híbrido (lista) caso contrário.
+ * Funil executivo em camadas horizontais: silhueta monótona (topo → fundo), taxas reais entre etapas.
  */
 export function ExecutiveFunnel({
   summary,
@@ -338,43 +206,61 @@ export function ExecutiveFunnel({
   className?: string;
 }) {
   const model = useMemo(() => buildAdaptiveFunnelModel(summary), [summary]);
+  const widthPcts = useMemo(
+    () => layerWidthsPercentFromGeometry(model.classicGeometry),
+    [model.classicGeometry]
+  );
 
-  const modeLabel = model.mode === "classic" ? "Funil clássico" : "Fluxo híbrido";
-  const ModeIcon = model.mode === "classic" ? Filter : GitBranch;
+  const bnTransIdx =
+    model.bottleneckKey == null
+      ? -1
+      : model.transitions.findIndex((t) => t.key === model.bottleneckKey);
+
+  const bottleneckStepIds = useMemo(() => {
+    const s = new Set<string>();
+    if (bnTransIdx >= 0) {
+      const tr = model.transitions[bnTransIdx];
+      if (tr) {
+        s.add(tr.from.id);
+        s.add(tr.to.id);
+      }
+    }
+    return s;
+  }, [bnTransIdx, model.transitions]);
 
   const footerNote =
-    model.mode === "classic"
-      ? "Funil proporcional às impressões; taxas ao lado refletem a divisão real entre etapas."
-      : "Taxas podem ultrapassar 100% quando a etapa seguinte não é subconjunto estrito da anterior.";
+    model.mode === "hybrid"
+      ? "Silhueta do funil não alarga quando uma etapa supera a anterior; valores e taxas permanecem os dados reais."
+      : null;
 
   return (
     <section
       className={cn(
-        "rounded-2xl border border-border/55 bg-gradient-to-b from-card via-card to-muted/[0.12] p-4 shadow-[var(--shadow-surface)] sm:p-6",
+        "rounded-2xl border border-border/55 bg-gradient-to-b from-card via-card to-muted/[0.1] p-4 shadow-[var(--shadow-surface)] sm:p-6",
         className
       )}
     >
       <header className="flex flex-col gap-4 border-b border-border/40 pb-5">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0 space-y-1">
-            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-primary/80">
-              Fluxo de conversão
-            </p>
-            <h2 className="text-lg font-bold tracking-tight text-foreground">
-              Do topo ao fundo do funil
-            </h2>
-            <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-              Etapas da Meta e taxas entre volumes consecutivos. O layout adapta-se automaticamente quando
-              os dados não formam um funil estritamente decrescente.
-            </p>
-          </div>
+        <div className="min-w-0 space-y-1">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-primary/80">
+            Fluxo de conversão
+          </p>
+          <h2 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">
+            Funil de camadas
+          </h2>
+          <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            Do topo (volume amplo) ao fundo (conversão). Cada faixa afunila na silhueta; as taxas mostram a
+            passagem real entre etapas.
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <Pill className="border-primary/25 bg-primary/5 text-primary">
-            <ModeIcon className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
-            <span className="truncate">{modeLabel}</span>
-          </Pill>
+          {model.mode === "hybrid" ? (
+            <Pill className="border-violet-500/30 bg-violet-500/[0.08] text-violet-950 dark:text-violet-100">
+              <GitBranch className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+              <span className="truncate">Fluxo híbrido</span>
+            </Pill>
+          ) : null}
           {model.bottleneckBadge ? (
             <Pill className="border-amber-500/35 bg-amber-500/10 text-amber-950 dark:text-amber-50">
               <TrendingDown className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -382,7 +268,7 @@ export function ExecutiveFunnel({
             </Pill>
           ) : (
             <Pill className="border-border/50 bg-muted/30 text-muted-foreground">
-              <span className="truncate">Sem gargalo único identificado</span>
+              <span className="truncate">Gargalo: não destacado</span>
             </Pill>
           )}
         </div>
@@ -390,17 +276,53 @@ export function ExecutiveFunnel({
         <p className="text-sm font-medium leading-snug text-foreground">{model.bottleneckLine}</p>
       </header>
 
-      {model.mode === "classic" ? (
-        <ClassicLayout model={model} spend={spend} summary={summary} />
-      ) : (
-        <HybridLayout model={model} spend={spend} summary={summary} />
-      )}
+      <div className="mt-5 flex flex-col gap-4 sm:mt-6 sm:flex-row sm:gap-6 lg:gap-8">
+        <div
+          className="hidden w-11 shrink-0 flex-col justify-between border-r border-border/35 py-4 pr-3 text-[8px] font-bold uppercase leading-tight tracking-wider text-muted-foreground sm:flex sm:w-12 sm:text-[9px]"
+          aria-hidden
+        >
+          <span>Topo</span>
+          <span className="text-center">Meio</span>
+          <span className="text-right">Fundo</span>
+        </div>
 
-      <footer className="mt-8 border-t border-border/35 pt-4">
-        <p className="text-center text-[10px] leading-relaxed text-muted-foreground sm:text-left">
-          {footerNote}
-        </p>
-      </footer>
+        <div className="min-w-0 flex-1">
+          <p className="mb-3 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:hidden">
+            Topo → meio → fundo
+          </p>
+
+          <div className="mx-auto w-full max-w-md lg:max-w-lg">
+            {model.steps.map((step, i) => (
+              <div key={step.id}>
+                <FunnelLayer
+                  step={step}
+                  widthPct={widthPcts[i] ?? 100}
+                  spend={spend}
+                  summary={summary}
+                  zone={zoneForStepIndex(i, model.steps.length)}
+                  bottleneckStepIds={bottleneckStepIds}
+                />
+                {i < model.transitions.length ? (
+                  <TransitionGap
+                    t={model.transitions[i]}
+                    spend={spend}
+                    summary={summary}
+                    isBottleneck={bnTransIdx === i}
+                  />
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {footerNote ? (
+        <footer className="mt-6 border-t border-border/35 pt-4">
+          <p className="text-center text-[10px] leading-relaxed text-muted-foreground sm:text-left">
+            {footerNote}
+          </p>
+        </footer>
+      ) : null}
     </section>
   );
 }

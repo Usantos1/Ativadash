@@ -18,6 +18,8 @@ router.patch("/organizations/:organizationId/plan", platform.organizationAssignP
 router.get("/organizations/:organizationId/limits-override", platform.organizationOverrideGet);
 router.put("/organizations/:organizationId/limits-override", platform.organizationOverridePut);
 router.patch("/organizations/:organizationId/subscription", platform.organizationSubscriptionPatch);
+router.patch("/organizations/:organizationId", platform.organizationPatch);
+router.delete("/organizations/:organizationId", platform.organizationDelete);
 
 router.get("/subscriptions", platform.subscriptionsList);
 router.post("/maintenance/sync-subscriptions", platform.maintenanceSyncSubscriptions);

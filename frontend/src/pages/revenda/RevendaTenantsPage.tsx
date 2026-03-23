@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, LogIn, Pencil, Plus } from "lucide-react";
+import { Ban, Loader2, LogIn, Pencil, PlayCircle, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
@@ -22,6 +22,7 @@ import {
   fetchResellerEcosystemOrganizations,
   fetchResellerChildDetail,
   resellerCreateChild,
+  resellerDeleteChild,
   resellerPatchChildGovernance,
   postResellerEnterChild,
   REVENDA_PLAN_FEATURE_KEYS,
@@ -106,6 +107,7 @@ export function RevendaTenantsPage({ kind }: Props) {
   const [subNotes, setSubNotes] = useState("");
 
   const [switchingId, setSwitchingId] = useState<string | null>(null);
+  const [rowActionId, setRowActionId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const title = kind === "AGENCY" ? "Agências" : "Empresas";
@@ -294,6 +296,39 @@ export function RevendaTenantsPage({ kind }: Props) {
     setEditPlanId(r.planId);
   }
 
+  async function quickSetStatus(row: ChildWorkspaceOperationsRow, status: WorkspaceStatus) {
+    setRowActionId(row.id);
+    setActionError(null);
+    try {
+      await resellerPatchChildGovernance(row.id, { workspaceStatus: status });
+      await load();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Falha ao atualizar status.");
+    } finally {
+      setRowActionId(null);
+    }
+  }
+
+  async function confirmDeleteChild(row: ChildWorkspaceOperationsRow) {
+    if (
+      !window.confirm(
+        `Excluir "${row.name}"? A empresa será arquivada e ocultada (soft delete). Não é possível se houver filiais vinculadas.`
+      )
+    ) {
+      return;
+    }
+    setRowActionId(row.id);
+    setActionError(null);
+    try {
+      await resellerDeleteChild(row.id);
+      await load();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Falha ao excluir.");
+    } finally {
+      setRowActionId(null);
+    }
+  }
+
   function resetLimitsToInherit() {
     if (!limitDraft) return;
     const cleared: Record<PlanLimitFieldKey, string> = {
@@ -360,7 +395,7 @@ export function RevendaTenantsPage({ kind }: Props) {
                     <th className="py-2 pr-3">Plano</th>
                     <th className="py-2 pr-3">Membros</th>
                     <th className="py-2 pr-3">Integrações</th>
-                    <th className="py-2 text-right">Ações</th>
+                    <th className="py-2 text-right min-w-[220px]">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -372,7 +407,7 @@ export function RevendaTenantsPage({ kind }: Props) {
                       <td className="py-3 pr-3 tabular-nums">{r.memberCount}</td>
                       <td className="py-3 pr-3 tabular-nums">{r.connectedIntegrations}</td>
                       <td className="py-3 text-right">
-                        <div className="flex justify-end gap-2">
+                        <div className="flex flex-wrap justify-end gap-1">
                           <Button
                             type="button"
                             variant="outline"
@@ -390,7 +425,51 @@ export function RevendaTenantsPage({ kind }: Props) {
                           </Button>
                           <Button type="button" variant="secondary" size="sm" className="gap-1" onClick={() => openEdit(r)}>
                             <Pencil className="h-3.5 w-3.5" />
-                            Governança
+                            Editar
+                          </Button>
+                          {r.workspaceStatus === "ACTIVE" ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="gap-1"
+                              disabled={rowActionId === r.id}
+                              onClick={() => void quickSetStatus(r, "PAUSED")}
+                            >
+                              {rowActionId === r.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Ban className="h-3.5 w-3.5" />
+                              )}
+                              Inativar
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="gap-1"
+                              disabled={rowActionId === r.id}
+                              onClick={() => void quickSetStatus(r, "ACTIVE")}
+                            >
+                              {rowActionId === r.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <PlayCircle className="h-3.5 w-3.5" />
+                              )}
+                              Ativar
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1 text-destructive hover:text-destructive"
+                            disabled={rowActionId === r.id}
+                            onClick={() => void confirmDeleteChild(r)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Excluir
                           </Button>
                         </div>
                       </td>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Ban, Pencil, PlayCircle, Trash2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,16 +11,20 @@ import {
   assignOrgPlan,
   createPlatformPlan,
   deletePlatformPlan,
+  deletePlatformOrganization,
   fetchPlatformOrganizations,
   fetchPlatformPlans,
   fetchPlatformSubscriptions,
   fetchOrgLimitsOverride,
   patchOrgSubscription,
+  patchPlatformOrganization,
   putOrgLimitsOverride,
   syncPlatformSubscriptions,
+  updatePlatformPlan,
   type PlanRow,
   type PlatformOrgRow,
   type PlatformSubscriptionRow,
+  type WorkspaceStatusDto,
 } from "@/lib/platform-api";
 
 const DEFAULT_FEATURES = {
@@ -29,6 +34,12 @@ const DEFAULT_FEATURES = {
   multiOrganization: true,
   integrations: true,
   webhooks: false,
+};
+
+const ORG_STATUS_PT: Record<WorkspaceStatusDto, string> = {
+  ACTIVE: "Ativa",
+  PAUSED: "Pausada",
+  ARCHIVED: "Arquivada",
 };
 
 export function PlatformPage() {
@@ -53,6 +64,30 @@ export function PlatformPage() {
     maxChildOrganizations: "" as string,
     notes: "" as string,
   });
+
+  const [orgRowBusy, setOrgRowBusy] = useState<string | null>(null);
+  const [planRowBusy, setPlanRowBusy] = useState<string | null>(null);
+  const [orgEditor, setOrgEditor] = useState<PlatformOrgRow | null>(null);
+  const [orgEditName, setOrgEditName] = useState("");
+  const [orgEditSlug, setOrgEditSlug] = useState("");
+  const [orgEditStatus, setOrgEditStatus] = useState<WorkspaceStatusDto>("ACTIVE");
+  const [orgEditSaving, setOrgEditSaving] = useState(false);
+
+  const [planEditor, setPlanEditor] = useState<PlanRow | null>(null);
+  const [planEditForm, setPlanEditForm] = useState({
+    name: "",
+    slug: "",
+    planType: "standard",
+    descriptionInternal: "",
+    active: true,
+    maxIntegrations: 5,
+    maxDashboards: 10,
+    maxUsers: "" as string,
+    maxClientAccounts: "" as string,
+    maxChildOrganizations: "" as string,
+    features: { ...DEFAULT_FEATURES },
+  });
+  const [planEditSaving, setPlanEditSaving] = useState(false);
 
   const [newPlan, setNewPlan] = useState({
     name: "",
@@ -90,6 +125,30 @@ export function PlatformPage() {
     if (platformAdmin) load();
     else setLoading(false);
   }, [platformAdmin, load]);
+
+  function openOrgEditor(o: PlatformOrgRow) {
+    setOrgEditName(o.name);
+    setOrgEditSlug(o.slug);
+    setOrgEditStatus(o.workspaceStatus);
+    setOrgEditor(o);
+  }
+
+  function openPlanEditor(p: PlanRow) {
+    setPlanEditForm({
+      name: p.name,
+      slug: p.slug,
+      planType: p.planType,
+      descriptionInternal: p.descriptionInternal ?? "",
+      active: p.active,
+      maxIntegrations: p.maxIntegrations,
+      maxDashboards: p.maxDashboards,
+      maxUsers: p.maxUsers != null ? String(p.maxUsers) : "",
+      maxClientAccounts: p.maxClientAccounts != null ? String(p.maxClientAccounts) : "",
+      maxChildOrganizations: p.maxChildOrganizations != null ? String(p.maxChildOrganizations) : "",
+      features: { ...DEFAULT_FEATURES, ...(p.features ?? {}) },
+    });
+    setPlanEditor(p);
+  }
 
   useEffect(() => {
     if (!manageOrg) return;
@@ -179,6 +238,99 @@ export function PlatformPage() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao excluir");
+    }
+  }
+
+  async function saveOrgEditor() {
+    if (!orgEditor) return;
+    setOrgEditSaving(true);
+    setError(null);
+    try {
+      await patchPlatformOrganization(orgEditor.id, {
+        name: orgEditName.trim(),
+        slug: orgEditSlug.trim().toLowerCase(),
+        workspaceStatus: orgEditStatus,
+      });
+      setOrgEditor(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao salvar empresa");
+    } finally {
+      setOrgEditSaving(false);
+    }
+  }
+
+  async function orgSetStatus(id: string, workspaceStatus: WorkspaceStatusDto) {
+    setOrgRowBusy(id);
+    setError(null);
+    try {
+      await patchPlatformOrganization(id, { workspaceStatus });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao atualizar status");
+    } finally {
+      setOrgRowBusy(null);
+    }
+  }
+
+  async function handleDeleteOrganization(o: PlatformOrgRow) {
+    if (
+      !window.confirm(
+        `Excluir "${o.name}"? Será aplicado arquivamento + soft delete. Não permitido se existirem organizações filhas.`
+      )
+    ) {
+      return;
+    }
+    setOrgRowBusy(o.id);
+    setError(null);
+    try {
+      await deletePlatformOrganization(o.id);
+      if (manageOrg?.id === o.id) setManageOrg(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao excluir empresa");
+    } finally {
+      setOrgRowBusy(null);
+    }
+  }
+
+  async function planSetActive(id: string, active: boolean) {
+    setPlanRowBusy(id);
+    setError(null);
+    try {
+      await updatePlatformPlan(id, { active });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao atualizar plano");
+    } finally {
+      setPlanRowBusy(null);
+    }
+  }
+
+  async function savePlanEditor() {
+    if (!planEditor) return;
+    setPlanEditSaving(true);
+    setError(null);
+    try {
+      await updatePlatformPlan(planEditor.id, {
+        name: planEditForm.name.trim(),
+        slug: planEditForm.slug.trim().toLowerCase(),
+        planType: planEditForm.planType,
+        descriptionInternal: planEditForm.descriptionInternal.trim() || null,
+        active: planEditForm.active,
+        maxIntegrations: Number(planEditForm.maxIntegrations),
+        maxDashboards: Number(planEditForm.maxDashboards),
+        maxUsers: parseCap(planEditForm.maxUsers),
+        maxClientAccounts: parseCap(planEditForm.maxClientAccounts),
+        maxChildOrganizations: parseCap(planEditForm.maxChildOrganizations),
+        features: planEditForm.features,
+      });
+      setPlanEditor(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao salvar plano");
+    } finally {
+      setPlanEditSaving(false);
     }
   }
 
@@ -329,6 +481,183 @@ export function PlatformPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!orgEditor} onOpenChange={(o) => !o && setOrgEditor(null)}>
+        <DialogContent title={`Editar empresa · ${orgEditor?.name ?? ""}`} className="sm:max-w-md">
+          {orgEditor ? (
+            <div className="space-y-3 text-sm">
+              <div className="space-y-2">
+                <Label>Nome</Label>
+                <Input value={orgEditName} onChange={(e) => setOrgEditName(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Slug</Label>
+                <Input value={orgEditSlug} onChange={(e) => setOrgEditSlug(e.target.value)} className="font-mono text-xs" />
+              </div>
+              <div className="space-y-2">
+                <Label>Status operacional (workspace)</Label>
+                <select
+                  className="h-9 w-full rounded-md border border-input bg-background px-2"
+                  value={orgEditStatus}
+                  onChange={(e) => setOrgEditStatus(e.target.value as WorkspaceStatusDto)}
+                >
+                  <option value="ACTIVE">Ativa</option>
+                  <option value="PAUSED">Pausada</option>
+                  <option value="ARCHIVED">Arquivada</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setOrgEditor(null)}>
+                  Cancelar
+                </Button>
+                <Button type="button" disabled={orgEditSaving} onClick={() => void saveOrgEditor()}>
+                  Salvar
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!planEditor} onOpenChange={(o) => !o && setPlanEditor(null)}>
+        <DialogContent title={`Editar plano · ${planEditor?.name ?? ""}`} className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          {planEditor ? (
+            <div className="space-y-3 text-sm">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Nome</Label>
+                  <Input value={planEditForm.name} onChange={(e) => setPlanEditForm((s) => ({ ...s, name: e.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Slug</Label>
+                  <Input
+                    value={planEditForm.slug}
+                    onChange={(e) => setPlanEditForm((s) => ({ ...s, slug: e.target.value }))}
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Tipo</Label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-background px-2"
+                    value={planEditForm.planType}
+                    onChange={(e) => setPlanEditForm((s) => ({ ...s, planType: e.target.value }))}
+                  >
+                    <option value="standard">standard</option>
+                    <option value="enterprise">enterprise</option>
+                    <option value="trial">trial</option>
+                    <option value="internal">internal</option>
+                    <option value="custom">custom</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="pe-active"
+                    type="checkbox"
+                    checked={planEditForm.active}
+                    onChange={(e) => setPlanEditForm((s) => ({ ...s, active: e.target.checked }))}
+                  />
+                  <Label htmlFor="pe-active" className="font-normal">
+                    Ativo no catálogo
+                  </Label>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Descrição interna</Label>
+                <Input
+                  value={planEditForm.descriptionInternal}
+                  onChange={(e) => setPlanEditForm((s) => ({ ...s, descriptionInternal: e.target.value }))}
+                />
+              </div>
+              <div className="flex flex-wrap gap-3 text-xs">
+                {(
+                  [
+                    ["marketingDashboard", "Marketing"],
+                    ["performanceAlerts", "Alertas"],
+                    ["multiUser", "Multiusuário"],
+                    ["multiOrganization", "Multiempresa"],
+                    ["integrations", "Integrações"],
+                    ["webhooks", "Webhooks"],
+                  ] as const
+                ).map(([k, lab]) => (
+                  <label key={k} className="flex items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={planEditForm.features[k]}
+                      onChange={(e) =>
+                        setPlanEditForm((s) => ({
+                          ...s,
+                          features: { ...s.features, [k]: e.target.checked },
+                        }))
+                      }
+                    />
+                    {lab}
+                  </label>
+                ))}
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Integrações</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={planEditForm.maxIntegrations}
+                    onChange={(e) =>
+                      setPlanEditForm((s) => ({ ...s, maxIntegrations: Number(e.target.value) }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Dashboards</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={planEditForm.maxDashboards}
+                    onChange={(e) =>
+                      setPlanEditForm((s) => ({ ...s, maxDashboards: Number(e.target.value) }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Usuários (∞ vazio)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={planEditForm.maxUsers}
+                    onChange={(e) => setPlanEditForm((s) => ({ ...s, maxUsers: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Clientes</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={planEditForm.maxClientAccounts}
+                    onChange={(e) => setPlanEditForm((s) => ({ ...s, maxClientAccounts: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Filhas</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={planEditForm.maxChildOrganizations}
+                    onChange={(e) => setPlanEditForm((s) => ({ ...s, maxChildOrganizations: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setPlanEditor(null)}>
+                  Cancelar
+                </Button>
+                <Button type="button" disabled={planEditSaving} onClick={() => void savePlanEditor()}>
+                  Salvar plano
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
 
@@ -483,7 +812,7 @@ export function PlatformPage() {
                   <th className="px-4 py-2 font-medium">Tipo</th>
                   <th className="px-4 py-2 font-medium">Ativo</th>
                   <th className="px-4 py-2 font-medium">Limites</th>
-                  <th className="px-4 py-2 font-medium" />
+                  <th className="px-4 py-2 font-medium text-right">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -498,9 +827,54 @@ export function PlatformPage() {
                       {p.maxClientAccounts ?? "∞"} · filhas {p.maxChildOrganizations ?? "∞"}
                     </td>
                     <td className="px-4 py-2 text-right">
-                      <Button type="button" variant="ghost" size="sm" onClick={() => handleDeletePlan(p.id)}>
-                        Excluir
-                      </Button>
+                      <div className="flex flex-wrap justify-end gap-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-1"
+                          onClick={() => openPlanEditor(p)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Editar
+                        </Button>
+                        {p.active ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            className="gap-1"
+                            disabled={planRowBusy === p.id}
+                            onClick={() => void planSetActive(p.id, false)}
+                          >
+                            <Ban className="h-3.5 w-3.5" />
+                            Inativar
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            className="gap-1"
+                            disabled={planRowBusy === p.id}
+                            onClick={() => void planSetActive(p.id, true)}
+                          >
+                            <PlayCircle className="h-3.5 w-3.5" />
+                            Ativar
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1 text-destructive hover:text-destructive"
+                          disabled={planRowBusy === p.id}
+                          onClick={() => handleDeletePlan(p.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Excluir
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -546,18 +920,21 @@ export function PlatformPage() {
       <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle className="text-base">Empresas e plano</CardTitle>
-          <CardDescription>Atribuição rápida; use &quot;Gerenciar&quot; para modalidade, status e overrides.</CardDescription>
+          <CardDescription>
+            Editar nome/slug/status, inativar workspace, excluir (soft delete) ou abrir assinatura e limites.
+          </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <ScrollRegion className="scrollbar-thin">
-            <table className="w-full min-w-[560px] text-sm">
+            <table className="w-full min-w-[960px] text-sm">
               <thead>
                 <tr className="border-b text-left text-muted-foreground">
                   <th className="px-4 py-2 font-medium">Empresa</th>
+                  <th className="px-4 py-2 font-medium">Workspace</th>
                   <th className="px-4 py-2 font-medium">Plano</th>
                   <th className="px-4 py-2 font-medium">Assinatura</th>
                   <th className="px-4 py-2 font-medium">Alterar plano</th>
-                  <th className="px-4 py-2 font-medium" />
+                  <th className="px-4 py-2 font-medium text-right">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -567,6 +944,7 @@ export function PlatformPage() {
                       <span className="font-medium">{o.name}</span>
                       <div className="text-xs text-muted-foreground">{o.slug}</div>
                     </td>
+                    <td className="px-4 py-2 text-xs">{ORG_STATUS_PT[o.workspaceStatus]}</td>
                     <td className="px-4 py-2 text-muted-foreground">{o.plan?.name ?? "—"}</td>
                     <td className="px-4 py-2 text-xs text-muted-foreground">
                       {o.subscription ? `${o.subscription.billingMode} · ${o.subscription.status}` : "—"}
@@ -590,9 +968,58 @@ export function PlatformPage() {
                       </select>
                     </td>
                     <td className="px-4 py-2 text-right">
-                      <Button type="button" variant="outline" size="sm" onClick={() => setManageOrg(o)}>
-                        Gerenciar
-                      </Button>
+                      <div className="flex flex-wrap justify-end gap-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-1"
+                          disabled={orgRowBusy === o.id}
+                          onClick={() => openOrgEditor(o)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Editar
+                        </Button>
+                        {o.workspaceStatus === "ACTIVE" ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            className="gap-1"
+                            disabled={orgRowBusy === o.id}
+                            onClick={() => void orgSetStatus(o.id, "PAUSED")}
+                          >
+                            <Ban className="h-3.5 w-3.5" />
+                            Inativar
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            className="gap-1"
+                            disabled={orgRowBusy === o.id}
+                            onClick={() => void orgSetStatus(o.id, "ACTIVE")}
+                          >
+                            <PlayCircle className="h-3.5 w-3.5" />
+                            Ativar
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1 text-destructive hover:text-destructive"
+                          disabled={orgRowBusy === o.id}
+                          onClick={() => void handleDeleteOrganization(o)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Excluir
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setManageOrg(o)}>
+                          Assinatura
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}

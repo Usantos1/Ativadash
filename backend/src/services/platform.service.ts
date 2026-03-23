@@ -1,5 +1,36 @@
 import { prisma } from "../utils/prisma.js";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, WorkspaceStatus } from "@prisma/client";
+
+const ORGANIZATION_PLATFORM_SELECT = {
+  id: true,
+  name: true,
+  slug: true,
+  workspaceStatus: true,
+  inheritPlanFromParent: true,
+  parentOrganizationId: true,
+  planId: true,
+  plan: { select: { id: true, name: true, slug: true } },
+  subscription: {
+    select: {
+      id: true,
+      billingMode: true,
+      status: true,
+      startedAt: true,
+      renewsAt: true,
+      planId: true,
+    },
+  },
+  limitsOverride: {
+    select: {
+      maxUsers: true,
+      maxIntegrations: true,
+      maxDashboards: true,
+      maxClientAccounts: true,
+      maxChildOrganizations: true,
+    },
+  },
+  createdAt: true,
+} satisfies Prisma.OrganizationSelect;
 
 export async function syncSubscriptionFromOrgPlan(organizationId: string): Promise<void> {
   const org = await prisma.organization.findFirst({
@@ -131,35 +162,66 @@ export async function listAllOrganizations() {
   return prisma.organization.findMany({
     where: { deletedAt: null },
     orderBy: { name: "asc" },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      inheritPlanFromParent: true,
-      parentOrganizationId: true,
-      planId: true,
-      plan: { select: { id: true, name: true, slug: true } },
-      subscription: {
-        select: {
-          id: true,
-          billingMode: true,
-          status: true,
-          startedAt: true,
-          renewsAt: true,
-          planId: true,
-        },
-      },
-      limitsOverride: {
-        select: {
-          maxUsers: true,
-          maxIntegrations: true,
-          maxDashboards: true,
-          maxClientAccounts: true,
-          maxChildOrganizations: true,
-        },
-      },
-      createdAt: true,
-    },
+    select: ORGANIZATION_PLATFORM_SELECT,
+  });
+}
+
+export async function updateOrganizationProfile(
+  organizationId: string,
+  data: { name?: string; slug?: string; workspaceStatus?: WorkspaceStatus }
+) {
+  const org = await prisma.organization.findFirst({
+    where: { id: organizationId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!org) {
+    throw new Error("Organização não encontrada");
+  }
+  const patch: Prisma.OrganizationUpdateInput = {};
+  if (data.name !== undefined) {
+    patch.name = data.name.trim();
+  }
+  if (data.slug !== undefined) {
+    const s = data.slug.trim().toLowerCase();
+    const clash = await prisma.organization.findFirst({
+      where: { slug: s, id: { not: organizationId }, deletedAt: null },
+    });
+    if (clash) {
+      throw new Error("Slug já em uso");
+    }
+    patch.slug = s;
+  }
+  if (data.workspaceStatus !== undefined) {
+    patch.workspaceStatus = data.workspaceStatus;
+  }
+  await prisma.organization.update({ where: { id: organizationId }, data: patch });
+  const row = await prisma.organization.findFirst({
+    where: { id: organizationId },
+    select: ORGANIZATION_PLATFORM_SELECT,
+  });
+  if (!row) {
+    throw new Error("Organização não encontrada");
+  }
+  return row;
+}
+
+export async function softDeleteOrganization(organizationId: string) {
+  const org = await prisma.organization.findFirst({
+    where: { id: organizationId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!org) {
+    throw new Error("Organização não encontrada");
+  }
+  const n = await prisma.organization.count({
+    where: { parentOrganizationId: organizationId, deletedAt: null },
+  });
+  if (n > 0) {
+    throw new Error("Existem organizações filhas ativas; remova-as ou exclua-as antes.");
+  }
+  await prisma.organization.update({
+    where: { id: organizationId },
+    data: { deletedAt: new Date(), workspaceStatus: "ARCHIVED" },
   });
 }
 

@@ -18,6 +18,7 @@ import {
   resellerLogEnterChild,
   resellerMoveMembership,
   resellerPatchChildGovernance,
+  resellerSoftDeleteChild,
   resellerPatchUser,
   resellerRemoveMembership,
   resellerResetUserPassword,
@@ -114,6 +115,23 @@ export async function resellerPatchGovernanceHandler(req: Request, res: Response
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Sem permissão";
     const status = msg.includes("não encontrad") ? 404 : 403;
+    return res.status(status).json({ message: msg });
+  }
+}
+
+export async function resellerDeleteChildHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const { childId } = req.params;
+  if (!childId) {
+    return res.status(400).json({ message: "ID da empresa obrigatório" });
+  }
+  try {
+    await resellerSoftDeleteChild(user.organizationId, user.userId, childId);
+    return res.status(204).send();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Erro";
+    const status =
+      msg.includes("fora") || msg.includes("matriz") || msg.includes("permissão") ? 403 : 400;
     return res.status(status).json({ message: msg });
   }
 }

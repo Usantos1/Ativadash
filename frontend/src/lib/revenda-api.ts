@@ -123,6 +123,10 @@ export async function resellerPatchChildGovernance(
   return api.patch(`/reseller/children/${childId}/governance`, body);
 }
 
+export async function resellerDeleteChild(childId: string): Promise<void> {
+  await api.delete(`/reseller/children/${childId}`);
+}
+
 export type ResellerChildDetail = {
   context: OrganizationContext;
   limitsOverride: {

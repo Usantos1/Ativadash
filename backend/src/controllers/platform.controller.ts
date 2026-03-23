@@ -51,6 +51,14 @@ const limitsOverrideSchema = z.object({
   notes: z.string().max(4000).nullable().optional(),
 });
 
+const organizationPatchSchema = z
+  .object({
+    name: z.string().min(2).max(120).optional(),
+    slug: z.string().min(1).max(64).regex(/^[a-z0-9-]+$/).optional(),
+    workspaceStatus: z.enum(["ACTIVE", "PAUSED", "ARCHIVED"]).optional(),
+  })
+  .refine((d) => Object.keys(d).length > 0, { message: "Envie ao menos um campo" });
+
 export async function plansList(_req: Request, res: Response) {
   const list = await platform.listPlans();
   return res.json({ plans: list });
@@ -108,6 +116,30 @@ export async function plansDelete(req: Request, res: Response) {
 export async function organizationsList(_req: Request, res: Response) {
   const organizations = await platform.listAllOrganizations();
   return res.json({ organizations });
+}
+
+export async function organizationPatch(req: Request, res: Response) {
+  const { organizationId } = req.params;
+  const parsed = organizationPatchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Dados inválidos" });
+  }
+  try {
+    const organization = await platform.updateOrganizationProfile(organizationId, parsed.data);
+    return res.json({ organization });
+  } catch (e) {
+    return res.status(400).json({ message: e instanceof Error ? e.message : "Erro" });
+  }
+}
+
+export async function organizationDelete(req: Request, res: Response) {
+  const { organizationId } = req.params;
+  try {
+    await platform.softDeleteOrganization(organizationId);
+    return res.status(204).send();
+  } catch (e) {
+    return res.status(400).json({ message: e instanceof Error ? e.message : "Erro" });
+  }
 }
 
 export async function organizationAssignPlan(req: Request, res: Response) {
