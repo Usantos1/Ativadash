@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
 import * as platform from "../services/platform.service.js";
+import type { JwtPayload } from "../middlewares/auth.middleware.js";
 
 const featuresSchema = z
   .object({
@@ -165,7 +166,12 @@ export async function organizationPatch(req: Request, res: Response) {
     return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Dados inválidos" });
   }
   try {
-    const organization = await platform.updateOrganizationProfile(organizationId, parsed.data);
+    const jwtUser = (req as Request & { user: JwtPayload }).user;
+    const organization = await platform.updateOrganizationProfile(
+      organizationId,
+      parsed.data,
+      jwtUser.userId
+    );
     return res.json({ organization });
   } catch (e) {
     return res.status(400).json({ message: e instanceof Error ? e.message : "Erro" });

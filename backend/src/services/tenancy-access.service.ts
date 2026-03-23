@@ -59,8 +59,16 @@ async function matrixMemberAllowsDescendantWorkspace(
 
 /**
  * Acesso ao tenant: membership direta ou matriz (com grants) / ancestral com papel elevado (legado).
+ * Workspace arquivado não pode ser usado como contexto ativo (JWT / rotas do app).
  */
 export async function userHasEffectiveAccess(userId: string, organizationId: string): Promise<boolean> {
+  const targetOrg = await prisma.organization.findFirst({
+    where: { id: organizationId, deletedAt: null },
+    select: { workspaceStatus: true },
+  });
+  if (!targetOrg) return false;
+  if (targetOrg.workspaceStatus === "ARCHIVED") return false;
+
   const direct = await prisma.membership.findUnique({
     where: { userId_organizationId: { userId, organizationId } },
     include: { organization: true },

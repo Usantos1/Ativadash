@@ -19,6 +19,48 @@ Por isso o **`DATABASE_URL` no `backend/.env` usa `localhost`** (ou `127.0.0.1`)
 
 ---
 
+## Comandos na VPS — caminho padrão `/ativadash`
+
+O repositório fica em **`/ativadash`** (não use `cd /var/www/ativadash` como padrão). Em qualquer sessão SSH:
+
+```bash
+cd /ativadash
+```
+
+**Primeira vez — clonar o repo na VPS:**
+
+```bash
+cd /
+git clone https://github.com/Usantos1/Ativadash.git ativadash
+cd /ativadash
+```
+
+**Deploy / atualização do backend (API + Prisma + PM2):**
+
+```bash
+cd /ativadash
+git pull origin main
+cd backend
+npm ci
+npx prisma generate
+npx prisma migrate deploy
+npm run build
+pm2 restart ativadash-api
+curl -s http://127.0.0.1:3000/api/health
+```
+
+Se a API ainda não existir no PM2:
+
+```bash
+cd /ativadash/backend
+pm2 start dist/index.js --name ativadash-api
+pm2 save
+```
+
+O **frontend** é buildado no seu PC e o conteúdo de `frontend/dist` vai para **`/ativadash/frontend/dist/`** no servidor (rsync/scp — ver seções mais abaixo). No Nginx, `root` deve ser **`/ativadash/frontend/dist`**.
+
+---
+
 ## 1. Conectar na VPS
 
 No seu PC:
@@ -96,14 +138,21 @@ systemctl enable nginx
 
 ## 6. Clonar o repositório na VPS
 
+**Caminho padrão do projeto na VPS:** `/ativadash` (raiz do sistema — não use `/var/www/ativadash` a menos que o seu Nginx aponte explicitamente para lá).
+
 Se o projeto está no GitHub (público ou com deploy key):
 
 ```bash
-cd /var
-mkdir -p www
-cd www
+cd /
 git clone https://github.com/Usantos1/Ativadash.git ativadash
-cd ativadash
+cd /ativadash
+```
+
+Se a pasta `/ativadash` **já existir** (deploy subsequente):
+
+```bash
+cd /ativadash
+git pull origin main
 ```
 
 (Se o repo for privado, configure SSH key ou token antes.)
@@ -406,7 +455,7 @@ Se aparecerem caracteres estranhos (símbolos quebrados no lugar de ç, ã, í, 
 | VPS    | Criar usuário e banco Postgres `ativa_dash` |
 | VPS    | Clonar repo em `/ativadash` |
 | VPS    | `backend/.env` com DATABASE_URL, JWT_*, FRONTEND_URL, API_BASE_URL, Google Ads |
-| VPS    | `cd backend && npm ci && npx prisma migrate deploy && npm run build && pm2 start dist/index.js --name ativadash-api` |
+| VPS    | `cd /ativadash/backend && npm ci && npx prisma generate && npx prisma migrate deploy && npm run build && pm2 start dist/index.js --name ativadash-api` |
 | VPS    | Nginx: sites para `api.ativadash.com` (proxy 3000) e `app.ativadash.com` (root frontend/dist) |
 | VPS    | `certbot --nginx -d api.ativadash.com -d app.ativadash.com` |
 | PC     | `cd frontend && VITE_API_URL=https://api.ativadash.com npm run build` |
@@ -444,9 +493,8 @@ Causas frequentes:
 
    ```bash
    grep -R "root " /etc/nginx/sites-enabled/
-   ls -la /var/www/ativadash/frontend/dist/index.html
-   # ou, se o root for /ativadash/...:
    ls -la /ativadash/frontend/dist/index.html
+   # Se o root no Nginx for outro caminho (ex.: legado /var/www/...), o ls deve ser nesse mesmo caminho.
    ```
 
 3. **`rewrite or internal redirection cycle` ao ir para `/index.html`** — o `try_files ... /index.html` cai num arquivo que **não existe** na pasta `root`. O Nginx tenta de novo e entra em ciclo → **500**. **Correção:** gerar o front no PC e enviar **`index.html` + pasta `assets/`** para o diretório exato do `root` (crie `mkdir -p` se precisar).
@@ -557,12 +605,14 @@ Na VPS:
 
 ```bash
 cd /ativadash
-git pull   # se usar Git
+git pull origin main
 cd backend
 npm ci
+npx prisma generate
 npx prisma migrate deploy
 npm run build
 pm2 restart ativadash-api
+curl -s http://127.0.0.1:3000/api/health
 ```
 
 **Se aparecer** `Process or Namespace ativa-dash-api not found`: o nome correto é `ativadash-api` (sem "iva-"). Liste os processos com `pm2 list`. Se o backend não estiver rodando, suba assim (a partir de `/ativadash/backend`):

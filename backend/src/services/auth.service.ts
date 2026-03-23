@@ -292,13 +292,20 @@ export async function login(data: LoginInput) {
   if (user.suspendedAt) {
     throw new Error("Conta suspensa. Contate o administrador da sua empresa.");
   }
-  const membership = await prisma.membership.findFirst({
+  const membershipRows = await prisma.membership.findMany({
     where: { userId: user.id },
     orderBy: { createdAt: "asc" },
     include: { organization: true },
   });
+  const membership = membershipRows.find(
+    (m) => !m.organization.deletedAt && m.organization.workspaceStatus !== "ARCHIVED"
+  );
   if (!membership) {
-    throw new Error("Usuário sem organização vinculada");
+    throw new Error(
+      membershipRows.length > 0
+        ? "Nenhuma organização ativa disponível. Contate o administrador."
+        : "Usuário sem organização vinculada"
+    );
   }
   const { accessToken, refreshToken } = await createTokens(
     user.id,

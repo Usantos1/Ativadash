@@ -159,7 +159,11 @@ async function countUsage(organizationId: string): Promise<PlanUsageDto> {
       where: { organizationId, deletedAt: null },
     }),
     prisma.organization.count({
-      where: { parentOrganizationId: organizationId, deletedAt: null },
+      where: {
+        parentOrganizationId: organizationId,
+        deletedAt: null,
+        workspaceStatus: { not: "ARCHIVED" },
+      },
     }),
     prisma.project.count({
       where: { organizationId, deletedAt: null },
@@ -252,7 +256,11 @@ export async function assertCanAddChildOrganization(
     );
   }
   const n = await prisma.organization.count({
-    where: { parentOrganizationId, deletedAt: null },
+    where: {
+      parentOrganizationId,
+      deletedAt: null,
+      workspaceStatus: { not: "ARCHIVED" },
+    },
   });
   if (n >= limits.maxChildOrganizations) {
     throw new Error(

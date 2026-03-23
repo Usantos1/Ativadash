@@ -12,6 +12,7 @@ import {
 } from "./plan-limits.service.js";
 import { mergePlanFeaturesWithOverrides } from "../utils/plan-features.js";
 import { syncSubscriptionFromOrgPlan } from "./platform.service.js";
+import { appendAuditLog } from "./audit-log.service.js";
 
 export async function getOrganizationContext(organizationId: string, userId: string) {
   const allowed = await userHasEffectiveAccess(userId, organizationId);
@@ -497,6 +498,7 @@ export async function updateDescendantByMatrixAdmin(
   if (!child) {
     throw new Error("Organização não encontrada");
   }
+  const previousWorkspaceStatus = child.workspaceStatus;
 
   const patch: Prisma.OrganizationUpdateInput = {};
   if (data.name !== undefined) {
@@ -537,6 +539,24 @@ export async function updateDescendantByMatrixAdmin(
       createdAt: true,
     },
   });
+
+  if (
+    data.workspaceStatus === "ARCHIVED" &&
+    previousWorkspaceStatus !== "ARCHIVED"
+  ) {
+    await appendAuditLog({
+      actorUserId,
+      organizationId: descendantId,
+      action: "matrix.workspace.archived",
+      entityType: "Organization",
+      entityId: descendantId,
+      metadata: {
+        matrixOrganizationId,
+        previousWorkspaceStatus,
+      },
+    });
+  }
+
   return updated;
 }
 

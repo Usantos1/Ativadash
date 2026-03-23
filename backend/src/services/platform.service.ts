@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../utils/prisma.js";
 import type { Prisma, WorkspaceStatus } from "@prisma/client";
 import { slugifyOrganizationName, uniqueOrganizationSlug } from "../utils/org-slug.js";
+import { appendAuditLog } from "./audit-log.service.js";
 
 const PLATFORM_ORG_CREATE_SALT = 10;
 
@@ -286,15 +287,17 @@ export async function createRootOrganization(data: {
 
 export async function updateOrganizationProfile(
   organizationId: string,
-  data: { name?: string; slug?: string; workspaceStatus?: WorkspaceStatus }
+  data: { name?: string; slug?: string; workspaceStatus?: WorkspaceStatus },
+  actorUserId?: string | null
 ) {
   const org = await prisma.organization.findFirst({
     where: { id: organizationId, deletedAt: null },
-    select: { id: true },
+    select: { id: true, workspaceStatus: true },
   });
   if (!org) {
     throw new Error("Organização não encontrada");
   }
+  const previousWorkspaceStatus = org.workspaceStatus;
   const patch: Prisma.OrganizationUpdateInput = {};
   if (data.name !== undefined) {
     patch.name = data.name.trim();
@@ -313,6 +316,20 @@ export async function updateOrganizationProfile(
     patch.workspaceStatus = data.workspaceStatus;
   }
   await prisma.organization.update({ where: { id: organizationId }, data: patch });
+  if (
+    actorUserId &&
+    data.workspaceStatus === "ARCHIVED" &&
+    previousWorkspaceStatus !== "ARCHIVED"
+  ) {
+    await appendAuditLog({
+      actorUserId,
+      organizationId,
+      action: "platform.organization.workspace_archived",
+      entityType: "Organization",
+      entityId: organizationId,
+      metadata: { previousWorkspaceStatus },
+    });
+  }
   const row = await prisma.organization.findFirst({
     where: { id: organizationId },
     select: ORGANIZATION_PLATFORM_SELECT,

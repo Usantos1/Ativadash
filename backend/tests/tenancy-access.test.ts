@@ -22,10 +22,20 @@ describe("tenancy-access", () => {
   });
 
   it("userHasEffectiveAccess: membership direta concede acesso", async () => {
+    vi.mocked(prisma.organization.findFirst).mockResolvedValueOnce({
+      workspaceStatus: "ACTIVE",
+    } as never);
     mocks.findUnique.mockResolvedValueOnce({
       organization: { deletedAt: null },
     });
     await expect(userHasEffectiveAccess("u1", "org-ws")).resolves.toBe(true);
+  });
+
+  it("userHasEffectiveAccess: workspace ARCHIVED nega acesso", async () => {
+    vi.mocked(prisma.organization.findFirst).mockResolvedValueOnce({
+      workspaceStatus: "ARCHIVED",
+    } as never);
+    await expect(userHasEffectiveAccess("u1", "org-ws")).resolves.toBe(false);
   });
 
   it("isOrganizationUnderAncestor confirma descendência", async () => {
