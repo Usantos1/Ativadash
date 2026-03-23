@@ -10,3 +10,6 @@ export const CAP_MARKETING_SETTINGS_WRITE = "marketing.settings.write";
 export const CAP_MATRIX_CHILD_CREATE = "matrix.child.create";
 export const CAP_MATRIX_WORKSPACE_GRANT_MANAGE = "matrix.workspace_grant.manage";
 export const CAP_ASSET_ACCESS_GRANT_MANAGE = "org.asset_access_grant.manage";
+export const CAP_WEBHOOK_ENDPOINT_MANAGE = "webhook.endpoint.manage";
+export const CAP_WEBHOOK_EVENT_READ = "webhook.event.read";
+export const CAP_WEBHOOK_EVENT_REPLAY = "webhook.event.replay";

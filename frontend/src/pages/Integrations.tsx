@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Search, Plug, MessageCircle, Megaphone, Loader2, AlertTriangle } from "lucide-react";
+import { Search, Plug, MessageCircle, Megaphone, Loader2, AlertTriangle, Webhook } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,16 @@ import {
   type UpdateMarketingSettingsPayload,
 } from "@/lib/marketing-settings-api";
 import { IX } from "@/lib/integrationsCopy";
+import {
+  buildWebhookIngestUrl,
+  createWebhookEndpoint,
+  fetchWebhookEndpoints,
+  fetchWebhookEvents,
+  patchWebhookEndpoint,
+  replayWebhookEvent,
+  type WebhookEndpointRow,
+  type WebhookEventRow,
+} from "@/lib/webhooks-api";
 import { AnalyticsPageHeader } from "@/components/analytics/AnalyticsPageHeader";
 import { AnalyticsSection } from "@/components/analytics/AnalyticsSection";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -42,8 +52,7 @@ export type IntegrationId =
   | "ticto"
   | "guru"
   | "greenn"
-  | "pagar-me"
-  | "webhooks";
+  | "pagar-me";
 
 type IntegrationCategory = "media" | "crm" | "checkout" | "webhooks" | "other";
 
@@ -105,7 +114,6 @@ const INTEGRATION_DEFS: IntegrationDef[] = [
   { id: "guru", name: "Guru", slug: "guru", available: false, category: "checkout" },
   { id: "greenn", name: "Greenn", slug: "greenn", available: false, category: "checkout" },
   { id: "pagar-me", name: "Pagar.me", slug: "pagar-me", available: false, category: "checkout" },
-  { id: "webhooks", name: "Webhooks personalizados", slug: "webhooks", available: false, category: "webhooks" },
 ];
 
 const ATIVA_CRM_CONNECTIONS_URL = "https://app.ativacrm.com/connections";
@@ -376,6 +384,203 @@ function AtivaCrmIntegrationPanel({
   );
 }
 
+function WebhooksIntegrationPanel({
+  onNotify,
+}: {
+  onNotify: (m: { type: "success" | "error"; text: string }) => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [endpoints, setEndpoints] = useState<WebhookEndpointRow[]>([]);
+  const [events, setEvents] = useState<WebhookEventRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [plainSecret, setPlainSecret] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [ep, ev] = await Promise.all([
+        fetchWebhookEndpoints(),
+        fetchWebhookEvents({ limit: 25 }),
+      ]);
+      setEndpoints(ep);
+      setEvents(ev.items);
+      setTotal(ev.total);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Erro ao carregar webhooks";
+      onNotify({ type: "error", text: msg });
+      setEndpoints([]);
+      setEvents([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [onNotify]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setPlainSecret(null);
+    setCreating(true);
+    try {
+      const body: { name: string; publicSlug?: string | null } = { name: name.trim() };
+      if (slug.trim()) body.publicSlug = slug.trim().toLowerCase();
+      const res = await createWebhookEndpoint(body);
+      setPlainSecret(res.plainSecret);
+      setName("");
+      setSlug("");
+      setEndpoints((prev) => [res.item, ...prev]);
+      onNotify({
+        type: "success",
+        text: "Endpoint criado. Guarde o segredo — ele não será exibido de novo.",
+      });
+    } catch (err) {
+      onNotify({ type: "error", text: err instanceof Error ? err.message : "Erro ao criar" });
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function toggleActive(ep: WebhookEndpointRow) {
+    try {
+      const { item } = await patchWebhookEndpoint(ep.id, { active: !ep.active });
+      setEndpoints((prev) => prev.map((x) => (x.id === item.id ? item : x)));
+      onNotify({ type: "success", text: item.active ? "Endpoint ativado." : "Endpoint desativado." });
+    } catch (err) {
+      onNotify({ type: "error", text: err instanceof Error ? err.message : "Erro" });
+    }
+  }
+
+  async function handleReplay(id: string) {
+    try {
+      await replayWebhookEvent(id);
+      onNotify({ type: "success", text: "Evento reprocessado (cópia gravada)." });
+      void load();
+    } catch (err) {
+      onNotify({ type: "error", text: err instanceof Error ? err.message : "Erro" });
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Webhooks HTTP</CardTitle>
+        <CardDescription>
+          Receba payloads assinados com HMAC-SHA256. O módulo &quot;Webhooks&quot; precisa estar ativo no plano da
+          empresa (Plataforma → Planos).
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {loading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <>
+            {plainSecret ? (
+              <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-900 dark:border-green-900 dark:bg-green-950/40 dark:text-green-100">
+                <strong>Segredo (copie agora):</strong>
+                <code className="mt-2 block break-all rounded bg-white/80 px-2 py-1 text-xs dark:bg-black/30">
+                  {plainSecret}
+                </code>
+                <p className="mt-2 text-xs">
+                  Cabeçalho:{" "}
+                  <code className="rounded bg-white/60 px-1 dark:bg-black/30">X-Ativadash-Signature: sha256=&lt;hmac&gt;</code>{" "}
+                  (HMAC-SHA256 do corpo bruto com o segredo).
+                </p>
+              </div>
+            ) : null}
+
+            <form onSubmit={(e) => void handleCreate(e)} className="space-y-3 rounded-lg border border-border/60 bg-muted/15 p-4">
+              <p className="text-sm font-medium">Novo endpoint</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="wh-name">Nome</Label>
+                  <Input
+                    id="wh-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Ex.: Checkout externo"
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="wh-slug">Slug na URL (opcional)</Label>
+                  <Input
+                    id="wh-slug"
+                    value={slug}
+                    onChange={(e) => setSlug(e.target.value)}
+                    placeholder="Gerado automaticamente se vazio"
+                  />
+                </div>
+              </div>
+              <Button type="submit" disabled={creating} className="gap-2">
+                {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Criar endpoint
+              </Button>
+            </form>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Endpoints</p>
+              {endpoints.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhum endpoint ainda.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {endpoints.map((ep) => (
+                    <li key={ep.id} className="rounded-lg border border-border/60 p-3 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-medium">{ep.name}</span>
+                        <Button type="button" size="sm" variant="outline" onClick={() => void toggleActive(ep)}>
+                          {ep.active ? "Desativar" : "Ativar"}
+                        </Button>
+                      </div>
+                      <code className="mt-2 block break-all text-xs text-muted-foreground">
+                        {buildWebhookIngestUrl(ep.publicSlug)}
+                      </code>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Eventos recentes ({total})</p>
+              {events.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhum evento recebido ainda.</p>
+              ) : (
+                <ul className="max-h-64 space-y-2 overflow-y-auto text-xs">
+                  {events.map((ev) => (
+                    <li
+                      key={ev.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded border border-border/40 px-2 py-1.5"
+                    >
+                      <span className="min-w-0 truncate text-muted-foreground">{ev.eventKey}</span>
+                      <span className="shrink-0 tabular-nums">{ev.status}</span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs"
+                        onClick={() => void handleReplay(ev.id)}
+                      >
+                        Reprocessar
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function Integrations() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -570,11 +775,9 @@ export function Integrations() {
           ? "Meta Marketing API"
           : def.category === "checkout"
             ? "Plataforma de vendas"
-            : def.slug === "webhooks"
-              ? "HTTPS / payloads JSON"
-              : def.category === "crm"
-                ? "CRM / mensageria"
-                : IX.dataSourceEmBreve;
+            : def.category === "crm"
+              ? "CRM / mensageria"
+              : IX.dataSourceEmBreve;
 
     return (
       <IntegrationCard
@@ -649,7 +852,7 @@ export function Integrations() {
 
       <div className="min-w-0 overflow-hidden rounded-2xl border border-border/55 bg-card p-4 shadow-[var(--shadow-surface)] ring-1 ring-black/[0.02] dark:ring-white/[0.03] sm:p-6">
         <Tabs defaultValue="ads" className="min-w-0 space-y-4">
-          <TabsList className="grid h-auto w-full min-w-0 grid-cols-2 gap-1 rounded-xl border border-border/50 bg-muted/25 p-1 shadow-inner sm:inline-flex sm:w-auto sm:max-w-full">
+          <TabsList className="grid h-auto w-full min-w-0 grid-cols-3 gap-1 rounded-xl border border-border/50 bg-muted/25 p-1 shadow-inner sm:inline-flex sm:w-auto sm:max-w-full">
             <TabsTrigger
               value="ads"
               className="gap-2 rounded-lg px-3 py-2 text-xs data-[state=active]:bg-card data-[state=active]:shadow-sm sm:text-sm"
@@ -663,6 +866,13 @@ export function Integrations() {
             >
               <MessageCircle className="h-4 w-4 shrink-0" aria-hidden />
               WhatsApp (CRM)
+            </TabsTrigger>
+            <TabsTrigger
+              value="webhooks"
+              className="gap-2 rounded-lg px-3 py-2 text-xs data-[state=active]:bg-card data-[state=active]:shadow-sm sm:text-sm"
+            >
+              <Webhook className="h-4 w-4 shrink-0" aria-hidden />
+              Webhooks
             </TabsTrigger>
           </TabsList>
 
@@ -714,6 +924,10 @@ export function Integrations() {
 
           <TabsContent value="ativacrm" className="mt-0 min-w-0 focus-visible:outline-none">
             <AtivaCrmIntegrationPanel onNotify={setMessage} />
+          </TabsContent>
+
+          <TabsContent value="webhooks" className="mt-0 min-w-0 focus-visible:outline-none">
+            <WebhooksIntegrationPanel onNotify={setMessage} />
           </TabsContent>
         </Tabs>
       </div>

@@ -12,6 +12,9 @@ import {
   CAP_ORG_MEMBERS_MANAGE,
   CAP_ORG_WORKSPACE_READ,
   CAP_ORG_WORKSPACE_WRITE,
+  CAP_WEBHOOK_ENDPOINT_MANAGE,
+  CAP_WEBHOOK_EVENT_READ,
+  CAP_WEBHOOK_EVENT_REPLAY,
 } from "../constants/capabilities.js";
 import {
   isMatrixWideAdminRole,
@@ -147,6 +150,33 @@ export async function assertCan(userId: string, capability: string, ctx: AuthCon
       assert(
         role && (isWorkspaceAdminRole(role) || isMatrixWideAdminRole(role)),
         "Sem permissão para gerir acesso a contas"
+      );
+      return;
+    }
+
+    case CAP_WEBHOOK_ENDPOINT_MANAGE: {
+      assert(features.webhooks, "Módulo de webhooks não está ativo no plano");
+      const role = await effectiveWorkspaceRole(userId, organizationId);
+      assert(
+        role && (isWorkspaceAdminRole(role) || isMatrixWideAdminRole(role)),
+        "Sem permissão para gerir webhooks"
+      );
+      return;
+    }
+
+    case CAP_WEBHOOK_EVENT_READ: {
+      assert(features.webhooks, "Módulo de webhooks não está ativo no plano");
+      const role = await effectiveWorkspaceRole(userId, organizationId);
+      assert(role, "Sem permissão para ver eventos de webhook");
+      return;
+    }
+
+    case CAP_WEBHOOK_EVENT_REPLAY: {
+      assert(features.webhooks, "Módulo de webhooks não está ativo no plano");
+      const role = await effectiveWorkspaceRole(userId, organizationId);
+      assert(
+        role && (isWorkspaceAdminRole(role) || isMatrixWideAdminRole(role)),
+        "Sem permissão para reprocessar eventos"
       );
       return;
     }

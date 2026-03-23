@@ -123,6 +123,8 @@ model Organization {
   marketingSettings  MarketingSettings?
   invitations   Invitation[]
   metricsSnapshots MetricsSnapshot[]
+  webhookEndpoints WebhookEndpoint[]
+  webhookEvents    WebhookEvent[]
 
   matrixGrantsAsMatrix   MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantMatrix")
   matrixGrantsAsWorkspace MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantWorkspace")
@@ -456,4 +458,51 @@ model Goal {
   updatedAt      DateTime @updatedAt
 
   @@index([organizationId])
+}
+
+/// Fila de ingestão de webhooks HTTP (dedupe por organizationId + eventKey)
+enum WebhookEventStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+}
+
+/// Endpoint público (URL + segredo HMAC) por workspace
+model WebhookEndpoint {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  /// Slug único global na URL POST /api/hooks/w/{publicSlug}
+  publicSlug     String   @unique
+  /// Segredo HMAC do corpo bruto. Exibido só na criação; proteja o banco em produção.
+  signingSecret  String
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  events WebhookEvent[]
+
+  @@index([organizationId])
+}
+
+model WebhookEvent {
+  id                String             @id @default(cuid())
+  organizationId    String
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  webhookEndpointId String?
+  webhookEndpoint   WebhookEndpoint?   @relation(fields: [webhookEndpointId], references: [id], onDelete: SetNull)
+  eventKey          String
+  sourceType        String             @default("custom")
+  status            WebhookEventStatus @default(RECEIVED)
+  rawPayload        Json
+  normalizedPayload Json?
+  errorMessage      String?            @db.Text
+  processedAt       DateTime?
+  retryCount        Int                @default(0)
+  createdAt         DateTime           @default(now())
+
+  @@unique([organizationId, eventKey])
+  @@index([organizationId, createdAt])
+  @@index([status, createdAt])
 }

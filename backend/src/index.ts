@@ -11,6 +11,7 @@ import workspaceRoutes from "./routes/workspace.routes.js";
 import organizationRoutes from "./routes/organization.routes.js";
 import platformRoutes from "./routes/platform.routes.js";
 import resellerRoutes from "./routes/reseller.routes.js";
+import hooksPublicRoutes from "./routes/webhooks-public.routes.js";
 
 const app = express();
 
@@ -23,6 +24,21 @@ app.use(
     origin: env.CORS_ORIGIN,
     credentials: true,
   })
+);
+
+const webhookIngestLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 300,
+  message: { message: "Limite de webhooks por minuto excedido" },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+});
+app.use(
+  "/api/hooks",
+  webhookIngestLimiter,
+  express.raw({ type: "*/*", limit: "512kb" }),
+  hooksPublicRoutes
 );
 
 app.use(express.json());

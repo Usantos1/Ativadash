@@ -2,6 +2,7 @@ import { Router } from "express";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
 import { requireJwtOrganizationAccess } from "../middlewares/organization-context.middleware.js";
 import * as workspace from "../controllers/workspace.controller.js";
+import * as webhooks from "../controllers/webhooks.controller.js";
 
 const router = Router();
 
@@ -31,5 +32,11 @@ router.delete("/members/:userId", workspace.membersRemove);
 router.post("/invitations", workspace.invitationsCreate);
 router.get("/invitations", workspace.invitationsList);
 router.delete("/invitations/:id", workspace.invitationsRevoke);
+
+router.get("/webhooks/endpoints", webhooks.webhooksEndpointsList);
+router.post("/webhooks/endpoints", webhooks.webhooksEndpointsCreate);
+router.patch("/webhooks/endpoints/:id", webhooks.webhooksEndpointsPatch);
+router.get("/webhooks/events", webhooks.webhooksEventsList);
+router.post("/webhooks/events/:id/replay", webhooks.webhooksEventsReplay);
 
 export default router;

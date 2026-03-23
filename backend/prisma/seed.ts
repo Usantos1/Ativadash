@@ -49,7 +49,7 @@ async function main() {
     multiUser: true,
     multiOrganization: true,
     integrations: true,
-    webhooks: false,
+    webhooks: true,
   };
 
   const professional = await prisma.plan.upsert({
