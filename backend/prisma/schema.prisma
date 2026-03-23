@@ -70,6 +70,21 @@ model Organization {
   workspaceNote   String?         @db.Text
   /// Filho: agência revenda vs empresa final. Matriz: null.
   resellerOrgKind ResellerOrgKind?
+  /// Razão social (opcional)
+  legalName String?
+  /// CNPJ — armazenado somente com dígitos
+  taxId String?
+  /// E-mail de contato / administrador principal da empresa cliente
+  contactEmail String?
+  /// WhatsApp — preferencialmente só dígitos (ex.: 5511999999999)
+  phoneWhatsapp String?
+  addressLine1    String?
+  addressNumber   String?
+  addressDistrict String?
+  addressCity     String?
+  addressState    String?
+  /// CEP — somente dígitos
+  addressPostalCode String?
   /// Sobrescreve flags do plano (merge parcial sobre Plan.features JSON)
   featureOverrides Json?
   createdAt DateTime @default(now())

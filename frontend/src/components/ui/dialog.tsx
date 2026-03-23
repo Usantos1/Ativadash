@@ -29,20 +29,28 @@ const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     showClose?: boolean;
     title?: string;
+    /**
+     * Alinha o modal ao topo da viewport (recomendado para formulários longos).
+     * Evita cortar o conteúdo quando `translate-y-1/2` centraliza um painel alto.
+     */
+    alignTop?: boolean;
   }
->(({ className, children, showClose = true, title, ...props }, ref) => (
+>(({ className, children, showClose = true, title, alignTop = false, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-1/2 top-1/2 z-50 grid max-h-[min(100dvh-1rem,100vh-1rem)] w-[min(100vw-1.5rem,32rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto overflow-x-hidden rounded-lg border bg-background p-4 shadow-lg duration-200 sm:p-6 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
+        "fixed left-1/2 z-50 w-[min(100vw-1.5rem,32rem)] max-w-lg -translate-x-1/2 gap-4 rounded-lg border bg-background p-4 shadow-lg duration-200 sm:p-6 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+        alignTop
+          ? "top-4 max-h-[calc(100dvh-2rem)] translate-y-0 overflow-x-hidden overflow-y-hidden data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-2"
+          : "top-1/2 grid max-h-[min(100dvh-1rem,100vh-1rem)] -translate-y-1/2 overflow-y-auto overflow-x-hidden data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
         className
       )}
       {...props}
     >
       {(title || showClose) && (
-        <div className="flex items-start gap-2">
+        <div className={cn("flex shrink-0 items-start gap-2", alignTop && "pr-1")}>
           {title && (
             <DialogPrimitive.Title className="min-w-0 flex-1 text-lg font-semibold leading-snug">
               {title}

@@ -6,6 +6,7 @@ import { assertDirectOrgAdmin } from "./auth.service.js";
 import {
   collectDescendantOrganizationIds,
   createDescendantByMatrixAdmin,
+  type OrganizationClientProfile,
   getOrganizationContext,
   isOrganizationUnderMatrix,
   listChildOrganizationsOperationsDashboard,
@@ -133,20 +134,62 @@ export async function resellerCreateChild(
     planId?: string | null;
     workspaceNote?: string | null;
     resellerOrgKind?: "AGENCY" | "CLIENT";
+    legalName?: string | null;
+    taxId?: string;
+    phoneWhatsapp?: string;
+    ownerEmail?: string;
+    ownerName?: string;
+    ownerPassword?: string;
+    addressLine1?: string;
+    addressNumber?: string;
+    addressDistrict?: string;
+    addressCity?: string;
+    addressState?: string;
+    addressPostalCode?: string;
   }
 ) {
   const matrixId = await resolveResellerMatrixOrganizationId(actorUserId, activeOrganizationId);
   const parentId = data.parentOrganizationId ?? matrixId;
+  const kind = data.resellerOrgKind ?? "CLIENT";
+
+  let clientProfile: OrganizationClientProfile | null = null;
+  let initialOwner: { email: string; name: string; passwordHash: string } | null = null;
+
+  if (kind !== "AGENCY") {
+    const email = (data.ownerEmail ?? "").trim().toLowerCase();
+    const password = data.ownerPassword ?? "";
+    clientProfile = {
+      legalName: data.legalName?.trim() ? data.legalName.trim() : null,
+      taxId: (data.taxId ?? "").replace(/\D/g, "") || null,
+      contactEmail: email || null,
+      phoneWhatsapp: (data.phoneWhatsapp ?? "").replace(/\D/g, "") || null,
+      addressLine1: (data.addressLine1 ?? "").trim() || null,
+      addressNumber: (data.addressNumber ?? "").trim() || null,
+      addressDistrict: data.addressDistrict?.trim() ? data.addressDistrict.trim() : null,
+      addressCity: (data.addressCity ?? "").trim() || null,
+      addressState: (data.addressState ?? "").trim().toUpperCase() || null,
+      addressPostalCode: (data.addressPostalCode ?? "").replace(/\D/g, "") || null,
+    };
+    initialOwner = {
+      email,
+      name: (data.ownerName ?? "").trim(),
+      passwordHash: await bcrypt.hash(password, SALT_ROUNDS),
+    };
+  }
+
   const org = await createDescendantByMatrixAdmin(matrixId, actorUserId, parentId, data.name, {
     inheritPlanFromParent: data.inheritPlanFromParent,
     planId: data.planId,
     workspaceNote: data.workspaceNote,
     resellerOrgKind: data.resellerOrgKind,
+    clientProfile,
+    initialOwner,
   });
   await appendResellerAudit(matrixId, actorUserId, "CHILD_ORG_CREATED", "Organization", org.id, {
     name: data.name,
     resellerOrgKind: org.resellerOrgKind ?? "CLIENT",
     parentOrganizationId: parentId,
+    hasInitialOwner: kind !== "AGENCY",
   });
   return org;
 }
@@ -245,6 +288,59 @@ export async function resellerSoftDeleteChild(
     data: { deletedAt: new Date(), workspaceStatus: "ARCHIVED" },
   });
   await appendResellerAudit(matrixId, actorUserId, "CHILD_ORG_SOFT_DELETED", "Organization", childId, {});
+}
+
+/**
+ * Torna a empresa uma organização raiz (sem matriz): some do painel de revenda da Prime Camp
+ * e passa a ter painel próprio; membros diretos mantêm acesso. Requer que não haja filiais.
+ */
+export async function resellerDetachChildAsStandalone(
+  activeOrganizationId: string,
+  actorUserId: string,
+  childId: string
+): Promise<{ id: string; name: string; slug: string }> {
+  const matrixId = await resolveResellerMatrixOrganizationId(actorUserId, activeOrganizationId);
+  if (childId === matrixId) {
+    throw new Error("Não é possível desvincular a matriz");
+  }
+  const under = await isOrganizationUnderMatrix(childId, matrixId);
+  if (!under) {
+    throw new Error("Empresa fora do ecossistema");
+  }
+  await assertDirectOrgAdmin(actorUserId, matrixId);
+
+  const child = await prisma.organization.findFirst({
+    where: { id: childId, deletedAt: null },
+    select: { id: true, name: true, slug: true },
+  });
+  if (!child) {
+    throw new Error("Empresa não encontrada");
+  }
+
+  const subCount = await prisma.organization.count({
+    where: { parentOrganizationId: childId, deletedAt: null },
+  });
+  if (subCount > 0) {
+    throw new Error(
+      "Esta empresa possui filiais vinculadas. Transfira ou exclua-as antes de desvincular."
+    );
+  }
+
+  const updated = await prisma.organization.update({
+    where: { id: childId },
+    data: {
+      parentOrganizationId: null,
+      inheritPlanFromParent: false,
+      resellerOrgKind: null,
+    },
+    select: { id: true, name: true, slug: true },
+  });
+
+  await appendResellerAudit(matrixId, actorUserId, "CHILD_ORG_DETACHED_STANDALONE", "Organization", childId, {
+    name: child.name,
+  });
+
+  return updated;
 }
 
 export async function resellerListEcosystemUsers(

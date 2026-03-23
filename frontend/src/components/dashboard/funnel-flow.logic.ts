@@ -109,19 +109,34 @@ export function determineFlowMode(steps: FunnelStep[]): FlowVisualizationMode {
   return "classic";
 }
 
-const MAX_HW = 92;
-const VB_SEG = 26;
-const VB_TOP = 8;
-const VB_BOT = 10;
+/** Meia-largura máxima (topo do funil) e mínima — unidades do viewBox (220 de largura, centro 110). */
+const MAX_HW = 100;
+/** Fundo ainda legível; silhueta clara vs. topo. */
+const MIN_HW = 26;
+/** Redução mínima entre etapas consecutivas (meia-largura), para o funil não virar coluna. */
+const MIN_HALF_WIDTH_STEP = 5.5;
+const VB_SEG = 15;
+const VB_TOP = 5;
+const VB_BOT = 6;
 const VB_W = 220;
+
+/**
+ * Escala visual controlada: raiz quadrada do volume relativo à base (impressões).
+ * Evita faixas “palito” quando cliques/leads são muito menores que impressões.
+ */
+function halfWidthFromVolume(value: number, baseNum: number): number {
+  const v = Math.max(0, value);
+  const ratio = Math.min(1, v / baseNum);
+  const t = Math.sqrt(ratio);
+  return MIN_HW + t * (MAX_HW - MIN_HW);
+}
 
 /** Meia-larguras para trapézios; etapas sem valor preenchidas por média dos vizinhos. */
 export function buildClassicFunnelGeometry(steps: FunnelStep[], base: number): ClassicFunnelGeometry {
   const baseNum = Math.max(1, base);
   const raw: (number | null)[] = steps.map((s) => {
     if (s.unavailable || s.value == null) return null;
-    const v = s.value;
-    return MAX_HW * Math.max(0.035, Math.min(1, v / baseNum));
+    return halfWidthFromVolume(s.value, baseNum);
   });
 
   for (let pass = 0; pass < steps.length; pass++) {
@@ -130,21 +145,29 @@ export function buildClassicFunnelGeometry(steps: FunnelStep[], base: number): C
       const L = i > 0 ? raw[i - 1] : null;
       const R = i < raw.length - 1 ? raw[i + 1] : null;
       if (L != null && R != null) raw[i] = (L + R) / 2;
-      else if (L != null) raw[i] = L * 0.92;
-      else if (R != null) raw[i] = R * 1.08;
-      else raw[i] = MAX_HW * 0.06;
+      else if (L != null) raw[i] = Math.max(MIN_HW, L * 0.96);
+      else if (R != null) raw[i] = Math.max(MIN_HW, R * 1.04);
+      else raw[i] = MIN_HW;
     }
   }
 
-  const halfWidths = raw.map((x) => x ?? MAX_HW * 0.06);
+  const halfWidths = raw.map((x) => Math.max(MIN_HW, Math.min(MAX_HW, x ?? MIN_HW)));
   const n = steps.length - 1;
   const totalH = VB_TOP + n * VB_SEG + VB_BOT;
   const cx = VB_W / 2;
   const polygons: ClassicFunnelGeometry["polygons"] = [];
 
-  /** Silhueta sempre não crescente: volumes que “crescem” na origem não alargam a faixa. */
+  /** Silhueta monótona: fluxo híbrido não alarga camadas; taxa real continua nas transições. */
   for (let i = 1; i < halfWidths.length; i++) {
     halfWidths[i] = Math.min(halfWidths[i], halfWidths[i - 1]);
+    halfWidths[i] = Math.max(MIN_HW, halfWidths[i]);
+  }
+
+  /** Diferença visual mínima entre camadas (evita faixas com a mesma largura aparente). */
+  for (let i = 1; i < halfWidths.length; i++) {
+    const maxAllowed = halfWidths[i - 1]! - MIN_HALF_WIDTH_STEP;
+    halfWidths[i] = Math.min(halfWidths[i], maxAllowed);
+    halfWidths[i] = Math.max(MIN_HW, halfWidths[i]);
   }
 
   for (let i = 0; i < n; i++) {
@@ -243,15 +266,15 @@ export function buildAdaptiveFunnelModel(summary: MarketingDashboardSummary): Ad
       bottleneckKey = worst.key;
       worst.isBottleneck = true;
       bottleneckBadge = `${worst.from.short} → ${worst.to.short}`;
-      bottleneckLine = `Maior queda relativa: ${worst.from.label} → ${worst.to.label} (${formatRatePlain(worst.ratePct)}).`;
+      bottleneckLine = `Maior queda: ${formatRatePlain(worst.ratePct)} nesta transição.`;
     }
   }
 
   if (!bottleneckLine) {
     bottleneckLine =
       mode === "classic"
-        ? "Volumes não crescem entre etapas consecutivas — funil coerente com visão de perda progressiva."
-        : "Algumas etapas superam a anterior: eventos costumam ter origens diferentes na Meta. Compare volumes absolutos.";
+        ? "Funil coerente: volumes não aumentam entre etapas consecutivas."
+        : "Híbrido: algumas etapas superam a anterior (eventos distintos na Meta). Compare volumes absolutos.";
   }
 
   const classicGeometry = buildClassicFunnelGeometry(steps, classicBase);

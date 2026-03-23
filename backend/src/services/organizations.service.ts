@@ -315,6 +315,20 @@ export async function collectDescendantOrganizationIds(matrixId: string): Promis
   return [...seen];
 }
 
+/** Dados fiscais/contato/endereço da empresa cliente (revenda). */
+export type OrganizationClientProfile = {
+  legalName?: string | null;
+  taxId?: string | null;
+  contactEmail?: string | null;
+  phoneWhatsapp?: string | null;
+  addressLine1?: string | null;
+  addressNumber?: string | null;
+  addressDistrict?: string | null;
+  addressCity?: string | null;
+  addressState?: string | null;
+  addressPostalCode?: string | null;
+};
+
 /**
  * Admin da matriz cria org sob a matriz ou sob uma agência do ecossistema.
  * Sob agência: apenas empresas (CLIENT).
@@ -329,6 +343,8 @@ export async function createDescendantByMatrixAdmin(
     planId?: string | null;
     workspaceNote?: string | null;
     resellerOrgKind?: ResellerOrgKind;
+    clientProfile?: OrganizationClientProfile | null;
+    initialOwner?: { email: string; name: string; passwordHash: string } | null;
   }
 ) {
   await assertDirectOrgAdmin(actorUserId, matrixOrganizationId);
@@ -360,21 +376,40 @@ export async function createDescendantByMatrixAdmin(
   const note = options?.workspaceNote?.trim();
   const slug = await uniqueOrganizationSlug(slugifyOrganizationName(name));
 
-  const org = await prisma.organization.create({
-    data: {
-      name: name.trim(),
-      slug,
-      parentOrganizationId,
-      inheritPlanFromParent: inherit,
-      planId,
-      workspaceNote: note && note.length > 0 ? note : null,
-      resellerOrgKind,
-    },
-  });
-  if (!inherit && planId) {
-    await syncSubscriptionFromOrgPlan(org.id);
-  }
-  return {
+  const cp = options?.clientProfile;
+  const orgScalarData = {
+    name: name.trim(),
+    slug,
+    parentOrganizationId,
+    inheritPlanFromParent: inherit,
+    planId,
+    workspaceNote: note && note.length > 0 ? note : null,
+    resellerOrgKind,
+    legalName: cp?.legalName ?? null,
+    taxId: cp?.taxId ?? null,
+    contactEmail: cp?.contactEmail ?? null,
+    phoneWhatsapp: cp?.phoneWhatsapp ?? null,
+    addressLine1: cp?.addressLine1 ?? null,
+    addressNumber: cp?.addressNumber ?? null,
+    addressDistrict: cp?.addressDistrict ?? null,
+    addressCity: cp?.addressCity ?? null,
+    addressState: cp?.addressState ?? null,
+    addressPostalCode: cp?.addressPostalCode ?? null,
+  };
+
+  const initialOwner = options?.initialOwner;
+
+  const mapReturn = (org: {
+    id: string;
+    name: string;
+    slug: string;
+    inheritPlanFromParent: boolean;
+    planId: string | null;
+    workspaceStatus: WorkspaceStatus;
+    workspaceNote: string | null;
+    resellerOrgKind: ResellerOrgKind | null;
+    parentOrganizationId: string | null;
+  }) => ({
     id: org.id,
     name: org.name,
     slug: org.slug,
@@ -384,7 +419,46 @@ export async function createDescendantByMatrixAdmin(
     workspaceNote: org.workspaceNote,
     resellerOrgKind: org.resellerOrgKind,
     parentOrganizationId: org.parentOrganizationId,
-  };
+  });
+
+  if (initialOwner) {
+    const norm = initialOwner.email.trim().toLowerCase();
+    const dup = await prisma.user.findUnique({ where: { email: norm } });
+    if (dup) {
+      throw new Error("Já existe usuário com este e-mail");
+    }
+
+    const org = await prisma.$transaction(async (tx) => {
+      const o = await tx.organization.create({ data: orgScalarData });
+      const user = await tx.user.create({
+        data: {
+          email: norm,
+          name: initialOwner.name.trim(),
+          password: initialOwner.passwordHash,
+          mustChangePassword: true,
+        },
+      });
+      await tx.membership.create({
+        data: {
+          userId: user.id,
+          organizationId: o.id,
+          role: "owner",
+        },
+      });
+      return o;
+    });
+
+    if (!inherit && planId) {
+      await syncSubscriptionFromOrgPlan(org.id);
+    }
+    return mapReturn(org);
+  }
+
+  const org = await prisma.organization.create({ data: orgScalarData });
+  if (!inherit && planId) {
+    await syncSubscriptionFromOrgPlan(org.id);
+  }
+  return mapReturn(org);
 }
 
 /** Atualiza qualquer descendente da matriz (não exige ser filho direto). */

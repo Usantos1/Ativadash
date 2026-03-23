@@ -101,6 +101,18 @@ export async function resellerCreateChild(body: {
   planId?: string | null;
   workspaceNote?: string | null;
   resellerOrgKind?: "AGENCY" | "CLIENT";
+  legalName?: string | null;
+  taxId?: string;
+  phoneWhatsapp?: string;
+  ownerEmail?: string;
+  ownerName?: string;
+  ownerPassword?: string;
+  addressLine1?: string;
+  addressNumber?: string;
+  addressDistrict?: string;
+  addressCity?: string;
+  addressState?: string;
+  addressPostalCode?: string;
 }): Promise<{
   organization: {
     id: string;
@@ -125,6 +137,13 @@ export async function resellerPatchChildGovernance(
 
 export async function resellerDeleteChild(childId: string): Promise<void> {
   await api.delete(`/reseller/children/${childId}`);
+}
+
+/** Empresa deixa de ser filha da matriz: painel próprio, some da listagem de revenda. */
+export async function resellerDetachChildAsStandalone(childId: string): Promise<{
+  organization: { id: string; name: string; slug: string };
+}> {
+  return api.post(`/reseller/children/${childId}/detach`, {});
 }
 
 export type ResellerChildDetail = {

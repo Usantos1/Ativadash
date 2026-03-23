@@ -32,15 +32,95 @@ export const resellerGovernancePatchSchema = z
   })
   .refine((d) => Object.keys(d).length > 0, { message: "Envie ao menos um campo para atualizar" });
 
-export const resellerCreateChildSchema = z.object({
-  name: z.string().min(2, "Nome muito curto").max(120, "Nome muito longo"),
-  /** Omitir = criar sob a matriz; informar para vincular empresa a uma agência */
-  parentOrganizationId: z.string().min(1).optional(),
-  inheritPlanFromParent: z.boolean().optional(),
-  planId: z.string().min(1).optional().nullable(),
-  workspaceNote: z.string().max(5000).optional().nullable(),
-  resellerOrgKind: z.enum(["AGENCY", "CLIENT"]).optional(),
-});
+export const resellerCreateChildSchema = z
+  .object({
+    name: z.string().min(2, "Nome muito curto").max(120, "Nome muito longo"),
+    /** Omitir = criar sob a matriz; informar para vincular empresa a uma agência */
+    parentOrganizationId: z.string().min(1).optional(),
+    inheritPlanFromParent: z.boolean().optional(),
+    planId: z.string().min(1).optional().nullable(),
+    workspaceNote: z.string().max(5000).optional().nullable(),
+    resellerOrgKind: z.enum(["AGENCY", "CLIENT"]).optional(),
+    /** Cadastro completo de empresa cliente (revenda) */
+    legalName: z.string().max(200).optional().nullable(),
+    taxId: z.string().max(22).optional(),
+    phoneWhatsapp: z.string().max(22).optional(),
+    ownerEmail: z.string().max(254).optional(),
+    ownerName: z.string().max(120).optional(),
+    ownerPassword: z.string().min(8).max(128).optional(),
+    addressLine1: z.string().max(200).optional(),
+    addressNumber: z.string().max(20).optional(),
+    addressDistrict: z.string().max(120).optional(),
+    addressCity: z.string().max(120).optional(),
+    addressState: z.string().max(2).optional(),
+    addressPostalCode: z.string().max(12).optional(),
+  })
+  .superRefine((data, ctx) => {
+    const kind = data.resellerOrgKind ?? "CLIENT";
+    if (kind === "AGENCY") return;
+
+    const cnpj = (data.taxId ?? "").replace(/\D/g, "");
+    if (cnpj.length > 0 && cnpj.length !== 14) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["taxId"],
+        message: "CNPJ deve ter 14 dígitos ou ficar em branco.",
+      });
+    }
+
+    const phone = (data.phoneWhatsapp ?? "").replace(/\D/g, "");
+    if (phone.length < 10 || phone.length > 15) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["phoneWhatsapp"],
+        message: "Informe um WhatsApp com DDD (10 a 15 dígitos).",
+      });
+    }
+
+    const email = (data.ownerEmail ?? "").trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["ownerEmail"],
+        message: "E-mail do administrador é obrigatório.",
+      });
+    }
+
+    const oname = (data.ownerName ?? "").trim();
+    if (oname.length < 2) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["ownerName"],
+        message: "Nome do responsável é obrigatório.",
+      });
+    }
+
+    if (!data.ownerPassword || data.ownerPassword.length < 8) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["ownerPassword"],
+        message: "Senha inicial com no mínimo 8 caracteres.",
+      });
+    }
+
+    const uf = (data.addressState ?? "").trim().toUpperCase();
+    if (uf.length > 0 && !/^[A-Z]{2}$/.test(uf)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["addressState"],
+        message: "UF com 2 letras (ex.: SP) ou em branco.",
+      });
+    }
+
+    const cep = (data.addressPostalCode ?? "").replace(/\D/g, "");
+    if (cep.length > 0 && cep.length !== 8) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["addressPostalCode"],
+        message: "CEP com 8 dígitos ou em branco.",
+      });
+    }
+  });
 
 export const resellerUserPatchSchema = z
   .object({

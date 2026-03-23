@@ -28,6 +28,19 @@ import {
 const ROLES = ["owner", "admin", "member", "media_manager", "analyst"] as const;
 const INVITE_ROLES = ["admin", "member", "media_manager", "analyst"] as const;
 
+/** Rótulos em português do Brasil (valores da API permanecem em inglês). */
+const ROLE_LABEL_PT: Record<(typeof ROLES)[number], string> = {
+  owner: "Proprietário",
+  admin: "Administrador",
+  member: "Membro",
+  media_manager: "Gestor de mídia",
+  analyst: "Analista",
+};
+
+function roleLabelPt(role: string): string {
+  return ROLE_LABEL_PT[role as (typeof ROLES)[number]] ?? role;
+}
+
 export function RevendaUsersPage() {
   const [users, setUsers] = useState<EcosystemUserRow[]>([]);
   const [orgs, setOrgs] = useState<{ id: string; name: string; isMatrix: boolean }[]>([]);
@@ -296,7 +309,7 @@ export function RevendaUsersPage() {
               <SelectItem value="all">Papel</SelectItem>
               {ROLES.map((r) => (
                 <SelectItem key={r} value={r}>
-                  {r}
+                  {ROLE_LABEL_PT[r]}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -364,7 +377,7 @@ export function RevendaUsersPage() {
                           <span className="ml-1 text-[10px] font-semibold uppercase text-primary">matriz</span>
                         ) : null}
                       </td>
-                      <td className="py-3 pr-3 font-mono text-xs">{row.role}</td>
+                      <td className="py-3 pr-3 text-sm">{roleLabelPt(row.role)}</td>
                       <td className="py-3 pr-3">
                         {row.user.suspended ? (
                           <span className="text-amber-700 dark:text-amber-400">Suspenso</span>
@@ -478,7 +491,7 @@ export function RevendaUsersPage() {
                 <SelectContent>
                   {ROLES.map((r) => (
                     <SelectItem key={r} value={r}>
-                      {r}
+                      {ROLE_LABEL_PT[r]}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -537,7 +550,7 @@ export function RevendaUsersPage() {
                 <SelectContent>
                   {INVITE_ROLES.map((r) => (
                     <SelectItem key={r} value={r}>
-                      {r}
+                      {ROLE_LABEL_PT[r]}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -650,7 +663,7 @@ export function RevendaUsersPage() {
                   <SelectContent>
                     {ROLES.map((r) => (
                       <SelectItem key={r} value={r}>
-                        {r}
+                        {ROLE_LABEL_PT[r]}
                       </SelectItem>
                     ))}
                   </SelectContent>
