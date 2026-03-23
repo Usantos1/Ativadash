@@ -109,11 +109,53 @@ export type MarketingDashboardPayload =
     }
   | { ok: false; message: string };
 
-function metricsQuery(range: MetricsDateRange): string {
-  return new URLSearchParams({
+function metricsQuery(range: MetricsDateRange, refresh?: boolean): string {
+  const p = new URLSearchParams({
     startDate: range.startDate,
     endDate: range.endDate,
-  }).toString();
+  });
+  if (refresh) p.set("refresh", "1");
+  return p.toString();
+}
+
+async function fetchDashboardJson<T>(path: string, range: MetricsDateRange, refresh?: boolean): Promise<T> {
+  const token = useAuthStore.getState().accessToken;
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  if (token) (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
+
+  const url = `${API_BASE}${path}?${metricsQuery(range, refresh)}`;
+
+  try {
+    const res = await fetch(url, { headers });
+
+    if (res.status === 401) {
+      useAuthStore.getState().logout();
+      window.location.href = "/login";
+      throw new Error("Sessão expirada");
+    }
+
+    const text = await res.text();
+    let parsed: unknown;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      throw new Error(
+        res.ok ? "Resposta inválida do servidor." : `Erro ${res.status}: ${res.statusText}`
+      );
+    }
+
+    if (!res.ok) {
+      throw new Error(errorMessageFromBody(parsed, res.statusText || "Erro ao carregar o dashboard."));
+    }
+
+    return parsed as T;
+  } catch (e) {
+    if (e instanceof Error && e.message === "Sessão expirada") {
+      return { ok: false, message: "Sessão expirada. Faça login novamente." } as T;
+    }
+    const hint = e instanceof Error ? e.message : String(e);
+    return { ok: false, message: hint } as T;
+  }
 }
 
 function errorMessageFromBody(parsed: unknown, fallback: string): string {
@@ -133,7 +175,7 @@ export async function fetchMarketingDashboard(range: MetricsDateRange): Promise<
   const headers: HeadersInit = { "Content-Type": "application/json" };
   if (token) (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
 
-  const url = `${API_BASE}/marketing/dashboard?${metricsQuery(range)}`;
+  const url = `${API_BASE}/marketing/dashboard?${metricsQuery(range, false)}`;
 
   try {
     const res = await fetch(url, { headers });
@@ -176,4 +218,58 @@ export async function fetchMarketingDashboard(range: MetricsDateRange): Promise<
       message: `Não foi possível contatar o servidor para o painel agregado. ${hint}`,
     };
   }
+}
+
+export type MarketingDashboardSummaryBlockResponse =
+  | { ok: true; range: { start: string; end: string }; summary: MarketingDashboardSummary; distribution: MarketingDashboardPayload extends { ok: true } ? MarketingDashboardPayload["distribution"] : never }
+  | { ok: false; message: string };
+
+export type MarketingDashboardTimeseriesBlockResponse =
+  | { ok: true; range: { start: string; end: string }; timeseries: MarketingDashboardTimeseriesRow[] }
+  | { ok: false; message: string };
+
+export type MarketingDashboardPerformanceBlockResponse =
+  | {
+      ok: true;
+      range: { start: string; end: string };
+      performanceByLevel: MarketingDashboardPayload extends { ok: true } ? MarketingDashboardPayload["performanceByLevel"] : never;
+    }
+  | { ok: false; message: string };
+
+export type MarketingDashboardIntegrationBlockResponse = {
+  ok: true;
+  range: { start: string; end: string };
+  integrationStatus: MarketingDashboardPayload extends { ok: true } ? MarketingDashboardPayload["integrationStatus"] : never;
+};
+
+export function fetchMarketingDashboardSummary(
+  range: MetricsDateRange,
+  refresh?: boolean
+): Promise<MarketingDashboardSummaryBlockResponse> {
+  return fetchDashboardJson<MarketingDashboardSummaryBlockResponse>("/marketing/dashboard/summary", range, refresh);
+}
+
+export function fetchMarketingDashboardTimeseries(
+  range: MetricsDateRange,
+  refresh?: boolean
+): Promise<MarketingDashboardTimeseriesBlockResponse> {
+  return fetchDashboardJson<MarketingDashboardTimeseriesBlockResponse>("/marketing/dashboard/timeseries", range, refresh);
+}
+
+export function fetchMarketingDashboardPerformance(
+  range: MetricsDateRange,
+  refresh?: boolean
+): Promise<MarketingDashboardPerformanceBlockResponse> {
+  return fetchDashboardJson<MarketingDashboardPerformanceBlockResponse>("/marketing/dashboard/performance", range, refresh);
+}
+
+export function fetchMarketingDashboardIntegrationStatus(
+  range: MetricsDateRange,
+  refresh?: boolean
+): Promise<MarketingDashboardIntegrationBlockResponse | { ok: false; message: string }> {
+  return fetchDashboardJson<MarketingDashboardIntegrationBlockResponse | { ok: false; message: string }>(
+    "/marketing/dashboard/integration-status",
+    range,
+    refresh
+  );
 }

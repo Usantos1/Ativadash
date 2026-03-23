@@ -47,8 +47,8 @@ app.get("/api/health/db", async (_req, res) => {
 });
 
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
+  windowMs: env.API_RATE_LIMIT_WINDOW_MS,
+  max: env.API_RATE_LIMIT_MAX,
   message: { message: "Muitas requisições. Tente novamente em alguns minutos." },
   standardHeaders: true,
   legacyHeaders: false,

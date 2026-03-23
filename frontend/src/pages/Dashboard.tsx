@@ -8,11 +8,9 @@ import {
   CalendarRange,
   DollarSign,
   Eye,
-  LayoutDashboard,
   Megaphone,
   MousePointer,
   RefreshCw,
-  Sparkles,
   Target,
   UserPlus,
 } from "lucide-react";
@@ -28,6 +26,7 @@ import {
   YAxis,
 } from "recharts";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -38,21 +37,21 @@ import { useAuthStore } from "@/stores/auth-store";
 import { useMarketingMetrics } from "@/hooks/useMarketingMetrics";
 import { PerformanceAlerts } from "@/components/marketing/PerformanceAlerts";
 import { MarketingDateRangeDialog } from "@/components/marketing/MarketingDateRangeDialog";
-import { IndeterminateLoadingBar } from "@/components/ui/indeterminate-loading-bar";
-import { ChartPanelPremium, DataTablePremium, StatusBadge } from "@/components/premium";
+import { ChartPanelPremium, DataTablePremium } from "@/components/premium";
 import { KpiCardPremium } from "@/components/premium/kpi-card-premium";
-import {
-  fetchMarketingDashboard,
-  type MarketingDashboardPayload,
-  type MarketingDashboardPerfRow,
-  type MarketingDashboardSummary,
-} from "@/lib/marketing-dashboard-api";
+import type { MarketingDashboardPerfRow, MarketingDashboardSummary } from "@/lib/marketing-dashboard-api";
 import { executiveGreetingLine } from "@/lib/display-name";
 import { ExecutiveFunnel } from "@/components/dashboard/ExecutiveFunnel";
+import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
+import { useMarketingDashboardBlocks } from "@/hooks/useMarketingDashboardBlocks";
+import { DashboardFunnelRatesWidget } from "@/components/dashboard/dashboard-funnel-rates-widget";
 import {
   buildDashboardQuickInsights,
   DashboardQuickInsightsStrip,
 } from "@/components/dashboard/dashboard-quick-insights";
+
+const GOOGLE_ADS_ACTIVATION_COPY =
+  "Google Ads em ativação. A integração ainda está em análise. Quando for aprovada, os dados aparecerão automaticamente aqui.";
 
 function relDelta(
   current: number,
@@ -70,14 +69,9 @@ export function Dashboard() {
   const user = useAuthStore((s) => s.user);
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
 
-  const [dash, setDash] = useState<MarketingDashboardPayload | undefined>(undefined);
-  const [dashLoading, setDashLoading] = useState(false);
-  const [dashUpdatedAt, setDashUpdatedAt] = useState<Date | null>(null);
-
-  const dashboardMetaSummary = useMemo(() => {
-    if (dash?.ok === true) return dash.summary;
-    return undefined;
-  }, [dash]);
+  const [dashboardSummaryForInsights, setDashboardSummaryForInsights] = useState<
+    MarketingDashboardSummary | undefined
+  >(undefined);
 
   const {
     dateRange,
@@ -98,28 +92,22 @@ export function Dashboard() {
     refreshAll,
     insightData,
     insightLoading,
-  } = useMarketingMetrics({ dashboardMetaSummary });
+  } = useMarketingMetrics({ dashboardMetaSummary: dashboardSummaryForInsights });
 
-  const loadDashboard = useCallback(async () => {
-    if (!hasMeta) {
-      setDash(undefined);
-      return;
-    }
-    setDashLoading(true);
-    try {
-      const res = await fetchMarketingDashboard(dateRange);
-      setDash(res);
-      setDashUpdatedAt(new Date());
-    } catch {
-      setDash({ ok: false, message: "Erro inesperado ao carregar o painel agregado." });
-    } finally {
-      setDashLoading(false);
-    }
-  }, [hasMeta, dateRange.startDate, dateRange.endDate]);
+  const {
+    dash,
+    slice,
+    blocks,
+    loadDashboard,
+    dashUpdatedAt,
+    showFullSkeleton,
+    anyRefreshing,
+    dashboardMetaSummary,
+  } = useMarketingDashboardBlocks(hasMeta, dateRange);
 
   useEffect(() => {
-    void loadDashboard();
-  }, [loadDashboard]);
+    setDashboardSummaryForInsights(dashboardMetaSummary);
+  }, [dashboardMetaSummary]);
 
   const googleOk = metrics?.ok === true;
   const metaOk = dash?.ok === true;
@@ -129,9 +117,6 @@ export function Dashboard() {
   const cmpMetaSpend = cmpMetaMetrics?.ok ? cmpMetaMetrics.summary.spend : 0;
 
   const hasAnyChannel = hasGoogle || hasMeta;
-  const dataLoading =
-    (hasGoogle && metricsLoading) || (hasMeta && (dashLoading || dash === undefined));
-  const metaHealthy = hasMeta && metaOk;
 
   const [metaLevel, setMetaLevel] = useState<MetaLevel>("campaign");
   const [chartExtra, setChartExtra] = useState<"none" | "ctr">("none");
@@ -169,7 +154,7 @@ export function Dashboard() {
 
   const refresh = useCallback(async () => {
     await refreshAll();
-    await loadDashboard();
+    await loadDashboard(true);
   }, [refreshAll, loadDashboard]);
 
   const displayUpdatedAt = dashUpdatedAt ?? null;
@@ -210,40 +195,15 @@ export function Dashboard() {
           sidebarCollapsed ? "max-w-none" : "mx-auto max-w-[1680px]"
         )}
       >
-        {/* FAIXA 1 */}
+        {/* Cabeçalho: saudação, período, ações */}
         <section className="rounded-2xl border border-border/55 bg-gradient-to-br from-card via-card to-muted/[0.25] p-5 shadow-[var(--shadow-surface)] sm:p-6">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex flex-col gap-4 sm:gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0 space-y-1">
               <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-primary/75">Visão geral</p>
               <h1 className="text-balance text-2xl font-bold tracking-tight text-foreground sm:text-[1.75rem]">
                 {executiveGreetingLine(user)}
               </h1>
               <p className="text-sm text-muted-foreground">{dateRangeLabel}</p>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-3 text-xs text-muted-foreground">
-                {displayUpdatedAt ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    <LayoutDashboard className="h-3.5 w-3.5 opacity-60" aria-hidden />
-                    Atualizado{" "}
-                    <span className="font-medium text-foreground">
-                      {displayUpdatedAt.toLocaleDateString("pt-BR")}{" "}
-                      {displayUpdatedAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  </span>
-                ) : null}
-                <StatusBadge tone={metaHealthy && !dataLoading ? "healthy" : hasMeta ? "alert" : "disconnected"} dot>
-                  {dataLoading ? "Carregando" : metaHealthy ? "Meta" : hasMeta ? "Meta" : "Sem Meta"}
-                </StatusBadge>
-                {hasGoogle ? (
-                  <StatusBadge tone={googleOk ? "connected" : "disconnected"} dot>
-                    Google
-                  </StatusBadge>
-                ) : null}
-                {compareEnabled ? (
-                  <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-                    Comparando períodos
-                  </span>
-                ) : null}
-              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button
@@ -270,13 +230,13 @@ export function Dashboard() {
                   variant="outline"
                   size="sm"
                   className="h-9 rounded-lg"
-                  disabled={dashLoading || metaMetricsLoading}
+                  disabled={anyRefreshing || metaMetricsLoading}
                   onClick={() => void refresh()}
                 >
                   <RefreshCw
                     className={cn(
                       "mr-1.5 h-3.5 w-3.5",
-                      dashLoading || metaMetricsLoading ? "animate-spin" : ""
+                      anyRefreshing || metaMetricsLoading ? "animate-spin" : ""
                     )}
                   />
                   Atualizar
@@ -294,56 +254,6 @@ export function Dashboard() {
             </div>
           </div>
         </section>
-
-        {hasGoogle && !metricsLoading && !googleOk ? (
-          <div
-            className="flex flex-col gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/[0.06] p-4 sm:flex-row sm:items-center sm:justify-between"
-            role="status"
-          >
-            <div className="flex gap-3">
-              <Sparkles className="h-5 w-5 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden />
-              <div>
-                <p className="text-sm font-semibold text-foreground">Google Ads em ativação</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {metricsError ?? "API em análise — sem métricas de busca neste painel."}
-                </p>
-              </div>
-            </div>
-            <Button variant="outline" size="sm" className="shrink-0 rounded-lg" asChild>
-              <Link to="/marketing/integracoes">Integrações</Link>
-            </Button>
-          </div>
-        ) : null}
-
-        {hasMeta ? (
-          <div className="rounded-2xl border border-border/50 bg-card/80 p-4 shadow-sm">
-            <p className="text-xs font-semibold text-foreground">Metas e alertas</p>
-            <div className="mt-2">
-              <PerformanceAlerts alerts={insightData?.alerts} loading={insightLoading} />
-            </div>
-            {compareEnabled ? (
-              <div className="mt-3 rounded-lg border border-border/40 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                {cmpLoading ? (
-                  "Carregando período anterior…"
-                ) : cmpMetaSpend <= 0 && metaSpend <= 0 ? (
-                  "Comparação ativa — sem gasto Meta nos dois períodos."
-                ) : (
-                  <>
-                    <span className="font-medium text-foreground">Gasto período anterior:</span>{" "}
-                    <span className="tabular-nums text-foreground">{formatSpend(cmpMetaSpend)}</span>
-                    {metaSpend > 0 && cmpMetaSpend > 0 ? (
-                      <>
-                        {" "}
-                        ({metaSpend >= cmpMetaSpend ? "+" : ""}
-                        {(((metaSpend - cmpMetaSpend) / cmpMetaSpend) * 100).toFixed(1)}%)
-                      </>
-                    ) : null}
-                  </>
-                )}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
 
         {!hasAnyChannel ? (
           <div className="grid gap-6 lg:grid-cols-3">
@@ -373,22 +283,27 @@ export function Dashboard() {
               </ul>
             </div>
           </div>
-        ) : hasMeta && (dash === undefined || (dashLoading && !metaOk)) ? (
-          <div className="flex min-h-[220px] flex-col items-center justify-center gap-4 rounded-2xl border border-border/55 bg-card px-8 py-10">
-            <div className="w-full max-w-md">
-              <IndeterminateLoadingBar label="Carregando painel…" />
-            </div>
-          </div>
+        ) : showFullSkeleton ? (
+          <DashboardSkeleton />
         ) : hasMeta && dash && !dash.ok ? (
           <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-[var(--shadow-surface)]" role="alert">
             <p className="text-sm font-semibold">Painel Meta</p>
             <p className="mt-2 text-sm text-muted-foreground">{dash.message}</p>
-            <Button variant="outline" size="sm" className="mt-4 rounded-lg" onClick={() => void loadDashboard()}>
+            <Button variant="outline" size="sm" className="mt-4 rounded-lg" onClick={() => void loadDashboard(true)}>
               Tentar novamente
             </Button>
           </div>
         ) : metaOk && summary && dash ? (
           <div className="space-y-8">
+            {anyRefreshing ? (
+              <div
+                className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.06] px-3 py-2 text-xs font-medium text-primary"
+                role="status"
+              >
+                <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                Atualizando dados do painel…
+              </div>
+            ) : null}
             {summary.reconciliation && !summary.reconciliation.spendMatchesSummary ? (
               <p className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
                 Aviso: divergência de gasto resumo vs. série — verifique logs do servidor se persistir.
@@ -396,7 +311,13 @@ export function Dashboard() {
             ) : null}
 
             {/* FAIXA 2 — KPIs */}
-            <section className="space-y-3">
+            <section className="relative space-y-3">
+              {blocks.summary.refreshing ? (
+                <span className="absolute right-0 top-0 z-10 flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                  <RefreshCw className="h-3 w-3 animate-spin" />
+                  Atualizando
+                </span>
+              ) : null}
               <h2 className="px-0.5 text-lg font-bold tracking-tight text-foreground">Indicadores principais</h2>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
                 <KpiCardPremium
@@ -473,8 +394,45 @@ export function Dashboard() {
 
             <DashboardQuickInsightsStrip items={quickInsights} />
 
-            {/* FAIXA 3 — Funil */}
-            <ExecutiveFunnel summary={summary} spend={metaSpend} />
+            <div className="rounded-2xl border border-border/50 bg-card/80 p-4 shadow-sm">
+              <p className="text-xs font-semibold text-foreground">Metas e alertas</p>
+              <div className="mt-2">
+                <PerformanceAlerts alerts={insightData?.alerts} loading={insightLoading} />
+              </div>
+              {compareEnabled ? (
+                <div className="mt-3 rounded-lg border border-border/40 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                  {cmpLoading ? (
+                    "Carregando período anterior…"
+                  ) : cmpMetaSpend <= 0 && metaSpend <= 0 ? (
+                    "Comparação ativa — sem gasto Meta nos dois períodos."
+                  ) : (
+                    <>
+                      <span className="font-medium text-foreground">Gasto período anterior:</span>{" "}
+                      <span className="tabular-nums text-foreground">{formatSpend(cmpMetaSpend)}</span>
+                      {metaSpend > 0 && cmpMetaSpend > 0 ? (
+                        <>
+                          {" "}
+                          ({metaSpend >= cmpMetaSpend ? "+" : ""}
+                          {(((metaSpend - cmpMetaSpend) / cmpMetaSpend) * 100).toFixed(1)}%)
+                        </>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              ) : null}
+            </div>
+
+            {/* Funil + gargalos / taxas */}
+            <div className="relative grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-stretch lg:gap-6">
+              {blocks.summary.refreshing ? (
+                <span className="absolute right-2 top-0 z-10 flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary lg:right-4">
+                  <RefreshCw className="h-3 w-3 animate-spin" />
+                  Atualizando
+                </span>
+              ) : null}
+              <ExecutiveFunnel summary={summary} spend={metaSpend} companionRatesPanel className="h-full min-h-0" />
+              <DashboardFunnelRatesWidget summary={summary} className="min-h-0" />
+            </div>
 
             {/* Receita / atribuição — bloco único */}
             <section className="rounded-2xl border border-border/50 bg-muted/[0.2] p-5">
@@ -530,20 +488,34 @@ export function Dashboard() {
 
             {/* FAIXA 4 — Gráfico */}
             <ChartPanelPremium
-              title="Investimento e leads por dia"
+              title="Gráfico diário · investimento e leads"
               actions={
-                <Button
-                  type="button"
-                  variant={chartExtra === "ctr" ? "secondary" : "outline"}
-                  size="sm"
-                  className="h-8 rounded-lg text-xs"
-                  onClick={() => setChartExtra((v) => (v === "ctr" ? "none" : "ctr"))}
-                >
-                  CTR
-                </Button>
+                <div className="flex items-center gap-2">
+                  {blocks.timeseries.refreshing ? (
+                    <span className="flex items-center gap-1 text-[10px] font-medium text-primary">
+                      <RefreshCw className="h-3 w-3 animate-spin" />
+                      Atualizando
+                    </span>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant={chartExtra === "ctr" ? "secondary" : "outline"}
+                    size="sm"
+                    className="h-8 rounded-lg text-xs"
+                    onClick={() => setChartExtra((v) => (v === "ctr" ? "none" : "ctr"))}
+                  >
+                    CTR
+                  </Button>
+                </div>
               }
               contentClassName="pt-2"
             >
+              {blocks.timeseries.error ? (
+                <p className="mb-2 text-xs text-amber-700 dark:text-amber-300">{blocks.timeseries.error}</p>
+              ) : null}
+              {blocks.timeseries.loading && slice.timeseries === undefined ? (
+                <Skeleton className="h-[300px] w-full rounded-lg" />
+              ) : (
               <div className="h-[300px] w-full min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
@@ -608,6 +580,7 @@ export function Dashboard() {
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
+              )}
             </ChartPanelPremium>
 
             {/* FAIXA 5 */}
@@ -633,24 +606,6 @@ export function Dashboard() {
                       </div>
                     </div>
                   ))}
-                  <div
-                    className={cn(
-                      "rounded-xl border p-3",
-                      googleOk ? "border-border/50 bg-muted/15" : "border-dashed border-border/60 bg-muted/10"
-                    )}
-                  >
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Google Ads</span>
-                      <span className="text-xs font-medium">
-                        {googlePending ? "Em ativação" : googleOk ? "Ativo" : "—"}
-                      </span>
-                    </div>
-                    {googleOk ? (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Gasto: {formatSpend(metrics!.summary.costMicros / 1_000_000)} · detalhes em Marketing.
-                      </p>
-                    ) : null}
-                  </div>
                 </div>
               </ChartPanelPremium>
 
@@ -691,8 +646,26 @@ export function Dashboard() {
             </div>
 
             {/* FAIXA 6 */}
-            <section className="space-y-3">
-              <h2 className="px-0.5 text-lg font-bold tracking-tight text-foreground">Performance por nível</h2>
+            <section className="relative space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-0.5">
+                <h2 className="text-lg font-bold tracking-tight text-foreground">Performance por nível</h2>
+                {blocks.performance.refreshing ? (
+                  <span className="flex items-center gap-1 text-[10px] font-semibold text-primary">
+                    <RefreshCw className="h-3 w-3 animate-spin" />
+                    Atualizando
+                  </span>
+                ) : null}
+              </div>
+              {blocks.performance.error ? (
+                <p className="text-xs text-amber-700 dark:text-amber-300">{blocks.performance.error}</p>
+              ) : null}
+              {blocks.performance.loading && slice.performanceByLevel === undefined ? (
+                <div className="space-y-2 rounded-xl border border-border/40 p-4">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <Skeleton key={i} className="h-10 w-full" />
+                  ))}
+                </div>
+              ) : (
               <Tabs value={metaLevel} onValueChange={(v) => setMetaLevel(v as MetaLevel)} className="w-full">
                 <TabsList className="h-10 w-full justify-start rounded-xl bg-muted/50 p-1 sm:w-auto">
                   <TabsTrigger value="campaign" className="rounded-lg text-xs sm:text-sm">
@@ -725,6 +698,7 @@ export function Dashboard() {
                   />
                 </TabsContent>
               </Tabs>
+              )}
             </section>
 
             <div className="flex flex-col gap-3 rounded-2xl border border-primary/15 bg-primary/[0.04] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -736,6 +710,65 @@ export function Dashboard() {
                 </Link>
               </Button>
             </div>
+
+            <section className="relative rounded-2xl border border-border/50 bg-muted/[0.15] p-4 sm:p-5">
+              {blocks.integration.refreshing ? (
+                <span className="absolute right-4 top-4 z-10 flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                  <RefreshCw className="h-3 w-3 animate-spin" />
+                  Atualizando
+                </span>
+              ) : null}
+              <h2 className="text-sm font-bold tracking-tight text-foreground sm:text-base">Status das integrações</h2>
+              {blocks.integration.error ? (
+                <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{blocks.integration.error}</p>
+              ) : null}
+              <p className="mt-1 text-xs text-muted-foreground">
+                Conexões usadas neste painel. Ajustes em{" "}
+                <Link to="/marketing/integracoes" className="font-medium text-primary underline-offset-4 hover:underline">
+                  Integrações
+                </Link>
+                .
+              </p>
+              <ul className="mt-4 space-y-3">
+                <li className="flex flex-col gap-0.5 rounded-lg border border-border/45 bg-card/80 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="text-sm font-medium text-foreground">Meta Ads</span>
+                  <span className="text-xs font-semibold text-muted-foreground sm:text-sm">
+                    {metaOk ? "Ativo" : hasMeta ? "Carregando…" : "Não conectado"}
+                  </span>
+                </li>
+                <li className="flex flex-col gap-1 rounded-lg border border-border/45 bg-card/80 px-3 py-2.5">
+                  <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between">
+                    <span className="text-sm font-medium text-foreground">Google Ads</span>
+                    <span className="text-xs font-semibold text-muted-foreground sm:text-sm">
+                      {googlePending
+                        ? "Em ativação"
+                        : googleOk
+                          ? "Ativo"
+                          : hasGoogle
+                            ? "Sincronização pendente"
+                            : "Não conectado"}
+                    </span>
+                  </div>
+                  {googlePending ? (
+                    <p className="text-xs leading-relaxed text-muted-foreground">{GOOGLE_ADS_ACTIVATION_COPY}</p>
+                  ) : hasGoogle && !googleOk && !metricsLoading ? (
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      {metricsError ?? "Métricas de busca indisponíveis no momento."}
+                    </p>
+                  ) : null}
+                </li>
+              </ul>
+              {displayUpdatedAt ? (
+                <p className="mt-3 text-[11px] text-muted-foreground">
+                  Painel Meta atualizado em{" "}
+                  <span className="tabular-nums font-medium text-foreground">
+                    {displayUpdatedAt.toLocaleDateString("pt-BR")}{" "}
+                    {displayUpdatedAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                  .
+                </p>
+              ) : null}
+            </section>
           </div>
         ) : (
           <div className="rounded-2xl border border-border/55 bg-card p-6 text-sm text-muted-foreground" role="status">

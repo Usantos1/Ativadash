@@ -90,6 +90,21 @@ export async function fetchPlatformOrganizations(): Promise<{ organizations: Pla
   return api.get("/platform/organizations");
 }
 
+export type CreatePlatformOrganizationBody = {
+  name: string;
+  slug?: string;
+  planId?: string | null;
+  ownerEmail?: string;
+  ownerName?: string;
+  ownerPassword?: string;
+};
+
+export async function createPlatformOrganization(
+  body: CreatePlatformOrganizationBody
+): Promise<{ organization: PlatformOrgRow }> {
+  return api.post("/platform/organizations", body);
+}
+
 export async function patchPlatformOrganization(
   organizationId: string,
   body: { name?: string; slug?: string; workspaceStatus?: WorkspaceStatusDto }

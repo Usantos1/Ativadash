@@ -29,6 +29,12 @@ function parseFrontendOrigins(): { primary: string; cors: string | string[] } {
 
 const { primary: frontendPrimary, cors: corsOrigin } = parseFrontendOrigins();
 
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) return fallback;
+  return Math.floor(n);
+}
+
 if (!process.env.DATABASE_URL?.trim()) {
   console.error(
     "[ativadash] Nenhuma conexão PostgreSQL configurada.\n" +
@@ -68,4 +74,12 @@ export const env = {
   PLATFORM_ADMIN_EMAILS: process.env.PLATFORM_ADMIN_EMAILS ?? "",
   /** Logs detalhados de parse de actions da Meta (somente servidor). */
   DEBUG_META_INSIGHTS: process.env.DEBUG_META_INSIGHTS === "true",
+  /**
+   * Limite global por IP em todas as rotas /api (exceto health registradas antes do middleware).
+   * SPAs geram muitas requisições; 100/15min era baixo demais para uso normal.
+   */
+  API_RATE_LIMIT_WINDOW_MS: parsePositiveInt(process.env.API_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000),
+  API_RATE_LIMIT_MAX: parsePositiveInt(process.env.API_RATE_LIMIT_MAX, 800),
+  /** Tentativas de login com falha (4xx/5xx) por IP; acertos não consomem o contador. */
+  AUTH_LOGIN_RATE_LIMIT_MAX: parsePositiveInt(process.env.AUTH_LOGIN_RATE_LIMIT_MAX, 60),
 };

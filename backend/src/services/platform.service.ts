@@ -1,5 +1,9 @@
+import bcrypt from "bcryptjs";
 import { prisma } from "../utils/prisma.js";
 import type { Prisma, WorkspaceStatus } from "@prisma/client";
+import { slugifyOrganizationName, uniqueOrganizationSlug } from "../utils/org-slug.js";
+
+const PLATFORM_ORG_CREATE_SALT = 10;
 
 const ORGANIZATION_PLATFORM_SELECT = {
   id: true,
@@ -166,6 +170,115 @@ export async function listAllOrganizations() {
   });
 }
 
+/**
+ * Cria empresa raiz (sem matriz): uso pela administração da plataforma.
+ * Opcionalmente atribui plano e cria o primeiro usuário proprietário.
+ */
+export async function createRootOrganization(data: {
+  name: string;
+  slug?: string;
+  planId?: string | null;
+  ownerEmail?: string;
+  ownerName?: string;
+  ownerPassword?: string;
+}) {
+  const name = data.name.trim();
+  if (name.length < 2) {
+    throw new Error("Nome muito curto");
+  }
+
+  let slug: string;
+  const rawSlug = data.slug?.trim().toLowerCase();
+  if (rawSlug && rawSlug.length > 0) {
+    const taken = await prisma.organization.findFirst({ where: { slug: rawSlug, deletedAt: null } });
+    if (taken) {
+      throw new Error("Slug já em uso");
+    }
+    slug = rawSlug;
+  } else {
+    slug = await uniqueOrganizationSlug(slugifyOrganizationName(name));
+  }
+
+  const planId = data.planId && data.planId.length > 0 ? data.planId : null;
+  if (planId) {
+    const p = await prisma.plan.findUnique({ where: { id: planId } });
+    if (!p) {
+      throw new Error("Plano não encontrado");
+    }
+  }
+
+  const em = (data.ownerEmail ?? "").trim().toLowerCase();
+  const on = (data.ownerName ?? "").trim();
+  const pw = data.ownerPassword ?? "";
+  const wantsOwner = em.length > 0 || on.length > 0 || pw.length > 0;
+  if (wantsOwner) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
+      throw new Error("E-mail do proprietário inválido");
+    }
+    if (on.length < 2) {
+      throw new Error("Nome do proprietário é obrigatório (mín. 2 caracteres)");
+    }
+    if (pw.length < 8) {
+      throw new Error("Senha do proprietário: mínimo 8 caracteres");
+    }
+    const dup = await prisma.user.findUnique({ where: { email: em } });
+    if (dup) {
+      throw new Error("Já existe usuário com este e-mail");
+    }
+  }
+
+  const orgId = await prisma.$transaction(async (tx) => {
+    const o = await tx.organization.create({
+      data: {
+        name,
+        slug,
+        parentOrganizationId: null,
+        inheritPlanFromParent: false,
+        planId,
+        resellerOrgKind: null,
+        workspaceStatus: "ACTIVE",
+      },
+    });
+
+    if (planId) {
+      await tx.subscription.create({
+        data: {
+          organizationId: o.id,
+          planId,
+          billingMode: "custom",
+          status: "active",
+        },
+      });
+    }
+
+    if (wantsOwner) {
+      const hashed = await bcrypt.hash(pw, PLATFORM_ORG_CREATE_SALT);
+      const user = await tx.user.create({
+        data: {
+          email: em,
+          name: on,
+          password: hashed,
+          mustChangePassword: true,
+        },
+      });
+      await tx.membership.create({
+        data: { userId: user.id, organizationId: o.id, role: "owner" },
+      });
+    }
+
+    return o.id;
+  });
+
+  const row = await prisma.organization.findFirst({
+    where: { id: orgId },
+    select: ORGANIZATION_PLATFORM_SELECT,
+  });
+  if (!row) {
+    throw new Error("Falha ao carregar empresa criada");
+  }
+  return row;
+}
+
 export async function updateOrganizationProfile(
   organizationId: string,
   data: { name?: string; slug?: string; workspaceStatus?: WorkspaceStatus }
@@ -227,7 +340,8 @@ export async function softDeleteOrganization(organizationId: string) {
 
 export async function listSubscriptions() {
   return prisma.subscription.findMany({
-    orderBy: { createdAt: "desc" },
+    where: { organization: { deletedAt: null } },
+    orderBy: [{ organization: { name: "asc" } }, { organization: { slug: "asc" } }],
     include: {
       organization: { select: { id: true, name: true, slug: true } },
       plan: { select: { id: true, name: true, slug: true } },

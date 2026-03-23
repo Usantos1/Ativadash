@@ -14,6 +14,7 @@ router.patch("/plans/:id", platform.plansUpdate);
 router.delete("/plans/:id", platform.plansDelete);
 
 router.get("/organizations", platform.organizationsList);
+router.post("/organizations", platform.organizationCreate);
 router.patch("/organizations/:organizationId/plan", platform.organizationAssignPlan);
 router.get("/organizations/:organizationId/limits-override", platform.organizationOverrideGet);
 router.put("/organizations/:organizationId/limits-override", platform.organizationOverridePut);

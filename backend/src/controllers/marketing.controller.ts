@@ -7,7 +7,10 @@ import {
   mutateGoogleCampaignStatus,
 } from "../services/google-ads-metrics.service.js";
 import { fetchMetaAdsMetrics } from "../services/meta-ads-metrics.service.js";
-import { fetchMarketingDashboardPayload } from "../services/marketing-dashboard.service.js";
+import {
+  getMarketingDashboardCached,
+  getDashboardIntegrationStatusCached,
+} from "../services/marketing-dashboard-cache.service.js";
 import {
   fetchMetaAdsetMetrics,
   fetchMetaAdLevelMetrics,
@@ -87,7 +90,12 @@ export async function getMetaAdsMetricsHandler(req: Request, res: Response) {
   }
 }
 
-/** Payload agregado para o dashboard executivo (Meta-first, série diária alinhada ao resumo). */
+function parseDashboardBypassCache(req: Request): boolean {
+  const r = req.query.refresh;
+  return r === "1" || r === "true";
+}
+
+/** Payload agregado (compatível); usa cache em memória + deduplicação. `?refresh=1` ignora cache. */
 export async function getMarketingDashboardHandler(req: Request, res: Response) {
   const { userId, organizationId } = (req as AuthRequest).user;
   if (!(await guardRead(userId, organizationId, res))) return;
@@ -97,7 +105,9 @@ export async function getMarketingDashboardHandler(req: Request, res: Response) 
       endDate: req.query.endDate as string | undefined,
       period: req.query.period as string | undefined,
     });
-    const result = await fetchMarketingDashboardPayload(organizationId, range);
+    const result = await getMarketingDashboardCached(organizationId, range, {
+      bypassCache: parseDashboardBypassCache(req),
+    });
     return res.json(result);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -106,6 +116,107 @@ export async function getMarketingDashboardHandler(req: Request, res: Response) 
     }
     console.error(e);
     return res.status(500).json({ ok: false, message: "Erro ao montar o dashboard de marketing." });
+  }
+}
+
+export async function getMarketingDashboardSummaryHandler(req: Request, res: Response) {
+  const { userId, organizationId } = (req as AuthRequest).user;
+  if (!(await guardRead(userId, organizationId, res))) return;
+  try {
+    const range = parseMetricsDateRangeQuery({
+      startDate: req.query.startDate as string | undefined,
+      endDate: req.query.endDate as string | undefined,
+      period: req.query.period as string | undefined,
+    });
+    const result = await getMarketingDashboardCached(organizationId, range, {
+      bypassCache: parseDashboardBypassCache(req),
+    });
+    if (!result.ok) return res.json(result);
+    return res.json({
+      ok: true,
+      range: result.range,
+      summary: result.summary,
+      distribution: result.distribution,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("Período") || msg.includes("Data") || msg.includes("formato")) {
+      return res.status(400).json({ ok: false, message: msg });
+    }
+    console.error(e);
+    return res.status(500).json({ ok: false, message: "Erro ao carregar resumo do dashboard." });
+  }
+}
+
+export async function getMarketingDashboardTimeseriesHandler(req: Request, res: Response) {
+  const { userId, organizationId } = (req as AuthRequest).user;
+  if (!(await guardRead(userId, organizationId, res))) return;
+  try {
+    const range = parseMetricsDateRangeQuery({
+      startDate: req.query.startDate as string | undefined,
+      endDate: req.query.endDate as string | undefined,
+      period: req.query.period as string | undefined,
+    });
+    const result = await getMarketingDashboardCached(organizationId, range, {
+      bypassCache: parseDashboardBypassCache(req),
+    });
+    if (!result.ok) return res.json(result);
+    return res.json({ ok: true, range: result.range, timeseries: result.timeseries });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("Período") || msg.includes("Data") || msg.includes("formato")) {
+      return res.status(400).json({ ok: false, message: msg });
+    }
+    console.error(e);
+    return res.status(500).json({ ok: false, message: "Erro ao carregar série do dashboard." });
+  }
+}
+
+export async function getMarketingDashboardPerformanceHandler(req: Request, res: Response) {
+  const { userId, organizationId } = (req as AuthRequest).user;
+  if (!(await guardRead(userId, organizationId, res))) return;
+  try {
+    const range = parseMetricsDateRangeQuery({
+      startDate: req.query.startDate as string | undefined,
+      endDate: req.query.endDate as string | undefined,
+      period: req.query.period as string | undefined,
+    });
+    const result = await getMarketingDashboardCached(organizationId, range, {
+      bypassCache: parseDashboardBypassCache(req),
+    });
+    if (!result.ok) return res.json(result);
+    return res.json({ ok: true, range: result.range, performanceByLevel: result.performanceByLevel });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("Período") || msg.includes("Data") || msg.includes("formato")) {
+      return res.status(400).json({ ok: false, message: msg });
+    }
+    console.error(e);
+    return res.status(500).json({ ok: false, message: "Erro ao carregar performance do dashboard." });
+  }
+}
+
+/** Status de integrações (Prisma apenas, cache 30s). */
+export async function getMarketingDashboardIntegrationHandler(req: Request, res: Response) {
+  const { userId, organizationId } = (req as AuthRequest).user;
+  if (!(await guardRead(userId, organizationId, res))) return;
+  try {
+    const range = parseMetricsDateRangeQuery({
+      startDate: req.query.startDate as string | undefined,
+      endDate: req.query.endDate as string | undefined,
+      period: req.query.period as string | undefined,
+    });
+    const result = await getDashboardIntegrationStatusCached(organizationId, range, {
+      bypassCache: parseDashboardBypassCache(req),
+    });
+    return res.json(result);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("Período") || msg.includes("Data") || msg.includes("formato")) {
+      return res.status(400).json({ ok: false, message: msg });
+    }
+    console.error(e);
+    return res.status(500).json({ ok: false, message: "Erro ao carregar status das integrações." });
   }
 }
 

@@ -495,10 +495,30 @@ export async function fetchMarketingDashboardPayload(
     const adsetOut: MarketingDashboardPerfRow[] = [];
     const adOut: MarketingDashboardPerfRow[] = [];
 
+    type AccInsight = {
+      impressions?: string;
+      reach?: string;
+      frequency?: string;
+    };
+
     for (const account of accounts) {
       const accountId = account.id.replace("act_", "");
 
-      const part = await fetchDailyForAccount(accountId, accessToken, appSecret, timeRange);
+      const [part, accInsightRes, campRows, adsetRows, ads] = await Promise.all([
+        fetchDailyForAccount(accountId, accessToken, appSecret, timeRange),
+        metaGraphGet<{ data: AccInsight[] }>(
+          `/act_${accountId}/insights?fields=impressions,reach,frequency&time_range=${encodeURIComponent(timeRange)}&level=account`,
+          accessToken,
+          appSecret
+        ).catch((e) => {
+          console.warn(`[Meta dashboard] account reach act_${accountId}:`, e instanceof Error ? e.message : e);
+          return { data: [] as AccInsight[] };
+        }),
+        fetchCampaignRows(accountId, accessToken, appSecret, timeRange),
+        fetchAdsetRowsForDashboard(accountId, accessToken, appSecret, timeRange),
+        fetchAdRowsForDashboard(accountId, accessToken, appSecret, timeRange),
+      ]);
+
       for (const [d, v] of part) {
         const cur = mergedDaily.get(d);
         if (cur) {
@@ -519,33 +539,18 @@ export async function fetchMarketingDashboardPayload(
         }
       }
 
-      type AccInsight = {
-        impressions?: string;
-        reach?: string;
-        frequency?: string;
-      };
-      try {
-        const accInsight = await metaGraphGet<{ data: AccInsight[] }>(
-          `/act_${accountId}/insights?fields=impressions,reach,frequency&time_range=${encodeURIComponent(timeRange)}&level=account`,
-          accessToken,
-          appSecret
-        );
-        const ar = accInsight.data?.[0];
-        if (ar) {
-          const imp = parseInt(ar.impressions ?? "0", 10) || 0;
-          const rch = parseInt(ar.reach ?? "0", 10) || 0;
-          const freq = parseFloat(ar.frequency ?? "0") || 0;
-          periodReachAccount += rch;
-          if (imp > 0 && freq > 0) {
-            periodFreqWeight += freq * imp;
-            periodImpForFreq += imp;
-          }
+      const ar = accInsightRes.data?.[0];
+      if (ar) {
+        const imp = parseInt(ar.impressions ?? "0", 10) || 0;
+        const rch = parseInt(ar.reach ?? "0", 10) || 0;
+        const freq = parseFloat(ar.frequency ?? "0") || 0;
+        periodReachAccount += rch;
+        if (imp > 0 && freq > 0) {
+          periodFreqWeight += freq * imp;
+          periodImpForFreq += imp;
         }
-      } catch (e) {
-        console.warn(`[Meta dashboard] account reach act_${accountId}:`, e instanceof Error ? e.message : e);
       }
 
-      const campRows = await fetchCampaignRows(accountId, accessToken, appSecret, timeRange);
       for (const c of campRows) {
         const key = c.campaign_id ?? c.campaign_name ?? Math.random().toString();
         const imp = parseInt(c.impressions ?? "0", 10) || 0;
@@ -590,7 +595,6 @@ export async function fetchMarketingDashboardPayload(
         }
       }
 
-      const adsetRows = await fetchAdsetRowsForDashboard(accountId, accessToken, appSecret, timeRange);
       for (const r of adsetRows) {
         const imp = parseInt(r.impressions ?? "0", 10) || 0;
         const clk = parseInt(r.clicks ?? "0", 10) || 0;
@@ -620,7 +624,6 @@ export async function fetchMarketingDashboardPayload(
         );
       }
 
-      const ads = await fetchAdRowsForDashboard(accountId, accessToken, appSecret, timeRange);
       for (const r of ads) {
         const imp = parseInt(r.impressions ?? "0", 10) || 0;
         const clk = parseInt(r.clicks ?? "0", 10) || 0;

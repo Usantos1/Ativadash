@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
-import { Ban, Pencil, PlayCircle, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Ban, Pencil, PlayCircle, Search, Trash2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollRegion } from "@/components/ui/scroll-region";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuthStore } from "@/stores/auth-store";
 import {
   assignOrgPlan,
+  createPlatformOrganization,
   createPlatformPlan,
   deletePlatformPlan,
   deletePlatformOrganization,
@@ -66,6 +68,7 @@ export function PlatformPage() {
   });
 
   const [orgRowBusy, setOrgRowBusy] = useState<string | null>(null);
+  const [subRowBusy, setSubRowBusy] = useState<string | null>(null);
   const [planRowBusy, setPlanRowBusy] = useState<string | null>(null);
   const [orgEditor, setOrgEditor] = useState<PlatformOrgRow | null>(null);
   const [orgEditName, setOrgEditName] = useState("");
@@ -102,6 +105,39 @@ export function PlatformPage() {
     active: true,
     features: { ...DEFAULT_FEATURES },
   });
+
+  const [platformTab, setPlatformTab] = useState("empresas");
+  const [orgSearch, setOrgSearch] = useState("");
+  const [newOrg, setNewOrg] = useState({
+    name: "",
+    slug: "",
+    planId: "__none__" as string,
+    ownerEmail: "",
+    ownerName: "",
+    ownerPassword: "",
+  });
+  const [newOrgSaving, setNewOrgSaving] = useState(false);
+
+  const filteredOrgs = useMemo(() => {
+    const q = orgSearch.trim().toLowerCase();
+    if (!q) return orgs;
+    return orgs.filter(
+      (o) =>
+        o.name.toLowerCase().includes(q) ||
+        o.slug.toLowerCase().includes(q) ||
+        (o.plan?.name ?? "").toLowerCase().includes(q)
+    );
+  }, [orgs, orgSearch]);
+
+  const orgById = useMemo(() => new Map(orgs.map((o) => [o.id, o])), [orgs]);
+
+  const sortedSubs = useMemo(() => {
+    return [...subs].sort((a, b) => {
+      const na = a.organization.name.localeCompare(b.organization.name, "pt-BR");
+      if (na !== 0) return na;
+      return a.organization.slug.localeCompare(b.organization.slug, "pt-BR");
+    });
+  }, [subs]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -184,6 +220,35 @@ export function PlatformPage() {
     return Number.isFinite(n) ? n : null;
   }
 
+  async function handleCreateOrganization(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setNewOrgSaving(true);
+    try {
+      await createPlatformOrganization({
+        name: newOrg.name.trim(),
+        slug: newOrg.slug.trim() || undefined,
+        planId: newOrg.planId === "__none__" ? null : newOrg.planId,
+        ownerEmail: newOrg.ownerEmail.trim() || undefined,
+        ownerName: newOrg.ownerName.trim() || undefined,
+        ownerPassword: newOrg.ownerPassword || undefined,
+      });
+      setNewOrg({
+        name: "",
+        slug: "",
+        planId: "__none__",
+        ownerEmail: "",
+        ownerName: "",
+        ownerPassword: "",
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao criar empresa");
+    } finally {
+      setNewOrgSaving(false);
+    }
+  }
+
   async function handleCreatePlan(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -227,6 +292,38 @@ export function PlatformPage() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao atribuir plano");
+    }
+  }
+
+  function openSubscriptionEditor(s: PlatformSubscriptionRow) {
+    const o = orgById.get(s.organization.id);
+    if (!o) {
+      setError(
+        "Esta empresa não está na lista atual. Abra a aba Empresas ou clique em atualizar após criar o tenant."
+      );
+      return;
+    }
+    setManageOrg(o);
+  }
+
+  async function handleRemoveSubscription(organizationId: string, orgLabel: string) {
+    if (
+      !window.confirm(
+        `Remover assinatura e plano de «${orgLabel}»? A empresa continua cadastrada; você poderá atribuir outro plano depois.`
+      )
+    ) {
+      return;
+    }
+    setSubRowBusy(organizationId);
+    setError(null);
+    try {
+      await assignOrgPlan(organizationId, null);
+      if (manageOrg?.id === organizationId) setManageOrg(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao remover assinatura");
+    } finally {
+      setSubRowBusy(null);
     }
   }
 
@@ -389,7 +486,7 @@ export function PlatformPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Plataforma</h1>
           <p className="text-sm text-muted-foreground">
-            Planos, assinaturas, limites customizados e vínculo com cada tenant.
+            Empresas raiz, catálogo de planos e assinaturas. Use as abas para separar cada área.
           </p>
         </div>
         <Button type="button" variant="outline" size="sm" onClick={handleSyncSubs}>
@@ -401,9 +498,13 @@ export function PlatformPage() {
       {loading && <p className="text-sm text-muted-foreground">Carregando…</p>}
 
       <Dialog open={!!manageOrg} onOpenChange={(o) => !o && setManageOrg(null)}>
-        <DialogContent title={`Assinatura · ${manageOrg?.name ?? ""}`} className="max-h-[90dvh] w-[min(100vw-1rem,28rem)] max-w-none sm:max-w-lg">
+        <DialogContent
+          alignTop
+          title={`Assinatura · ${manageOrg?.name ?? ""}`}
+          className="w-[min(100vw-1rem,28rem)] max-w-none sm:max-w-lg"
+        >
           {manageOrg && (
-            <div className="space-y-4 text-sm">
+            <div className="max-h-[calc(100dvh-7rem)] space-y-4 overflow-y-auto pr-1 text-sm">
               <div className="space-y-2">
                 <Label>Modalidade</Label>
                 <select
@@ -485,9 +586,9 @@ export function PlatformPage() {
       </Dialog>
 
       <Dialog open={!!orgEditor} onOpenChange={(o) => !o && setOrgEditor(null)}>
-        <DialogContent title={`Editar empresa · ${orgEditor?.name ?? ""}`} className="sm:max-w-md">
+        <DialogContent alignTop title={`Editar empresa · ${orgEditor?.name ?? ""}`} className="sm:max-w-md">
           {orgEditor ? (
-            <div className="space-y-3 text-sm">
+            <div className="max-h-[calc(100dvh-7rem)] space-y-3 overflow-y-auto pr-1 text-sm">
               <div className="space-y-2">
                 <Label>Nome</Label>
                 <Input value={orgEditName} onChange={(e) => setOrgEditName(e.target.value)} />
@@ -522,9 +623,13 @@ export function PlatformPage() {
       </Dialog>
 
       <Dialog open={!!planEditor} onOpenChange={(o) => !o && setPlanEditor(null)}>
-        <DialogContent title={`Editar plano · ${planEditor?.name ?? ""}`} className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogContent
+          alignTop
+          title={`Editar plano · ${planEditor?.name ?? ""}`}
+          className="max-w-2xl"
+        >
           {planEditor ? (
-            <div className="space-y-3 text-sm">
+            <div className="max-h-[calc(100dvh-7rem)] space-y-3 overflow-y-auto pr-1 text-sm">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Nome</Label>
@@ -661,6 +766,242 @@ export function PlatformPage() {
         </DialogContent>
       </Dialog>
 
+      <Tabs value={platformTab} onValueChange={setPlatformTab} className="w-full min-w-0 space-y-4">
+        <TabsList className="h-auto w-full flex-wrap justify-start gap-1 bg-muted/80 p-1">
+          <TabsTrigger value="empresas">Empresas</TabsTrigger>
+          <TabsTrigger value="planos">Planos</TabsTrigger>
+          <TabsTrigger value="assinaturas">Assinaturas</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="empresas" className="mt-4 space-y-4 focus-visible:outline-none">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Nova empresa raiz</CardTitle>
+              <CardDescription>
+                Cria um tenant independente (sem matriz). Slug vazio gera um identificador a partir do nome. Plano e
+                proprietário são opcionais.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={(e) => void handleCreateOrganization(e)} className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Nome da empresa</Label>
+                  <Input
+                    value={newOrg.name}
+                    onChange={(e) => setNewOrg((s) => ({ ...s, name: e.target.value }))}
+                    placeholder="Ex.: Acme Ltda"
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Slug (opcional)</Label>
+                  <Input
+                    value={newOrg.slug}
+                    onChange={(e) => setNewOrg((s) => ({ ...s, slug: e.target.value }))}
+                    placeholder="só letras minúsculas, números e hífen"
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Plano inicial</Label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    value={newOrg.planId}
+                    onChange={(e) => setNewOrg((s) => ({ ...s, planId: e.target.value }))}
+                  >
+                    <option value="__none__">Sem plano</option>
+                    {plans.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2 border-t border-border/60 pt-3 sm:col-span-2">
+                  <p className="text-xs font-medium text-muted-foreground">Primeiro usuário — proprietário (opcional)</p>
+                  <p className="text-xs text-muted-foreground">
+                    Se preencher, informe os três campos. A conta precisará trocar a senha no primeiro login.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>E-mail</Label>
+                  <Input
+                    type="email"
+                    autoComplete="off"
+                    value={newOrg.ownerEmail}
+                    onChange={(e) => setNewOrg((s) => ({ ...s, ownerEmail: e.target.value }))}
+                    placeholder="admin@empresa.com"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Nome do usuário</Label>
+                  <Input
+                    value={newOrg.ownerName}
+                    onChange={(e) => setNewOrg((s) => ({ ...s, ownerName: e.target.value }))}
+                    placeholder="Nome completo"
+                  />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Senha inicial</Label>
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    value={newOrg.ownerPassword}
+                    onChange={(e) => setNewOrg((s) => ({ ...s, ownerPassword: e.target.value }))}
+                    placeholder="Mínimo 8 caracteres"
+                  />
+                </div>
+                <div className="flex items-end sm:col-span-2">
+                  <Button type="submit" disabled={newOrgSaving}>
+                    {newOrgSaving ? "Criando…" : "Criar empresa"}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card className="overflow-hidden">
+            <CardHeader className="space-y-4">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <CardTitle className="text-base">Empresas e plano</CardTitle>
+                  <CardDescription>
+                    Editar dados, pausar workspace, assinatura/limites ou trocar o plano (o seletor salva na hora).
+                  </CardDescription>
+                </div>
+                <div className="relative w-full sm:max-w-xs">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    className="pl-9"
+                    placeholder="Buscar nome, slug ou plano…"
+                    value={orgSearch}
+                    onChange={(e) => setOrgSearch(e.target.value)}
+                    aria-label="Filtrar empresas"
+                  />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <ScrollRegion className="scrollbar-thin">
+                <table className="w-full min-w-[960px] text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-muted-foreground">
+                      <th className="px-4 py-2 font-medium">Empresa</th>
+                      <th className="px-4 py-2 font-medium">Workspace</th>
+                      <th className="px-4 py-2 font-medium">Plano</th>
+                      <th className="px-4 py-2 font-medium">Assinatura</th>
+                      <th className="px-4 py-2 font-medium">Trocar plano</th>
+                      <th className="px-4 py-2 font-medium text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredOrgs.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                          {orgSearch.trim() ? "Nenhuma empresa corresponde à busca." : "Nenhuma empresa cadastrada."}
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredOrgs.map((o) => (
+                        <tr key={o.id} className="border-b border-border/60">
+                          <td className="px-4 py-2">
+                            <span className="font-medium">{o.name}</span>
+                            <div className="text-xs text-muted-foreground">{o.slug}</div>
+                          </td>
+                          <td className="px-4 py-2 text-xs">{ORG_STATUS_PT[o.workspaceStatus]}</td>
+                          <td className="px-4 py-2 text-muted-foreground">{o.plan?.name ?? "—"}</td>
+                          <td className="px-4 py-2 text-xs text-muted-foreground">
+                            {o.subscription ? `${o.subscription.billingMode} · ${o.subscription.status}` : "—"}
+                            {o.limitsOverride &&
+                            Object.values(o.limitsOverride).some((v) => v != null) ? (
+                              <span className="ml-1 text-primary">· override</span>
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-2">
+                            <select
+                              className="h-9 w-full max-w-[200px] rounded-md border border-input bg-background px-2 text-sm"
+                              value={o.planId ?? "__none__"}
+                              onChange={(e) => void handleAssign(o.id, e.target.value)}
+                              title="Salva ao alterar"
+                            >
+                              <option value="__none__">Sem plano</option>
+                              {plans.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-4 py-2 text-right">
+                            <div className="flex flex-wrap justify-end gap-1">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="gap-1"
+                                disabled={orgRowBusy === o.id}
+                                onClick={() => openOrgEditor(o)}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                Editar
+                              </Button>
+                              {o.workspaceStatus === "ACTIVE" ? (
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="sm"
+                                  className="gap-1"
+                                  disabled={orgRowBusy === o.id}
+                                  onClick={() => void orgSetStatus(o.id, "PAUSED")}
+                                >
+                                  <Ban className="h-3.5 w-3.5" />
+                                  Pausar
+                                </Button>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="sm"
+                                  className="gap-1"
+                                  disabled={orgRowBusy === o.id}
+                                  onClick={() => void orgSetStatus(o.id, "ACTIVE")}
+                                >
+                                  <PlayCircle className="h-3.5 w-3.5" />
+                                  Ativar
+                                </Button>
+                              )}
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setManageOrg(o)}
+                              >
+                                Assinatura
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="gap-1 text-destructive hover:text-destructive"
+                                disabled={orgRowBusy === o.id}
+                                onClick={() => void handleDeleteOrganization(o)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Excluir
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </ScrollRegion>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="planos" className="mt-4 space-y-4 focus-visible:outline-none">
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Novo plano</CardTitle>
@@ -883,151 +1224,92 @@ export function PlatformPage() {
           </ScrollRegion>
         </CardContent>
       </Card>
+        </TabsContent>
 
+        <TabsContent value="assinaturas" className="mt-4 space-y-4 focus-visible:outline-none">
       <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle className="text-base">Assinaturas</CardTitle>
-          <CardDescription>Uma linha por empresa com registro de assinatura.</CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          <ScrollRegion className="scrollbar-thin">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead>
-                <tr className="border-b text-left text-muted-foreground">
-                  <th className="px-4 py-2 font-medium">Empresa</th>
-                  <th className="px-4 py-2 font-medium">Plano</th>
-                  <th className="px-4 py-2 font-medium">Modalidade</th>
-                  <th className="px-4 py-2 font-medium">Status</th>
-                  <th className="px-4 py-2 font-medium">Início</th>
-                </tr>
-              </thead>
-              <tbody>
-                {subs.map((s) => (
-                  <tr key={s.id} className="border-b border-border/60">
-                    <td className="px-4 py-2 font-medium">{s.organization.name}</td>
-                    <td className="px-4 py-2 text-muted-foreground">{s.plan.name}</td>
-                    <td className="px-4 py-2 text-xs">{s.billingMode}</td>
-                    <td className="px-4 py-2 text-xs">{s.status}</td>
-                    <td className="px-4 py-2 text-xs">{new Date(s.startedAt).toLocaleDateString("pt-BR")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </ScrollRegion>
-        </CardContent>
-      </Card>
-
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle className="text-base">Empresas e plano</CardTitle>
           <CardDescription>
-            Editar nome/slug/status, inativar workspace, excluir (soft delete) ou abrir assinatura e limites.
+            Uma linha por empresa (cada tenant tem no máximo uma assinatura). Nomes repetidos são organizações
+            diferentes — use o slug para distinguir.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <ScrollRegion className="scrollbar-thin">
-            <table className="w-full min-w-[960px] text-sm">
+            <table className="w-full min-w-[880px] text-sm">
               <thead>
                 <tr className="border-b text-left text-muted-foreground">
                   <th className="px-4 py-2 font-medium">Empresa</th>
-                  <th className="px-4 py-2 font-medium">Workspace</th>
+                  <th className="px-4 py-2 font-medium">Slug</th>
                   <th className="px-4 py-2 font-medium">Plano</th>
-                  <th className="px-4 py-2 font-medium">Assinatura</th>
-                  <th className="px-4 py-2 font-medium">Alterar plano</th>
+                  <th className="px-4 py-2 font-medium">Modalidade</th>
+                  <th className="px-4 py-2 font-medium">Status</th>
+                  <th className="px-4 py-2 font-medium">Início</th>
                   <th className="px-4 py-2 font-medium text-right">Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {orgs.map((o) => (
-                  <tr key={o.id} className="border-b border-border/60">
-                    <td className="px-4 py-2">
-                      <span className="font-medium">{o.name}</span>
-                      <div className="text-xs text-muted-foreground">{o.slug}</div>
-                    </td>
-                    <td className="px-4 py-2 text-xs">{ORG_STATUS_PT[o.workspaceStatus]}</td>
-                    <td className="px-4 py-2 text-muted-foreground">{o.plan?.name ?? "—"}</td>
-                    <td className="px-4 py-2 text-xs text-muted-foreground">
-                      {o.subscription ? `${o.subscription.billingMode} · ${o.subscription.status}` : "—"}
-                      {o.limitsOverride &&
-                      Object.values(o.limitsOverride).some((v) => v != null) ? (
-                        <span className="ml-1 text-primary">· override</span>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-2">
-                      <select
-                        className="h-9 w-full max-w-[200px] rounded-md border border-input bg-background px-2 text-sm"
-                        value={o.planId ?? "__none__"}
-                        onChange={(e) => handleAssign(o.id, e.target.value)}
-                      >
-                        <option value="__none__">Sem plano</option>
-                        {plans.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      <div className="flex flex-wrap justify-end gap-1">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="gap-1"
-                          disabled={orgRowBusy === o.id}
-                          onClick={() => openOrgEditor(o)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          Editar
-                        </Button>
-                        {o.workspaceStatus === "ACTIVE" ? (
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            className="gap-1"
-                            disabled={orgRowBusy === o.id}
-                            onClick={() => void orgSetStatus(o.id, "PAUSED")}
-                          >
-                            <Ban className="h-3.5 w-3.5" />
-                            Inativar
-                          </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            className="gap-1"
-                            disabled={orgRowBusy === o.id}
-                            onClick={() => void orgSetStatus(o.id, "ACTIVE")}
-                          >
-                            <PlayCircle className="h-3.5 w-3.5" />
-                            Ativar
-                          </Button>
-                        )}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="gap-1 text-destructive hover:text-destructive"
-                          disabled={orgRowBusy === o.id}
-                          onClick={() => void handleDeleteOrganization(o)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Excluir
-                        </Button>
-                        <Button type="button" variant="outline" size="sm" onClick={() => setManageOrg(o)}>
-                          Assinatura
-                        </Button>
-                      </div>
+                {sortedSubs.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                      Nenhuma assinatura ativa.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  sortedSubs.map((s) => (
+                    <tr key={s.id} className="border-b border-border/60">
+                      <td className="px-4 py-2">
+                        <span className="font-medium">{s.organization.name}</span>
+                        <div className="mt-0.5 font-mono text-[10px] text-muted-foreground" title="ID interno">
+                          {s.organization.id.slice(0, 12)}…
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 font-mono text-xs text-muted-foreground">{s.organization.slug}</td>
+                      <td className="px-4 py-2 text-muted-foreground">{s.plan.name}</td>
+                      <td className="px-4 py-2 text-xs">{s.billingMode}</td>
+                      <td className="px-4 py-2 text-xs">{s.status}</td>
+                      <td className="px-4 py-2 text-xs tabular-nums">
+                        {new Date(s.startedAt).toLocaleDateString("pt-BR")}
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <div className="flex flex-wrap justify-end gap-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-1"
+                            disabled={subRowBusy === s.organization.id}
+                            onClick={() => openSubscriptionEditor(s)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Editar
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1 text-destructive hover:text-destructive"
+                            disabled={subRowBusy === s.organization.id}
+                            onClick={() =>
+                              void handleRemoveSubscription(s.organization.id, s.organization.name)
+                            }
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Remover
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </ScrollRegion>
         </CardContent>
       </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

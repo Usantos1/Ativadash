@@ -59,6 +59,16 @@ const organizationPatchSchema = z
   })
   .refine((d) => Object.keys(d).length > 0, { message: "Envie ao menos um campo" });
 
+/** Empresa raiz na plataforma; slug/plano/proprietário opcionais. */
+const createOrganizationSchema = z.object({
+  name: z.string().min(2).max(120),
+  slug: z.string().max(64).optional(),
+  planId: z.union([z.string().min(1), z.null()]).optional(),
+  ownerEmail: z.string().optional(),
+  ownerName: z.string().optional(),
+  ownerPassword: z.string().optional(),
+});
+
 export async function plansList(_req: Request, res: Response) {
   const list = await platform.listPlans();
   return res.json({ plans: list });
@@ -116,6 +126,36 @@ export async function plansDelete(req: Request, res: Response) {
 export async function organizationsList(_req: Request, res: Response) {
   const organizations = await platform.listAllOrganizations();
   return res.json({ organizations });
+}
+
+export async function organizationCreate(req: Request, res: Response) {
+  const parsed = createOrganizationSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Dados inválidos" });
+  }
+  const slugRaw = (parsed.data.slug ?? "").trim().toLowerCase();
+  if (slugRaw.length > 0 && !/^[a-z0-9-]+$/.test(slugRaw)) {
+    return res.status(400).json({ message: "Slug: apenas letras minúsculas, números e hífens" });
+  }
+  const planId =
+    parsed.data.planId === undefined
+      ? undefined
+      : parsed.data.planId === null
+        ? null
+        : parsed.data.planId;
+  try {
+    const organization = await platform.createRootOrganization({
+      name: parsed.data.name.trim(),
+      slug: slugRaw.length > 0 ? slugRaw : undefined,
+      planId,
+      ownerEmail: (parsed.data.ownerEmail ?? "").trim() || undefined,
+      ownerName: (parsed.data.ownerName ?? "").trim() || undefined,
+      ownerPassword: parsed.data.ownerPassword ?? undefined,
+    });
+    return res.status(201).json({ organization });
+  } catch (e) {
+    return res.status(400).json({ message: e instanceof Error ? e.message : "Erro ao criar empresa" });
+  }
 }
 
 export async function organizationPatch(req: Request, res: Response) {
