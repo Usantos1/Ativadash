@@ -15,6 +15,8 @@ export type AuthUserDto = {
   id: string;
   email: string;
   name: string;
+  /** Opcional; UI usa primeira palavra de `name` como fallback. */
+  firstName: string | null;
   organizationId: string;
   organization: AuthOrganizationDto;
 };
@@ -46,13 +48,15 @@ async function buildAuthUserDto(
   userId: string,
   email: string,
   name: string,
-  organizationId: string
+  organizationId: string,
+  firstName: string | null
 ): Promise<AuthUserDto> {
   const organization = await organizationToDto(organizationId);
   return {
     id: userId,
     email,
     name,
+    firstName,
     organizationId,
     organization,
   };
@@ -77,11 +81,29 @@ async function listMembershipSummaries(userId: string): Promise<MembershipSummar
     }));
 }
 
+/** Descendentes diretos (BFS), sem incluir a raiz. */
+async function collectDescendantOrganizationIds(rootId: string): Promise<string[]> {
+  const out: string[] = [];
+  const queue = [rootId];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    const children = await prisma.organization.findMany({
+      where: { parentOrganizationId: id, deletedAt: null },
+      select: { id: true },
+    });
+    for (const c of children) {
+      out.push(c.id);
+      queue.push(c.id);
+    }
+  }
+  return out;
+}
+
 /**
- * Empresas filiais para o seletor de contexto:
- * - Na matriz (sem pai): filhos diretos, se o usuário for owner/admin nela.
- * - Num filho: todos os irmãos (mesmo parentId), se o usuário for owner/admin da mãe.
- * Assim o dropdown não some ao entrar numa empresa cliente.
+ * Empresas para o seletor de contexto (revenda / hierarquia):
+ * Sobe a cadeia de `active` até achar um nó onde o usuário é owner/admin.
+ * - Se esse nó for a raiz (matriz), lista todos os descendentes (árvore inteira).
+ * - Caso contrário (ex.: agência), lista só os filhos diretos desse nó.
  */
 async function listManagedOrganizationsForActiveContext(
   userId: string,
@@ -92,34 +114,49 @@ async function listManagedOrganizationsForActiveContext(
   });
   if (!active) return [];
 
-  const parentId = active.parentOrganizationId;
-  if (parentId) {
-    const parentMem = await prisma.membership.findUnique({
-      where: { userId_organizationId: { userId, organizationId: parentId } },
+  let cursor: string | null = activeOrganizationId;
+  let adminAnchor: string | null = null;
+  for (let i = 0; i < 32 && cursor; i++) {
+    const mem = await prisma.membership.findUnique({
+      where: { userId_organizationId: { userId, organizationId: cursor } },
     });
-    if (!parentMem || !["owner", "admin"].includes(parentMem.role)) return [];
+    if (mem && ["owner", "admin"].includes(mem.role)) {
+      adminAnchor = cursor;
+      break;
+    }
+    const parentLink: { parentOrganizationId: string | null } | null = await prisma.organization.findFirst({
+      where: { id: cursor, deletedAt: null },
+      select: { parentOrganizationId: true },
+    });
+    cursor = parentLink?.parentOrganizationId ?? null;
+  }
 
-    const children = await prisma.organization.findMany({
-      where: { parentOrganizationId: parentId, deletedAt: null },
+  if (!adminAnchor) return [];
+
+  const anchor = await prisma.organization.findFirst({
+    where: { id: adminAnchor, deletedAt: null },
+    select: { parentOrganizationId: true },
+  });
+  if (!anchor) return [];
+
+  if (!anchor.parentOrganizationId) {
+    const ids = await collectDescendantOrganizationIds(adminAnchor);
+    if (ids.length === 0) return [];
+    return prisma.organization.findMany({
+      where: { id: { in: ids }, deletedAt: null },
       select: { id: true, name: true, slug: true },
       orderBy: { name: "asc" },
     });
-    return children;
   }
 
-  const mem = await prisma.membership.findUnique({
-    where: { userId_organizationId: { userId, organizationId: activeOrganizationId } },
-  });
-  if (!mem || !["owner", "admin"].includes(mem.role)) return [];
-
   return prisma.organization.findMany({
-    where: { parentOrganizationId: activeOrganizationId, deletedAt: null },
+    where: { parentOrganizationId: adminAnchor, deletedAt: null },
     select: { id: true, name: true, slug: true },
     orderBy: { name: "asc" },
   });
 }
 
-/** Acesso direto (Membership) ou revenda: owner/admin da empresa mãe acessa empresa filha. */
+/** Acesso direto (qualquer papel) ou revenda: owner/admin em qualquer ancestral. */
 export async function userHasEffectiveAccess(userId: string, organizationId: string): Promise<boolean> {
   const direct = await prisma.membership.findUnique({
     where: { userId_organizationId: { userId, organizationId } },
@@ -127,37 +164,46 @@ export async function userHasEffectiveAccess(userId: string, organizationId: str
   });
   if (direct && !direct.organization.deletedAt) return true;
 
-  const org = await prisma.organization.findFirst({
-    where: { id: organizationId, deletedAt: null },
-  });
-  if (!org?.parentOrganizationId) return false;
-
-  const parentMem = await prisma.membership.findUnique({
-    where: {
-      userId_organizationId: { userId, organizationId: org.parentOrganizationId },
-    },
-  });
-  return parentMem != null && ["owner", "admin"].includes(parentMem.role);
+  let walk: string | null = organizationId;
+  for (let i = 0; i < 32 && walk; i++) {
+    const parentLink: { parentOrganizationId: string | null } | null = await prisma.organization.findFirst({
+      where: { id: walk, deletedAt: null },
+      select: { parentOrganizationId: true },
+    });
+    const parentId: string | null = parentLink?.parentOrganizationId ?? null;
+    if (!parentId) break;
+    const parentMem = await prisma.membership.findUnique({
+      where: { userId_organizationId: { userId, organizationId: parentId } },
+    });
+    if (parentMem && ["owner", "admin"].includes(parentMem.role)) return true;
+    walk = parentId;
+  }
+  return false;
 }
 
-/** Renomear empresa: membro direto admin/owner OU admin/owner da mãe (revenda). */
+/** Gerir org: owner/admin na própria org ou em qualquer ancestral (matriz → agência → cliente). */
 export async function canManageOrganization(userId: string, organizationId: string): Promise<boolean> {
-  const m = await prisma.membership.findUnique({
-    where: { userId_organizationId: { userId, organizationId } },
-  });
-  if (m && ["owner", "admin"].includes(m.role)) return true;
-
-  const org = await prisma.organization.findFirst({
-    where: { id: organizationId, deletedAt: null },
-  });
-  if (!org?.parentOrganizationId) return false;
-
-  const pm = await prisma.membership.findUnique({
-    where: {
-      userId_organizationId: { userId, organizationId: org.parentOrganizationId },
-    },
-  });
-  return pm != null && ["owner", "admin"].includes(pm.role);
+  let walk: string | null = organizationId;
+  for (let i = 0; i < 32 && walk; i++) {
+    const mem = await prisma.membership.findUnique({
+      where: { userId_organizationId: { userId, organizationId: walk } },
+      include: { organization: true },
+    });
+    if (
+      mem &&
+      mem.organization &&
+      !mem.organization.deletedAt &&
+      ["owner", "admin"].includes(mem.role)
+    ) {
+      return true;
+    }
+    const parentLink: { parentOrganizationId: string | null } | null = await prisma.organization.findFirst({
+      where: { id: walk, deletedAt: null },
+      select: { parentOrganizationId: true },
+    });
+    walk = parentLink?.parentOrganizationId ?? null;
+  }
+  return false;
 }
 
 /** Operações na conta da agência (listar/criar filhos): só admin/owner com membership na org atual. */
@@ -170,25 +216,28 @@ export async function assertDirectOrgAdmin(userId: string, organizationId: strin
   }
 }
 
-/** Convites / equipe na org: admin ou owner direto, ou admin/owner da matriz (revenda). */
+/** Convites / equipe na org: admin ou owner direto, ou admin/owner em qualquer ancestral. */
 export async function assertOrgAdminOrParentAgency(userId: string, organizationId: string): Promise<void> {
   const direct = await prisma.membership.findUnique({
     where: { userId_organizationId: { userId, organizationId } },
   });
   if (direct && ["owner", "admin"].includes(direct.role)) return;
 
-  const org = await prisma.organization.findFirst({
-    where: { id: organizationId, deletedAt: null },
-  });
-  if (!org?.parentOrganizationId) {
-    throw new Error("Sem permissão para gerenciar equipe desta empresa");
+  let walk: string | null = organizationId;
+  for (let i = 0; i < 32 && walk; i++) {
+    const parentLink: { parentOrganizationId: string | null } | null = await prisma.organization.findFirst({
+      where: { id: walk, deletedAt: null },
+      select: { parentOrganizationId: true },
+    });
+    const parentId: string | null = parentLink?.parentOrganizationId ?? null;
+    if (!parentId) break;
+    const pm = await prisma.membership.findUnique({
+      where: { userId_organizationId: { userId, organizationId: parentId } },
+    });
+    if (pm && ["owner", "admin"].includes(pm.role)) return;
+    walk = parentId;
   }
-  const pm = await prisma.membership.findUnique({
-    where: { userId_organizationId: { userId, organizationId: org.parentOrganizationId } },
-  });
-  if (!pm || !["owner", "admin"].includes(pm.role)) {
-    throw new Error("Sem permissão para gerenciar equipe desta empresa");
-  }
+  throw new Error("Sem permissão para gerenciar equipe desta empresa");
 }
 
 export async function register(data: RegisterInput) {
@@ -234,7 +283,7 @@ export async function register(data: RegisterInput) {
   });
   const { accessToken, refreshToken } = await createTokens(user.id, user.email, org.id);
   await saveRefreshToken(user.id, refreshToken);
-  const userDto = await buildAuthUserDto(user.id, user.email, user.name, org.id);
+  const userDto = await buildAuthUserDto(user.id, user.email, user.name, org.id, user.firstName ?? null);
   const memberships = await listMembershipSummaries(user.id);
   return {
     user: userDto,
@@ -270,11 +319,16 @@ export async function login(data: LoginInput) {
     membership.organizationId
   );
   await saveRefreshToken(user.id, refreshToken);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date() },
+  });
   const userDto = await buildAuthUserDto(
     user.id,
     user.email,
     user.name,
-    membership.organizationId
+    membership.organizationId,
+    user.firstName ?? null
   );
   const memberships = await listMembershipSummaries(user.id);
   return {
@@ -282,6 +336,7 @@ export async function login(data: LoginInput) {
     memberships,
     accessToken,
     refreshToken,
+    mustChangePassword: user.mustChangePassword,
   };
 }
 
@@ -402,6 +457,7 @@ export async function getAuthProfile(userId: string, organizationId: string): Pr
       id: membership.user.id,
       email: membership.user.email,
       name: membership.user.name,
+      firstName: membership.user.firstName ?? null,
       organizationId: membership.organization.id,
       organization: {
         id: membership.organization.id,
@@ -434,6 +490,7 @@ export async function getAuthProfile(userId: string, organizationId: string): Pr
     id: user.id,
     email: user.email,
     name: user.name,
+    firstName: user.firstName ?? null,
     organizationId: org.id,
     organization: {
       id: org.id,
@@ -464,7 +521,7 @@ export async function updateProfile(userId: string, name: string) {
     where: { id: userId },
     data: { name: name.trim() },
   });
-  return { id: user.id, email: user.email, name: user.name };
+  return { id: user.id, email: user.email, name: user.name, firstName: user.firstName ?? null };
 }
 
 async function saveRefreshToken(userId: string, token: string) {
@@ -491,7 +548,7 @@ export async function finalizeSessionForUser(userId: string, organizationId: str
   }
   const { accessToken, refreshToken } = await createTokens(user.id, user.email, organizationId);
   await saveRefreshToken(userId, refreshToken);
-  const userDto = await buildAuthUserDto(userId, user.email, user.name, organizationId);
+  const userDto = await buildAuthUserDto(userId, user.email, user.name, organizationId, user.firstName ?? null);
   const memberships = await listMembershipSummaries(userId);
   const managedOrganizations = await listManagedOrganizationsForActiveContext(userId, organizationId);
   return {

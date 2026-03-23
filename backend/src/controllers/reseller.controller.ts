@@ -2,10 +2,18 @@ import type { Request, Response } from "express";
 import type { ZodError } from "zod";
 import {
   resellerCreateChild,
+  resellerCreateInvitation,
+  resellerCreatePlan,
+  resellerCreateUserWithMembership,
+  resellerDeletePlan,
+  resellerDuplicatePlan,
+  resellerGetChildDetail,
   resellerGetOperationalHealth,
   resellerGetOverview,
   resellerListActivePlans,
+  resellerListAllPlans,
   resellerListAuditLogs,
+  resellerListEcosystemOrganizations,
   resellerListEcosystemUsers,
   resellerLogEnterChild,
   resellerMoveMembership,
@@ -14,16 +22,22 @@ import {
   resellerRemoveMembership,
   resellerResetUserPassword,
   resellerSetMembershipRole,
+  resellerUpdatePlan,
 } from "../services/reseller.service.js";
 import {
   resellerAuditQuerySchema,
   resellerCreateChildSchema,
+  resellerCreateUserSchema,
   resellerEcosystemUsersQuerySchema,
   resellerEnterChildSchema,
   resellerGovernancePatchSchema,
+  resellerInvitationSchema,
   resellerMembershipRoleSchema,
   resellerMoveMembershipSchema,
   resellerPasswordResetSchema,
+  resellerPlanCreateSchema,
+  resellerPlanDuplicateSchema,
+  resellerPlanUpdateSchema,
   resellerRemoveMemberSchema,
   resellerUserPatchSchema,
 } from "../validators/reseller.validator.js";
@@ -153,7 +167,8 @@ export async function resellerResetPasswordHandler(req: Request, res: Response) 
       user.organizationId,
       user.userId,
       targetUserId,
-      parsed.data.newPassword
+      parsed.data.newPassword,
+      { forcePasswordChange: parsed.data.forcePasswordChange }
     );
     return res.json(result);
   } catch (e) {
@@ -243,9 +258,161 @@ export async function resellerAuditHandler(req: Request, res: Response) {
     return res.status(400).json({ message: firstErrorMessage(parsed.error) });
   }
   try {
-    const logs = await resellerListAuditLogs(user.organizationId, user.userId, parsed.data.limit);
+    const logs = await resellerListAuditLogs(user.organizationId, user.userId, {
+      limit: parsed.data.limit,
+      action: parsed.data.action,
+      entityType: parsed.data.entityType,
+      actorUserId: parsed.data.actorUserId,
+      from: parsed.data.from ? new Date(parsed.data.from) : undefined,
+      to: parsed.data.to ? new Date(parsed.data.to) : undefined,
+    });
     return res.json({ logs });
   } catch (e) {
     return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
+  }
+}
+
+export async function resellerPlansCatalog(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  try {
+    const plans = await resellerListAllPlans(user.organizationId, user.userId);
+    return res.json({ plans });
+  } catch (e) {
+    return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
+  }
+}
+
+export async function resellerPlansCreateHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const parsed = resellerPlanCreateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: firstErrorMessage(parsed.error) });
+  }
+  try {
+    const plan = await resellerCreatePlan(user.organizationId, user.userId, {
+      name: parsed.data.name,
+      slug: parsed.data.slug,
+      maxIntegrations: parsed.data.maxIntegrations,
+      maxDashboards: parsed.data.maxDashboards,
+      maxUsers: parsed.data.maxUsers ?? null,
+      maxClientAccounts: parsed.data.maxClientAccounts ?? null,
+      maxChildOrganizations: parsed.data.maxChildOrganizations ?? null,
+      descriptionInternal: parsed.data.descriptionInternal ?? null,
+      active: parsed.data.active,
+      planType: parsed.data.planType,
+      features: parsed.data.features ?? {},
+    });
+    return res.status(201).json({ plan });
+  } catch (e) {
+    return res.status(400).json({ message: e instanceof Error ? e.message : "Erro" });
+  }
+}
+
+export async function resellerPlansUpdateHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const { planId } = req.params;
+  if (!planId) return res.status(400).json({ message: "ID obrigatório" });
+  const parsed = resellerPlanUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: firstErrorMessage(parsed.error) });
+  }
+  try {
+    const plan = await resellerUpdatePlan(user.organizationId, user.userId, planId, {
+      ...parsed.data,
+      features: parsed.data.features !== undefined ? parsed.data.features ?? {} : undefined,
+    });
+    return res.json({ plan });
+  } catch (e) {
+    return res.status(400).json({ message: e instanceof Error ? e.message : "Erro" });
+  }
+}
+
+export async function resellerPlansDeleteHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const { planId } = req.params;
+  if (!planId) return res.status(400).json({ message: "ID obrigatório" });
+  try {
+    await resellerDeletePlan(user.organizationId, user.userId, planId);
+    return res.status(204).send();
+  } catch (e) {
+    return res.status(400).json({ message: e instanceof Error ? e.message : "Erro" });
+  }
+}
+
+export async function resellerPlansDuplicateHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const parsed = resellerPlanDuplicateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: firstErrorMessage(parsed.error) });
+  }
+  try {
+    const plan = await resellerDuplicatePlan(
+      user.organizationId,
+      user.userId,
+      parsed.data.sourcePlanId,
+      parsed.data.newSlug,
+      parsed.data.newName
+    );
+    return res.status(201).json({ plan });
+  } catch (e) {
+    return res.status(400).json({ message: e instanceof Error ? e.message : "Erro" });
+  }
+}
+
+export async function resellerEcosystemOrganizations(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  try {
+    const organizations = await resellerListEcosystemOrganizations(user.organizationId, user.userId);
+    return res.json({ organizations });
+  } catch (e) {
+    return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
+  }
+}
+
+export async function resellerChildDetailHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const { childId } = req.params;
+  if (!childId) return res.status(400).json({ message: "ID obrigatório" });
+  try {
+    const detail = await resellerGetChildDetail(user.organizationId, user.userId, childId);
+    return res.json(detail);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Erro";
+    const status = msg.includes("fora") || msg.includes("matriz") ? 403 : 400;
+    return res.status(status).json({ message: msg });
+  }
+}
+
+export async function resellerCreateUserHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const parsed = resellerCreateUserSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: firstErrorMessage(parsed.error) });
+  }
+  try {
+    const u = await resellerCreateUserWithMembership(user.organizationId, user.userId, parsed.data);
+    return res.status(201).json({ user: u });
+  } catch (e) {
+    return res.status(400).json({ message: e instanceof Error ? e.message : "Erro" });
+  }
+}
+
+export async function resellerCreateInvitationHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const parsed = resellerInvitationSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: firstErrorMessage(parsed.error) });
+  }
+  try {
+    const out = await resellerCreateInvitation(
+      user.organizationId,
+      user.userId,
+      parsed.data.organizationId,
+      parsed.data.email,
+      parsed.data.role
+    );
+    return res.status(201).json(out);
+  } catch (e) {
+    return res.status(400).json({ message: e instanceof Error ? e.message : "Erro" });
   }
 }

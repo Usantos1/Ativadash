@@ -167,6 +167,8 @@ export async function fetchGoals(): Promise<GoalRow[]> {
   return api.get<GoalRow[]>("/workspace/goals");
 }
 
-export async function patchProfile(name: string): Promise<{ id: string; email: string; name: string }> {
+export async function patchProfile(
+  name: string
+): Promise<{ id: string; email: string; name: string; firstName?: string | null }> {
   return api.patch("/auth/profile", { name });
 }

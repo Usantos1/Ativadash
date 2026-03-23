@@ -281,6 +281,179 @@ export async function updateChildOrganizationByParent(
   return updated;
 }
 
+/** Verifica se `orgId` é a própria matriz ou um descendente na hierarquia. */
+export async function isOrganizationUnderMatrix(orgId: string, matrixId: string): Promise<boolean> {
+  let walk: string | null = orgId;
+  for (let i = 0; i < 32 && walk; i++) {
+    if (walk === matrixId) return true;
+    const parentLink: { parentOrganizationId: string | null } | null = await prisma.organization.findFirst({
+      where: { id: walk, deletedAt: null },
+      select: { parentOrganizationId: true },
+    });
+    walk = parentLink?.parentOrganizationId ?? null;
+  }
+  return false;
+}
+
+/** Matriz + todos os descendentes (BFS). */
+export async function collectDescendantOrganizationIds(matrixId: string): Promise<string[]> {
+  const seen = new Set<string>([matrixId]);
+  let frontier = [matrixId];
+  for (let d = 0; d < 32 && frontier.length > 0; d++) {
+    const children = await prisma.organization.findMany({
+      where: { parentOrganizationId: { in: frontier }, deletedAt: null },
+      select: { id: true },
+    });
+    frontier = [];
+    for (const c of children) {
+      if (!seen.has(c.id)) {
+        seen.add(c.id);
+        frontier.push(c.id);
+      }
+    }
+  }
+  return [...seen];
+}
+
+/**
+ * Admin da matriz cria org sob a matriz ou sob uma agência do ecossistema.
+ * Sob agência: apenas empresas (CLIENT).
+ */
+export async function createDescendantByMatrixAdmin(
+  matrixOrganizationId: string,
+  actorUserId: string,
+  parentOrganizationId: string,
+  name: string,
+  options?: {
+    inheritPlanFromParent?: boolean;
+    planId?: string | null;
+    workspaceNote?: string | null;
+    resellerOrgKind?: ResellerOrgKind;
+  }
+) {
+  await assertDirectOrgAdmin(actorUserId, matrixOrganizationId);
+  const parentOk = await isOrganizationUnderMatrix(parentOrganizationId, matrixOrganizationId);
+  if (!parentOk) {
+    throw new Error("Organização pai fora do ecossistema");
+  }
+
+  const parent = await prisma.organization.findFirst({
+    where: { id: parentOrganizationId, deletedAt: null },
+    select: { planId: true, resellerOrgKind: true, parentOrganizationId: true },
+  });
+  if (!parent) {
+    throw new Error("Organização pai não encontrada");
+  }
+
+  let resellerOrgKind: ResellerOrgKind = options?.resellerOrgKind ?? "CLIENT";
+  if (parentOrganizationId !== matrixOrganizationId) {
+    if (parent.resellerOrgKind !== "AGENCY") {
+      throw new Error("Novas empresas só podem ser vinculadas sob uma agência");
+    }
+    resellerOrgKind = "CLIENT";
+  }
+
+  await assertCanAddChildOrganization(parentOrganizationId, actorUserId);
+
+  const inherit = options?.inheritPlanFromParent !== false;
+  const planId = inherit ? (parent.planId ?? null) : (options?.planId ?? null);
+  const note = options?.workspaceNote?.trim();
+  const slug = await uniqueOrganizationSlug(slugifyOrganizationName(name));
+
+  const org = await prisma.organization.create({
+    data: {
+      name: name.trim(),
+      slug,
+      parentOrganizationId,
+      inheritPlanFromParent: inherit,
+      planId,
+      workspaceNote: note && note.length > 0 ? note : null,
+      resellerOrgKind,
+    },
+  });
+  if (!inherit && planId) {
+    await syncSubscriptionFromOrgPlan(org.id);
+  }
+  return {
+    id: org.id,
+    name: org.name,
+    slug: org.slug,
+    inheritPlanFromParent: org.inheritPlanFromParent,
+    planId: org.planId,
+    workspaceStatus: org.workspaceStatus,
+    workspaceNote: org.workspaceNote,
+    resellerOrgKind: org.resellerOrgKind,
+    parentOrganizationId: org.parentOrganizationId,
+  };
+}
+
+/** Atualiza qualquer descendente da matriz (não exige ser filho direto). */
+export async function updateDescendantByMatrixAdmin(
+  matrixOrganizationId: string,
+  actorUserId: string,
+  descendantId: string,
+  data: {
+    name?: string;
+    workspaceStatus?: WorkspaceStatus;
+    workspaceNote?: string | null;
+    resellerOrgKind?: ResellerOrgKind;
+    featureOverrides?: Record<string, boolean> | null;
+  }
+) {
+  await assertDirectOrgAdmin(actorUserId, matrixOrganizationId);
+  if (descendantId === matrixOrganizationId) {
+    throw new Error("Altere a matriz em Configurações da empresa");
+  }
+  const under = await isOrganizationUnderMatrix(descendantId, matrixOrganizationId);
+  if (!under) {
+    throw new Error("Organização fora do ecossistema");
+  }
+  const child = await prisma.organization.findFirst({
+    where: { id: descendantId, deletedAt: null },
+  });
+  if (!child) {
+    throw new Error("Organização não encontrada");
+  }
+
+  const patch: Prisma.OrganizationUpdateInput = {};
+  if (data.name !== undefined) {
+    patch.name = data.name.trim();
+  }
+  if (data.workspaceStatus !== undefined) {
+    patch.workspaceStatus = data.workspaceStatus;
+  }
+  if (data.workspaceNote !== undefined) {
+    const n = data.workspaceNote?.trim();
+    patch.workspaceNote = n && n.length > 0 ? n : null;
+  }
+  if (data.resellerOrgKind !== undefined) {
+    patch.resellerOrgKind = data.resellerOrgKind;
+  }
+  if (data.featureOverrides !== undefined) {
+    patch.featureOverrides =
+      data.featureOverrides === null ? Prisma.JsonNull : (data.featureOverrides as Prisma.InputJsonValue);
+  }
+
+  const updated = await prisma.organization.update({
+    where: { id: descendantId },
+    data: patch,
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      parentOrganizationId: true,
+      inheritPlanFromParent: true,
+      workspaceStatus: true,
+      workspaceNote: true,
+      resellerOrgKind: true,
+      featureOverrides: true,
+      planId: true,
+      createdAt: true,
+    },
+  });
+  return updated;
+}
+
 function maxDate(...dates: (Date | null | undefined)[]): Date | null {
   const valid = dates.filter((d): d is Date => d instanceof Date && !Number.isNaN(d.getTime()));
   if (valid.length === 0) return null;

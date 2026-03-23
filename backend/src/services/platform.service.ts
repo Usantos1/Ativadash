@@ -101,6 +101,32 @@ export async function deletePlan(id: string) {
   await prisma.plan.delete({ where: { id } });
 }
 
+export async function duplicatePlan(sourcePlanId: string, newSlug: string, newName: string) {
+  const p = await prisma.plan.findUnique({ where: { id: sourcePlanId } });
+  if (!p) {
+    throw new Error("Plano não encontrado");
+  }
+  const slugTaken = await prisma.plan.findUnique({ where: { slug: newSlug } });
+  if (slugTaken) {
+    throw new Error("Slug já em uso");
+  }
+  return prisma.plan.create({
+    data: {
+      name: newName.trim(),
+      slug: newSlug.trim().toLowerCase(),
+      descriptionInternal: p.descriptionInternal ? `Cópia — ${p.descriptionInternal}` : "Cópia",
+      active: false,
+      planType: p.planType,
+      features: (p.features ?? {}) as Prisma.InputJsonValue,
+      maxIntegrations: p.maxIntegrations,
+      maxDashboards: p.maxDashboards,
+      maxUsers: p.maxUsers,
+      maxClientAccounts: p.maxClientAccounts,
+      maxChildOrganizations: p.maxChildOrganizations,
+    },
+  });
+}
+
 export async function listAllOrganizations() {
   return prisma.organization.findMany({
     where: { deletedAt: null },

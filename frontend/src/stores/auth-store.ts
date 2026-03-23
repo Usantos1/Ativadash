@@ -18,6 +18,8 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  /** Opcional no backend; se ausente, usa-se a primeira palavra de `name`. */
+  firstName?: string | null;
   organizationId: string;
   /** Preenchido no login/cadastro e em GET /auth/me */
   organization?: OrganizationSummary;

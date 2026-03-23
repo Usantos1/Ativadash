@@ -27,6 +27,17 @@ export type EnabledFeatures = {
   multiOrganization: boolean;
   integrations: boolean;
   webhooks: boolean;
+  marketing: boolean;
+  captacao: boolean;
+  conversao: boolean;
+  receita: boolean;
+  whatsappcrm: boolean;
+  revenda: boolean;
+  auditoria: boolean;
+  relatorios_avancados: boolean;
+  dashboards_premium: boolean;
+  api: boolean;
+  automacoes: boolean;
 };
 
 export type WorkspaceStatus = "ACTIVE" | "PAUSED" | "ARCHIVED";
@@ -71,6 +82,7 @@ export type OrganizationContext = {
   id: string;
   name: string;
   slug: string;
+  featureOverrides?: Record<string, unknown> | null;
   parentOrganization: OrganizationSummary | null;
   plan: { id: string; name: string; slug: string; planType: string; active: boolean } | null;
   planSource?: "own" | "parent";

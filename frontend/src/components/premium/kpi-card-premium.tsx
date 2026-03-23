@@ -1,6 +1,7 @@
 import type { ComponentType, ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { TrendingDown, TrendingUp, Minus } from "lucide-react";
+import { HelpCircle, TrendingDown, TrendingUp, Minus } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export type KpiDelta = {
   pct: number;
@@ -52,12 +53,18 @@ export function KpiCardPremium({
   deltaInvert,
   loading,
   className,
+  hideSource,
+  hintAsTooltip,
 }: {
   variant?: KpiCardVariant;
   label: string;
   value: ReactNode;
   hint?: string;
   source?: string;
+  /** Não exibe linha “Fonte · …” (útil no dashboard executivo). */
+  hideSource?: boolean;
+  /** Explicação só no ícone de ajuda (tooltip). */
+  hintAsTooltip?: boolean;
   icon?: ComponentType<{ className?: string }>;
   delta?: KpiDelta;
   deltaInvert?: boolean;
@@ -83,15 +90,27 @@ export function KpiCardPremium({
   return (
     <div className={cn(variantShell[variant], "group flex flex-col", className)}>
       <div className="flex items-start justify-between gap-2">
-        <span
-          className={cn(
-            "font-semibold uppercase tracking-[0.08em] text-muted-foreground",
-            isPrimary && "text-[11px]",
-            isCompact && "text-[10px]",
-            !isPrimary && !isCompact && "text-[11px]"
-          )}
-        >
-          {label}
+        <span className="flex min-w-0 items-center gap-1">
+          <span
+            className={cn(
+              "font-semibold uppercase tracking-[0.08em] text-muted-foreground",
+              isPrimary && "text-[11px]",
+              isCompact && "text-[10px]",
+              !isPrimary && !isCompact && "text-[11px]"
+            )}
+          >
+            {label}
+          </span>
+          {hint && hintAsTooltip ? (
+            <Tooltip>
+              <TooltipTrigger type="button" className="shrink-0 text-muted-foreground/60 hover:text-primary">
+                <HelpCircle className={cn(isCompact ? "h-3 w-3" : "h-3.5 w-3.5")} aria-label="Ajuda" />
+              </TooltipTrigger>
+              <TooltipContent side="top" className="leading-snug">
+                {hint}
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
         </span>
         {Icon ? (
           <Icon
@@ -114,11 +133,11 @@ export function KpiCardPremium({
       </div>
       <div className="mt-2 flex min-h-[22px] flex-wrap items-center gap-2">
         {delta ? <DeltaBadge delta={delta} invert={deltaInvert} /> : null}
-        {source ? (
+        {source && !hideSource ? (
           <span className="text-[10px] font-medium text-muted-foreground/85">Fonte · {source}</span>
         ) : null}
       </div>
-      {hint ? (
+      {hint && !hintAsTooltip ? (
         <p
           className={cn(
             "mt-1.5 leading-snug text-muted-foreground",

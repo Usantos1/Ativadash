@@ -26,8 +26,14 @@ model User {
   email     String   @unique
   password  String
   name      String
+  /// Primeiro nome explícito (opcional). Se vazio, o app usa a primeira palavra de `name`.
+  firstName String?
   /// Suspensão administrativa (matriz / plataforma): bloqueia login
   suspendedAt DateTime?
+  /// Após reset de senha pelo admin: exige troca no próximo login
+  mustChangePassword Boolean @default(false)
+  /// Último login bem-sucedido (atualizado no auth)
+  lastLoginAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   deletedAt DateTime?
@@ -98,6 +104,7 @@ model ResellerAuditLog {
   createdAt   DateTime @default(now())
 
   @@index([matrixOrgId, createdAt])
+  @@index([matrixOrgId, action, createdAt])
 }
 
 /// Convite por e-mail para novo membro da organização

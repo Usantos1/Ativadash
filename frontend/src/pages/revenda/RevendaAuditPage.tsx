@@ -1,18 +1,46 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { fetchResellerAudit, type ResellerAuditRow } from "@/lib/revenda-api";
+
+type AuditFilters = {
+  limit: number;
+  action: string;
+  entityType: string;
+  actorUserId: string;
+  from: string;
+  to: string;
+};
 
 export function RevendaAuditPage() {
   const [logs, setLogs] = useState<ResellerAuditRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [applied, setApplied] = useState<AuditFilters>({
+    limit: 80,
+    action: "",
+    entityType: "",
+    actorUserId: "",
+    from: "",
+    to: "",
+  });
+  const [draft, setDraft] = useState<AuditFilters>(applied);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (f: AuditFilters) => {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetchResellerAudit(100);
+      const r = await fetchResellerAudit({
+        limit: f.limit,
+        action: f.action.trim() || undefined,
+        entityType: f.entityType.trim() || undefined,
+        actorUserId: f.actorUserId.trim() || undefined,
+        from: f.from.trim() || undefined,
+        to: f.to.trim() || undefined,
+      });
       setLogs(r.logs);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao carregar auditoria.");
@@ -23,22 +51,90 @@ export function RevendaAuditPage() {
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void load(applied);
+  }, [applied, load]);
+
+  function applyDraft() {
+    setApplied({ ...draft });
+  }
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold tracking-tight">Auditoria</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Trilha de ações administrativas do painel master (matriz). Eventos como criação de empresas, governança, usuários e
-          acesso em contexto de filial.
+          Trilha de ações administrativas do painel master (matriz). Filtre por ação, tipo de entidade, autor e intervalo
+          (ISO 8601).
         </p>
       </div>
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Últimos eventos</CardTitle>
+          <CardTitle className="text-base">Filtros</CardTitle>
+          <CardDescription>Datas em formato ISO, ex.: 2025-03-01T00:00:00.000Z</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Limite</Label>
+            <Input
+              type="number"
+              min={1}
+              max={200}
+              className="w-[88px]"
+              value={draft.limit}
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  limit: Math.min(200, Math.max(1, parseInt(e.target.value, 10) || 50)),
+                }))
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Ação</Label>
+            <Input
+              className="w-[160px]"
+              value={draft.action}
+              onChange={(e) => setDraft((d) => ({ ...d, action: e.target.value }))}
+              placeholder="ex. PLAN_CREATED"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Entidade</Label>
+            <Input
+              className="w-[140px]"
+              value={draft.entityType}
+              onChange={(e) => setDraft((d) => ({ ...d, entityType: e.target.value }))}
+              placeholder="Organization"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Autor (user id)</Label>
+            <Input
+              className="w-[200px]"
+              value={draft.actorUserId}
+              onChange={(e) => setDraft((d) => ({ ...d, actorUserId: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">De</Label>
+            <Input className="w-[220px]" value={draft.from} onChange={(e) => setDraft((d) => ({ ...d, from: e.target.value }))} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Até</Label>
+            <Input className="w-[220px]" value={draft.to} onChange={(e) => setDraft((d) => ({ ...d, to: e.target.value }))} />
+          </div>
+          <div className="flex items-end">
+            <Button type="button" size="sm" variant="secondary" onClick={applyDraft}>
+              Aplicar
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Eventos</CardTitle>
           <CardDescription>Ordenados do mais recente ao mais antigo.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -71,7 +167,7 @@ export function RevendaAuditPage() {
                       <td className="py-3 pr-3">
                         {log.entityType}
                         {log.metadata != null && typeof log.metadata === "object" ? (
-                          <pre className="mt-1 max-w-[240px] overflow-x-auto rounded bg-muted/50 p-2 text-[10px] leading-tight">
+                          <pre className="mt-1 max-w-[280px] overflow-x-auto rounded bg-muted/50 p-2 text-[10px] leading-tight">
                             {JSON.stringify(log.metadata)}
                           </pre>
                         ) : null}
