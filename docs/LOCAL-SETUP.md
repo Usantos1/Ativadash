@@ -1,94 +1,80 @@
 # Setup local — PostgreSQL + Prisma + API + frontend
 
-Checklist rápido:
+**Sem banco no PC — tudo pela API (recomendado para UI contra dados reais):** **[DEV-APENAS-API.md](./DEV-APENAS-API.md)** (`frontend/.env.local` + `VITE_API_URL`).
 
-- [ ] PostgreSQL em execução (porta **5432** ou a que você configurou)
-- [ ] Usuário, senha e banco criados (**iguais** à `DATABASE_URL` do `backend/.env`)
-- [ ] Arquivo `backend/.env` criado a partir de `backend/.env.example`
-- [ ] `npx prisma generate`
-- [ ] `npx prisma migrate dev` (ou `migrate deploy` se preferir só aplicar migrações)
-- [ ] `npx prisma db seed`
-- [ ] Backend: `npm run dev` (pasta `backend`)
-- [ ] Frontend: `npm run dev` (pasta `frontend`)
+**Quer dados reais (mesmo banco/login da produção)?** Veja **[DEV-BANCO-OFICIAL.md](./DEV-BANCO-OFICIAL.md)** — `DATABASE_URL` para o Postgres oficial, túnel SSH e o que **não** rodar (`seed`, `migrate dev`).
 
-Documentação relacionada: [DESENVOLVIMENTO-LOCAL.md](./DESENVOLVIMENTO-LOCAL.md) (Docker na raiz).
+**Quer um `.env` na raiz com `DB_*` como no Ativafix?** Veja **[SETUP-ESTILO-ATIVAFIX.md](./SETUP-ESTILO-ATIVAFIX.md)** e o arquivo **[.env.example](../.env.example)** na raiz do repositório.
+
+**Windows:** `EPERM` no Prisma, `P1000` (senha/usuário) ou porta **3000** ocupada → **[WINDOWS-DEV.md](./WINDOWS-DEV.md)**.
+
+**Banco só existe na VPS?** `localhost` no seu PC **não** é o banco da VPS → **[BANCO-SO-NA-VPS.md](./BANCO-SO-NA-VPS.md)** (túnel SSH ou Postgres local para dev).
 
 ---
 
-## Valores esperados (padrão do repositório)
+## Checklist rápido (ordem)
+
+1. **Ter um PostgreSQL acessível** (igual ao Ativafix: **não precisa** de Docker).  
+   - **Estilo Ativafix:** Postgres já rodando em algum host (serviço no Windows, servidor remoto, etc.) — configure `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` no `.env` (raiz ou `backend/.env`).  
+   - **Opcional:** na raiz do repo, `docker compose up -d` sobe um Postgres só para quem **quer** container local (mesmos usuário/senha/banco do `docker-compose.yml`).  
+   - **Postgres nativo local:** crie usuário/banco (SQL abaixo) e use a mesma `DATABASE_URL` ou `DB_*`.
+
+2. **Criar variáveis de ambiente** — escolha um dos fluxos:
+   - **Raiz (estilo Ativafix):** copie [`.env.example`](../.env.example) para `.env` na raiz e preencha `DB_*` (ou `DATABASE_URL`).
+   - **Só backend:** copie `backend/.env.example` → `backend/.env` e preencha `DATABASE_URL` (ou `DB_*` no mesmo arquivo).
+   - Se existirem os dois, **`backend/.env` sobrescreve** a raiz para chaves repetidas.
+
+3. Na pasta **`backend`**:
+   ```bash
+   npm ci
+   npm run prisma:generate
+   npm run prisma:migrate
+   npm run prisma:seed
+   npm run dev
+   ```
+   (`prisma:migrate` = `prisma migrate dev` — aplica migrações e atualiza o cliente.)
+
+4. **Conferir o banco** (com a API rodando em `:3000`):
+   ```bash
+   curl http://localhost:3000/api/health
+   curl http://localhost:3000/api/health/db
+   ```
+   - `/api/health` → sempre `ok` se o processo Node está no ar.  
+   - `/api/health/db` → `ok: true` só se o Prisma conectou ao PostgreSQL.
+
+5. Na pasta **`frontend`**: `npm ci` → `npm run dev` (Vite em `http://localhost:5173`, proxy `/api` → `:3000`).
+
+6. **Login local** (após seed):  
+   - E-mail: **`demo@ativadash.com`**  
+   - Senha: **`demo123`**
+
+---
+
+## Nome do banco (importante)
+
+O repositório **não** usa o nome de banco `ativadash` como padrão. O padrão alinhado ao `docker-compose.yml` e ao seed é:
 
 | Item | Valor padrão |
 |------|----------------|
+| **Banco (database)** | `ativa_dash` |
+| **Usuário** | `ativadash` |
+| **Senha** | `ativadash_local_dev` (exemplo) |
 | **Host** | `localhost` |
 | **Porta** | `5432` |
-| **Usuário PostgreSQL** | `ativadash` |
-| **Senha** | `ativadash_local_dev` (exemplo; defina a sua e use a mesma na URL) |
-| **Nome do banco** | `ativa_dash` |
 
-`DATABASE_URL` correspondente:
+`DATABASE_URL` exata:
 
 ```env
 DATABASE_URL="postgresql://ativadash:ativadash_local_dev@localhost:5432/ativa_dash?schema=public"
 ```
 
-O `schema.prisma` usa `env("DATABASE_URL")` — não é necessário mudar o schema para desenvolvimento com Postgres.
+O `schema.prisma` usa `env("DATABASE_URL")` — não é necessário alterar o schema para desenvolvimento local com Postgres.
 
 ---
 
-## Erro: “Authentication failed… credentials for `ativadash` are not valid”
+## SQL: usuário e banco (Postgres nativo, sem Docker)
 
-O PostgreSQL em `localhost:5432` **não aceitou** o usuário `ativadash` com a senha que está na sua `DATABASE_URL`.
-
-### 1) Docker Compose — volume antigo (causa muito comum)
-
-Se você já rodou o Postgres com **outra** senha ou outro `docker-compose.yml`, o **volume** guarda o cluster antigo: mudar `POSTGRES_PASSWORD` no arquivo **não** altera o usuário já criado.
-
-**Recriar do zero** (apaga dados locais do container):
-
-```bash
-# Na raiz do repositório
-docker compose down -v
-docker compose up -d
-```
-
-Depois, no `backend`:
-
-```bash
-npx prisma migrate deploy
-npx prisma db seed
-```
-
-### 2) Postgres instalado no Windows (sem Docker)
-
-O servidor padrão costuma ter só o usuário **`postgres`**. Ou você **cria** o usuário `ativadash` (seção SQL abaixo) ou altera a `DATABASE_URL` para o usuário/senha que você já usa, por exemplo:
-
-```env
-DATABASE_URL="postgresql://postgres:SUA_SENHA@localhost:5432/ativa_dash?schema=public"
-```
-
-(Crie o banco `ativa_dash` antes, se não existir.)
-
-### 3) Ajustar só a senha do usuário `ativadash`
-
-Conectado como superusuário no `psql`:
-
-```sql
-ALTER USER ativadash WITH PASSWORD 'ativadash_local_dev';
-```
-
-Use **exatamente** a mesma senha na `DATABASE_URL`.
-
-### 4) Outros checks
-
-1. Serviço Postgres (ou Docker) **rodando** na porta **5432**.
-2. Nada de aspas **duplicadas** dentro da URL no `.env` (uma linha: `DATABASE_URL="postgresql://..."`).
-3. Se `localhost` falhar no Windows, teste `127.0.0.1` no lugar de `localhost` na URL.
-
----
-
-## Criar usuário e banco (SQL)
-
-Conecte como superusuário (`postgres`) no `psql` ou pgAdmin e execute (ajuste a senha se quiser):
+Como superusuário (`postgres`):
 
 ```sql
 CREATE USER ativadash WITH PASSWORD 'ativadash_local_dev';
@@ -96,79 +82,52 @@ CREATE DATABASE ativa_dash OWNER ativadash;
 GRANT ALL PRIVILEGES ON DATABASE ativa_dash TO ativadash;
 ```
 
-No PostgreSQL 15+, após criar o banco, conceda uso do schema `public`:
+PostgreSQL 15+ — após criar o banco, permissões no schema `public`:
 
 ```sql
 \c ativa_dash
 GRANT ALL ON SCHEMA public TO ativadash;
 GRANT CREATE ON SCHEMA public TO ativadash;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ativadash;
 ```
 
 ---
 
-## Opção Docker (Postgres só para dev)
+## Comandos Prisma (pasta `backend`)
 
-Na **raiz** do repositório:
+| Objetivo | Comando |
+|----------|---------|
+| Gerar client | `npx prisma generate` ou `npm run prisma:generate` |
+| Aplicar migrações (dev) | `npx prisma migrate dev` ou `npm run prisma:migrate` |
+| Seed | `npx prisma db seed` ou `npm run prisma:seed` |
+
+Scripts legados equivalentes: `npm run db:generate`, `db:migrate`, `db:seed`.
+
+---
+
+## Erro 503 no login / “não foi possível conectar ao banco”
+
+1. Confira **`GET /api/health/db`** — se retornar 503, o problema é Postgres ou `DATABASE_URL`.  
+2. No **terminal do backend** aparece um bloco `[database] Falha (...)` com código Prisma/motivo e um resumo da URL (sem senha).  
+3. A **resposta HTTP** para o frontend continua **genérica** (sem stack nem detalhes sensíveis).
+
+### Docker: volume antigo com senha diferente
 
 ```bash
+docker compose down -v
 docker compose up -d
-```
-
-Use no `backend/.env` a mesma `DATABASE_URL` do exemplo acima (alinhada ao `docker-compose.yml`). Depois:
-
-```bash
 cd backend
-npx prisma generate
 npx prisma migrate deploy
-npm run dev
-```
-
-Para iterar em migrações novas durante o desenvolvimento, prefira:
-
-```bash
-npx prisma migrate dev
-```
-
----
-
-## Comandos backend (pasta `backend`)
-
-```bash
-cd backend
-npm ci
-cp .env.example .env    # ou copie manualmente no Windows
-# Edite .env — principalmente DATABASE_URL e JWT_*
-
-npx prisma generate
-npx prisma migrate dev
 npx prisma db seed
-npm run dev
 ```
 
-Scripts equivalentes no `package.json`:
+### Windows: `localhost` vs `127.0.0.1`
 
-- `npm run db:generate` → `prisma generate`
-- `npm run db:migrate` → `prisma migrate dev`
-- `npm run db:seed` → seed via `tsx prisma/seed.ts`
+Se falhar com `localhost`, teste na URL: `@127.0.0.1:5432`.
 
 ---
 
-## Usuário demo (após seed)
-
-| Campo | Valor |
-|--------|--------|
-| **E-mail** | `demo@ativadash.com` |
-| **Senha** | `demo123` |
-
----
-
-## Login e erros de banco
-
-Se o Prisma não conseguir conectar (credenciais, Postgres parado, banco inexistente), a API responde com **503** e mensagem genérica, **sem** expor stack trace nem detalhes do Prisma na rota de login/cadastro.
-
----
-
-## Frontend (pasta `frontend`)
+## Frontend
 
 ```bash
 cd frontend
@@ -176,4 +135,19 @@ npm ci
 npm run dev
 ```
 
-O Vite costuma usar proxy para a API em `http://localhost:3000`; se usar URLs absolutas, veja `frontend/.env.example`.
+Proxy Vite: `/api` → `http://localhost:3000` (ver `vite.config.ts`).
+
+---
+
+## Usuário demo (seed)
+
+| Campo | Valor |
+|--------|--------|
+| E-mail | `demo@ativadash.com` |
+| Senha | `demo123` |
+
+Cada execução do seed **atualiza** a senha do demo para `demo123` (útil após reset do banco).
+
+---
+
+Documentação relacionada: [DESENVOLVIMENTO-LOCAL.md](./DESENVOLVIMENTO-LOCAL.md).

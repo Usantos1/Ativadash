@@ -8,6 +8,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Estado operacional do workspace na visão da matriz (revenda / multiempresa)
+enum WorkspaceStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -43,6 +50,10 @@ model Organization {
   inheritPlanFromParent Boolean @default(true)
   planId    String?
   plan      Plan?    @relation(fields: [planId], references: [id])
+  /// Governança na central de revenda (matriz): pausar / arquivar sem apagar histórico
+  workspaceStatus WorkspaceStatus @default(ACTIVE)
+  /// Observação interna visível na gestão de workspaces (matriz)
+  workspaceNote   String?         @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   deletedAt DateTime?

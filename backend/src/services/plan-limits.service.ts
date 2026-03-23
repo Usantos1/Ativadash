@@ -223,7 +223,7 @@ export async function assertCanAddChildOrganization(parentOrganizationId: string
   if (limits.maxChildOrganizations == null) return;
   if (limits.maxChildOrganizations <= 0) {
     throw new Error(
-      "Seu plano não inclui empresas vinculadas (revenda). Fale com vendas para liberar multi-empresa."
+      "Seu plano não inclui workspaces filhos (multiempresa / revenda). Ajuste o plano da organização para liberar."
     );
   }
   const n = await prisma.organization.count({

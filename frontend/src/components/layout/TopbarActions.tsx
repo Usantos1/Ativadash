@@ -51,7 +51,7 @@ export function TopbarActions({ onLogout }: { onLogout: () => void }) {
           <DropdownMenu.Content
             className="z-50 min-w-[200px] rounded-xl border border-border/80 bg-popover p-1.5 shadow-[var(--shadow-surface)]"
             sideOffset={8}
-            align="start"
+            align="end"
             collisionPadding={12}
           >
             {user && (

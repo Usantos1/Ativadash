@@ -45,10 +45,14 @@ export function SettingsHelpAccordion({ className }: { className?: string }) {
             (marcas, contatos) dentro da empresa; não criam novas empresas no sistema.
           </li>
           <li>
-            <span className="font-medium text-foreground">Empresas filhas (revenda)</span> — ambientes isolados para
-            cada cliente final, em{" "}
+            <span className="font-medium text-foreground">Workspaces filhos (revenda)</span> — ambientes isolados para
+            cada cliente; operação em{" "}
+            <Link to="/revenda" className="font-medium text-primary underline-offset-4 hover:underline">
+              Gestão de workspaces
+            </Link>
+            . Nome da matriz em{" "}
             <Link to="/configuracoes/empresa" className="font-medium text-primary underline-offset-4 hover:underline">
-              Empresa e revenda
+              Empresa
             </Link>
             .
           </li>

@@ -1,4 +1,6 @@
-import "dotenv/config";
+import { loadAtivadashEnv } from "./dotenv-load.js";
+
+loadAtivadashEnv();
 
 /**
  * Por padrão confia em 1 hop de proxy (Nginx, Cloudflare, Vite proxy, túneis).
@@ -26,6 +28,17 @@ function parseFrontendOrigins(): { primary: string; cors: string | string[] } {
 }
 
 const { primary: frontendPrimary, cors: corsOrigin } = parseFrontendOrigins();
+
+if (!process.env.DATABASE_URL?.trim()) {
+  console.error(
+    "[ativadash] Nenhuma conexão PostgreSQL configurada.\n" +
+      "  Opção A — URL completa: defina DATABASE_URL no .env (raiz do repo ou backend/.env).\n" +
+      "  Opção B — estilo Ativafix: na raiz, .env com DB_HOST, DB_NAME, DB_USER, DB_PASSWORD (e opcional DB_PORT, DB_SSL).\n" +
+      "  → Exemplos: .env.example (raiz) e backend/.env.example\n" +
+      "  → Postgres: configure DB_* ou DATABASE_URL (como no Ativafix) ou use docker compose na raiz (opcional)"
+  );
+  process.exit(1);
+}
 
 export const env = {
   NODE_ENV: process.env.NODE_ENV ?? "development",

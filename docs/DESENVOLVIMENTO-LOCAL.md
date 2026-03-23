@@ -2,6 +2,8 @@
 
 Passo a passo completo e checklist: **[LOCAL-SETUP.md](./LOCAL-SETUP.md)**.
 
+Banco **oficial** no PC (mesmo login que produção): **[DEV-BANCO-OFICIAL.md](./DEV-BANCO-OFICIAL.md)**.
+
 ## Erro: “credentials for `ativadash` are not valid”
 
 O backend usa `DATABASE_URL` no `.env`. Esse erro significa que **não existe** usuário/senha/banco iguais aos da URL no PostgreSQL que está em `localhost:5432`, ou o serviço não está rodando.
@@ -13,8 +15,12 @@ Na raiz do repositório:
 ```bash
 docker compose up -d
 cd backend
+cp .env.example .env   # se ainda não existir
+npx prisma generate
 npx prisma migrate deploy
+npx prisma db seed
 npm run dev
+# Teste: curl http://localhost:3000/api/health/db
 ```
 
 No `backend/.env`, use:

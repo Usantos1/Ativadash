@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import {
   Briefcase,
   Building2,
-  CreditCard,
+  Layers,
   Megaphone,
   Plug,
   Shield,
@@ -22,6 +22,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import {
   fetchOrganizationContext,
   formatPlanCap,
+  formatPlanLimit,
   type OrganizationContext,
 } from "@/lib/organization-api";
 import { fetchIntegrations, type IntegrationFromApi } from "@/lib/integrations-api";
@@ -284,10 +285,10 @@ export function SettingsHubPage() {
         </SettingsSectionCard>
 
         <SettingsSectionCard
-          icon={CreditCard}
-          title="Assinatura e limites"
-          description="Plano efetivo, uso e tetos — visão operacional, sem comparativo comercial."
-          action={{ label: "Ver assinatura e uso", to: "/assinatura" }}
+          icon={Layers}
+          title="Gestão de workspaces"
+          description="Revenda e multiempresa: filiais, métricas, alertas e consumo consolidado da matriz."
+          action={{ label: "Abrir gestão de workspaces", to: "/revenda" }}
         >
           <SettingsStatRow label="Plano" value={loading && !ctx ? "…" : planName} />
           <SettingsStatRow
@@ -317,10 +318,12 @@ export function SettingsHubPage() {
             }
           />
           <SettingsStatRow
-            label="Empresas vinculadas"
+            label="Empresas vinculadas (filhas)"
             value={
               usage && limits
-                ? `${usage.childOrganizations} / ${formatPlanCap(limits.maxChildOrganizations)}`
+                ? `${usage.childOrganizations} / ${formatPlanLimit(limits.maxChildOrganizations, {
+                    zeroMeansNotIncluded: true,
+                  })}`
                 : loading
                   ? "…"
                   : "—"

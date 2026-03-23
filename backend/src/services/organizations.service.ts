@@ -1,3 +1,4 @@
+import type { WorkspaceStatus } from "@prisma/client";
 import { prisma } from "../utils/prisma.js";
 import { slugifyOrganizationName, uniqueOrganizationSlug } from "../utils/org-slug.js";
 import {
@@ -140,7 +141,7 @@ export async function createChildOrganization(
   parentOrganizationId: string,
   userId: string,
   name: string,
-  options?: { inheritPlanFromParent?: boolean; planId?: string | null }
+  options?: { inheritPlanFromParent?: boolean; planId?: string | null; workspaceNote?: string | null }
 ) {
   await assertDirectOrgAdmin(userId, parentOrganizationId);
   await assertCanAddChildOrganization(parentOrganizationId);
@@ -151,6 +152,7 @@ export async function createChildOrganization(
   });
   const slug = await uniqueOrganizationSlug(slugifyOrganizationName(name));
   const planId = inherit ? (parent?.planId ?? null) : (options?.planId ?? null);
+  const note = options?.workspaceNote?.trim();
   const org = await prisma.organization.create({
     data: {
       name: name.trim(),
@@ -158,6 +160,7 @@ export async function createChildOrganization(
       parentOrganizationId,
       inheritPlanFromParent: inherit,
       planId,
+      workspaceNote: note && note.length > 0 ? note : null,
     },
   });
   if (!inherit && planId) {
@@ -169,6 +172,8 @@ export async function createChildOrganization(
     slug: org.slug,
     inheritPlanFromParent: org.inheritPlanFromParent,
     planId: org.planId,
+    workspaceStatus: org.workspaceStatus,
+    workspaceNote: org.workspaceNote,
   };
 }
 
@@ -211,11 +216,377 @@ export async function updateOrganizationPlanSettings(
   return updated;
 }
 
+export async function updateChildOrganizationByParent(
+  parentOrganizationId: string,
+  userId: string,
+  childId: string,
+  data: { name?: string; workspaceStatus?: WorkspaceStatus; workspaceNote?: string | null }
+) {
+  await assertDirectOrgAdmin(userId, parentOrganizationId);
+  const child = await prisma.organization.findFirst({
+    where: { id: childId, parentOrganizationId, deletedAt: null },
+  });
+  if (!child) {
+    throw new Error("Workspace filho não encontrado");
+  }
+  const patch: {
+    name?: string;
+    workspaceStatus?: WorkspaceStatus;
+    workspaceNote?: string | null;
+  } = {};
+  if (data.name !== undefined) {
+    patch.name = data.name.trim();
+  }
+  if (data.workspaceStatus !== undefined) {
+    patch.workspaceStatus = data.workspaceStatus;
+  }
+  if (data.workspaceNote !== undefined) {
+    const n = data.workspaceNote?.trim();
+    patch.workspaceNote = n && n.length > 0 ? n : null;
+  }
+  const updated = await prisma.organization.update({
+    where: { id: childId },
+    data: patch,
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      inheritPlanFromParent: true,
+      workspaceStatus: true,
+      workspaceNote: true,
+      createdAt: true,
+    },
+  });
+  return updated;
+}
+
+function maxDate(...dates: (Date | null | undefined)[]): Date | null {
+  const valid = dates.filter((d): d is Date => d instanceof Date && !Number.isNaN(d.getTime()));
+  if (valid.length === 0) return null;
+  return new Date(Math.max(...valid.map((d) => d.getTime())));
+}
+
+const STALE_ACTIVITY_DAYS = 14;
+const NEVER_USED_DAYS = 7;
+
+export type ChildOrganizationOperationsAlert = {
+  type: string;
+  severity: "info" | "warning" | "critical";
+  organizationId: string;
+  name: string;
+  message: string;
+};
+
+export async function listChildOrganizationsOperationsDashboard(
+  parentOrganizationId: string,
+  userId: string
+): Promise<{
+  parent: {
+    plan: Awaited<ReturnType<typeof getOrganizationPlanContext>>["plan"];
+    planSource: Awaited<ReturnType<typeof getOrganizationPlanContext>>["planSource"];
+    limits: Awaited<ReturnType<typeof getOrganizationPlanContext>>["limits"];
+    limitsHaveOverrides: Awaited<ReturnType<typeof getOrganizationPlanContext>>["limitsHaveOverrides"];
+    usage: Awaited<ReturnType<typeof getOrganizationPlanContext>>["usage"];
+  };
+  organizations: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    createdAt: string;
+    inheritPlanFromParent: boolean;
+    workspaceStatus: WorkspaceStatus;
+    workspaceNote: string | null;
+    memberCount: number;
+    pendingInvitationsCount: number;
+    dashboardCount: number;
+    connectedIntegrations: number;
+    lastIntegrationSyncAt: string | null;
+    lastActivityAt: string | null;
+    staleActivity: boolean;
+    neverAccessed: boolean;
+    needsAttention: boolean;
+  }>;
+  summary: {
+    totalWorkspaces: number;
+    activeWorkspaces: number;
+    pausedWorkspaces: number;
+    archivedWorkspaces: number;
+    withoutIntegration: number;
+    withoutMembers: number;
+    staleActivityCount: number;
+    integrationsTotalAcrossChildren: number;
+    usersTotalAcrossChildren: number;
+    dashboardsTotalAcrossChildren: number;
+    childSlotsUsed: number;
+    childSlotsCap: number | null;
+  };
+  alerts: ChildOrganizationOperationsAlert[];
+}> {
+  await assertDirectOrgAdmin(userId, parentOrganizationId);
+  const planContext = await getOrganizationPlanContext(parentOrganizationId);
+
+  const children = await prisma.organization.findMany({
+    where: { parentOrganizationId, deletedAt: null },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      createdAt: true,
+      updatedAt: true,
+      inheritPlanFromParent: true,
+      workspaceStatus: true,
+      workspaceNote: true,
+    },
+    orderBy: { name: "asc" },
+  });
+
+  const childIds = children.map((c) => c.id);
+  const now = new Date();
+  const staleBefore = new Date(now.getTime() - STALE_ACTIVITY_DAYS * 864e5);
+
+  if (childIds.length === 0) {
+    const cap = planContext.limits.maxChildOrganizations;
+    return {
+      parent: {
+        plan: planContext.plan,
+        planSource: planContext.planSource,
+        limits: planContext.limits,
+        limitsHaveOverrides: planContext.limitsHaveOverrides,
+        usage: planContext.usage,
+      },
+      organizations: [],
+      summary: {
+        totalWorkspaces: 0,
+        activeWorkspaces: 0,
+        pausedWorkspaces: 0,
+        archivedWorkspaces: 0,
+        withoutIntegration: 0,
+        withoutMembers: 0,
+        staleActivityCount: 0,
+        integrationsTotalAcrossChildren: 0,
+        usersTotalAcrossChildren: 0,
+        dashboardsTotalAcrossChildren: 0,
+        childSlotsUsed: planContext.usage.childOrganizations,
+        childSlotsCap: cap,
+      },
+      alerts: [],
+    };
+  }
+
+  const [memberGroups, dashGroups, invRows, invPendingGroups, membershipsForMax] = await Promise.all([
+    prisma.membership.groupBy({
+      by: ["organizationId"],
+      where: { organizationId: { in: childIds } },
+      _count: { _all: true },
+    }),
+    prisma.dashboard.groupBy({
+      by: ["organizationId"],
+      where: { organizationId: { in: childIds }, deletedAt: null },
+      _count: { _all: true },
+    }),
+    prisma.integration.findMany({
+      where: { organizationId: { in: childIds }, status: "connected" },
+      select: { organizationId: true, lastSyncAt: true, updatedAt: true },
+    }),
+    prisma.invitation.groupBy({
+      by: ["organizationId"],
+      where: {
+        organizationId: { in: childIds },
+        acceptedAt: null,
+        expiresAt: { gt: now },
+      },
+      _count: { _all: true },
+    }),
+    prisma.membership.findMany({
+      where: { organizationId: { in: childIds } },
+      select: { organizationId: true, updatedAt: true },
+    }),
+  ]);
+
+  const memberCount = new Map(memberGroups.map((g) => [g.organizationId, g._count._all]));
+  const dashCount = new Map(dashGroups.map((g) => [g.organizationId, g._count._all]));
+  const pendingInv = new Map(invPendingGroups.map((g) => [g.organizationId, g._count._all]));
+
+  const memMaxMap = new Map<string, Date>();
+  for (const m of membershipsForMax) {
+    const cur = memMaxMap.get(m.organizationId);
+    if (!cur || m.updatedAt > cur) memMaxMap.set(m.organizationId, m.updatedAt);
+  }
+
+  type IntAgg = { count: number; lastSync: Date | null; lastIntUpdated: Date | null };
+  const intAgg = new Map<string, IntAgg>();
+  for (const r of invRows) {
+    const cur = intAgg.get(r.organizationId) ?? { count: 0, lastSync: null, lastIntUpdated: null };
+    cur.count += 1;
+    if (r.lastSyncAt && (!cur.lastSync || r.lastSyncAt > cur.lastSync)) cur.lastSync = r.lastSyncAt;
+    if (!cur.lastIntUpdated || r.updatedAt > cur.lastIntUpdated) cur.lastIntUpdated = r.updatedAt;
+    intAgg.set(r.organizationId, cur);
+  }
+
+  const alerts: ChildOrganizationOperationsAlert[] = [];
+  const organizations = children.map((c) => {
+    const m = memberCount.get(c.id) ?? 0;
+    const d = dashCount.get(c.id) ?? 0;
+    const agg = intAgg.get(c.id) ?? { count: 0, lastSync: null, lastIntUpdated: null };
+    const memUp = memMaxMap.get(c.id) ?? null;
+
+    const lastActivity = maxDate(c.updatedAt, memUp, agg.lastSync, agg.lastIntUpdated);
+    const lastActivityIso = lastActivity?.toISOString() ?? null;
+
+    const stale = lastActivity ? lastActivity < staleBefore : true;
+    const neverAccessed =
+      m === 0 &&
+      agg.count === 0 &&
+      now.getTime() - c.createdAt.getTime() > NEVER_USED_DAYS * 864e5;
+
+    if (c.workspaceStatus === "ACTIVE") {
+      if (agg.count === 0) {
+        alerts.push({
+          type: "no_integration",
+          severity: "warning",
+          organizationId: c.id,
+          name: c.name,
+          message: "Sem integração conectada",
+        });
+      }
+      if (m === 0) {
+        alerts.push({
+          type: "no_members",
+          severity: "warning",
+          organizationId: c.id,
+          name: c.name,
+          message: "Sem membros no workspace",
+        });
+      }
+      if (neverAccessed) {
+        alerts.push({
+          type: "never_used",
+          severity: "info",
+          organizationId: c.id,
+          name: c.name,
+          message: "Criado há mais de uma semana sem membros nem integrações",
+        });
+      }
+      if (stale) {
+        alerts.push({
+          type: "stale_activity",
+          severity: "info",
+          organizationId: c.id,
+          name: c.name,
+          message: "Sem atividade recente (integrações / equipe)",
+        });
+      }
+    }
+
+    if (c.workspaceStatus === "PAUSED") {
+      alerts.push({
+        type: "paused",
+        severity: "info",
+        organizationId: c.id,
+        name: c.name,
+        message: "Workspace pausado na matriz",
+      });
+    }
+
+    if (c.workspaceStatus === "ARCHIVED") {
+      alerts.push({
+        type: "archived",
+        severity: "warning",
+        organizationId: c.id,
+        name: c.name,
+        message: "Workspace arquivado",
+      });
+    }
+
+    const needsAttention =
+      c.workspaceStatus === "PAUSED" ||
+      c.workspaceStatus === "ARCHIVED" ||
+      (c.workspaceStatus === "ACTIVE" &&
+        (agg.count === 0 || m === 0 || stale || neverAccessed));
+
+    return {
+      id: c.id,
+      name: c.name,
+      slug: c.slug,
+      createdAt: c.createdAt.toISOString(),
+      inheritPlanFromParent: c.inheritPlanFromParent,
+      workspaceStatus: c.workspaceStatus,
+      workspaceNote: c.workspaceNote,
+      memberCount: m,
+      pendingInvitationsCount: pendingInv.get(c.id) ?? 0,
+      dashboardCount: d,
+      connectedIntegrations: agg.count,
+      lastIntegrationSyncAt: agg.lastSync?.toISOString() ?? null,
+      lastActivityAt: lastActivityIso,
+      staleActivity: stale,
+      neverAccessed,
+      needsAttention,
+    };
+  });
+
+  const maxChild = planContext.limits.maxChildOrganizations;
+  const usedChild = planContext.usage.childOrganizations;
+  if (maxChild != null && maxChild > 0 && usedChild >= maxChild) {
+    alerts.unshift({
+      type: "at_child_limit",
+      severity: "critical",
+      organizationId: parentOrganizationId,
+      name: "",
+      message: `Limite de workspaces filhos atingido (${usedChild} / ${maxChild})`,
+    });
+  } else if (maxChild != null && maxChild > 0 && usedChild >= Math.ceil(maxChild * 0.9)) {
+    alerts.unshift({
+      type: "near_child_limit",
+      severity: "warning",
+      organizationId: parentOrganizationId,
+      name: "",
+      message: `Próximo do limite de workspaces filhos (${usedChild} / ${maxChild})`,
+    });
+  }
+
+  const summary = {
+    totalWorkspaces: children.length,
+    activeWorkspaces: children.filter((c) => c.workspaceStatus === "ACTIVE").length,
+    pausedWorkspaces: children.filter((c) => c.workspaceStatus === "PAUSED").length,
+    archivedWorkspaces: children.filter((c) => c.workspaceStatus === "ARCHIVED").length,
+    withoutIntegration: organizations.filter(
+      (o) => o.connectedIntegrations === 0 && o.workspaceStatus === "ACTIVE"
+    ).length,
+    withoutMembers: organizations.filter((o) => o.memberCount === 0 && o.workspaceStatus === "ACTIVE").length,
+    staleActivityCount: organizations.filter((o) => o.staleActivity && o.workspaceStatus === "ACTIVE").length,
+    integrationsTotalAcrossChildren: organizations.reduce((s, o) => s + o.connectedIntegrations, 0),
+    usersTotalAcrossChildren: organizations.reduce((s, o) => s + o.memberCount, 0),
+    dashboardsTotalAcrossChildren: organizations.reduce((s, o) => s + o.dashboardCount, 0),
+    childSlotsUsed: usedChild,
+    childSlotsCap: maxChild,
+  };
+
+  return {
+    parent: {
+      plan: planContext.plan,
+      planSource: planContext.planSource,
+      limits: planContext.limits,
+      limitsHaveOverrides: planContext.limitsHaveOverrides,
+      usage: planContext.usage,
+    },
+    organizations,
+    summary,
+    alerts,
+  };
+}
+
 export async function listChildOrganizationsPortfolio(parentOrganizationId: string, userId: string) {
   await assertDirectOrgAdmin(userId, parentOrganizationId);
   const children = await prisma.organization.findMany({
     where: { parentOrganizationId, deletedAt: null },
-    select: { id: true, name: true, slug: true, createdAt: true, inheritPlanFromParent: true },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      createdAt: true,
+      inheritPlanFromParent: true,
+      workspaceStatus: true,
+    },
     orderBy: { name: "asc" },
   });
 

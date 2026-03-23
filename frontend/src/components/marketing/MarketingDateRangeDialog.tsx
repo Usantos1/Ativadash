@@ -101,10 +101,10 @@ export function MarketingDateRangeDialog({
       <DialogContent
         showClose
         title="Período"
-        className="flex max-h-[95dvh] w-[min(100vw-1rem,56rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-h-[90vh]"
+        className="flex max-h-[95dvh] w-[min(100vw-1rem,80rem)] max-w-none flex-col gap-0 overflow-y-auto overflow-x-visible p-0 sm:max-h-[90vh]"
       >
-        <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-          <aside className="w-full shrink-0 border-b border-border/80 lg:w-[220px] lg:border-b-0 lg:border-r">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
+          <aside className="w-full shrink-0 border-b border-border/80 lg:w-[min(100%,240px)] lg:max-w-[240px] lg:border-b-0 lg:border-r">
             <div className="max-h-[40vh] overflow-y-auto p-3 lg:max-h-[min(70vh,520px)]">
               {recentIds.length > 0 && (
                 <>
@@ -159,7 +159,7 @@ export function MarketingDateRangeDialog({
             </div>
           </aside>
 
-          <div className="min-w-0 flex-1 overflow-x-auto p-3 sm:p-4">
+          <div className="min-w-0 flex-1 overflow-x-visible overflow-y-visible p-3 sm:p-4 lg:min-w-[min(100%,42rem)]">
             <DayPicker
               mode="range"
               selected={range}
@@ -168,10 +168,11 @@ export function MarketingDateRangeDialog({
               locale={ptBR}
               weekStartsOn={1}
               defaultMonth={range?.from}
-              className="marketing-day-picker mx-auto"
+              className="marketing-day-picker w-full max-w-full"
               classNames={{
-                months: "flex flex-col gap-4 sm:flex-row sm:gap-8",
-                month: "space-y-2",
+                months:
+                  "flex flex-col gap-6 sm:flex-row sm:flex-nowrap sm:items-start sm:justify-center sm:gap-10",
+                month: "w-full shrink-0 space-y-2 sm:w-auto",
                 caption: "flex justify-center pt-1 relative items-center mb-2",
                 caption_label: "text-sm font-medium",
                 nav: "flex items-center gap-1",

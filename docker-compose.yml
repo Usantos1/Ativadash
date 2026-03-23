@@ -1,6 +1,6 @@
-# Banco local para desenvolvimento (Windows/macOS/Linux).
-# Uso: na raiz do repositório → docker compose up -d
-# Depois: cd backend && npx prisma migrate deploy
+# OPCIONAL — Postgres em container para quem quiser (no Ativafix não há compose; lá o DB é outro host).
+# Na raiz: docker compose up -d
+# Depois: cd backend && npm run prisma:migrate (ou migrate deploy)
 services:
   postgres:
     image: postgres:16-alpine

@@ -9,7 +9,7 @@ function prismaLogOptions(): Prisma.LogLevel[] | Prisma.LogDefinition[] {
     return ["query", "error", "warn"];
   }
   if (process.env.NODE_ENV === "development") {
-    return ["warn"];
+    return ["warn", "error"];
   }
   return ["error"];
 }

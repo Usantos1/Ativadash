@@ -29,6 +29,8 @@ export type EnabledFeatures = {
   webhooks: boolean;
 };
 
+export type WorkspaceStatus = "ACTIVE" | "PAUSED" | "ARCHIVED";
+
 export type SubscriptionView = {
   billingMode: string;
   status: string;
@@ -50,6 +52,18 @@ export type SubscriptionView = {
 /** Exibe limite numérico ou "Ilimitado" quando null. */
 export function formatPlanCap(n: number | null | undefined): string {
   if (n === null || n === undefined) return "Ilimitado";
+  return String(n);
+}
+
+/**
+ * Cotas na UI de assinatura: `0` pode significar “recurso fora do plano” (ex.: empresas filhas no Essencial).
+ */
+export function formatPlanLimit(
+  n: number | null | undefined,
+  opts?: { zeroMeansNotIncluded?: boolean }
+): string {
+  if (n === null || n === undefined) return "Ilimitado";
+  if (opts?.zeroMeansNotIncluded && n === 0) return "Não incluído";
   return String(n);
 }
 
@@ -82,14 +96,22 @@ export async function fetchManagedOrganizations(): Promise<OrganizationSummary[]
 
 export async function createManagedOrganization(
   name: string,
-  options?: { inheritPlanFromParent?: boolean; planId?: string | null }
-): Promise<{ organization: OrganizationSummary & { inheritPlanFromParent?: boolean; planId?: string | null } }> {
+  options?: { inheritPlanFromParent?: boolean; planId?: string | null; workspaceNote?: string | null }
+): Promise<{
+  organization: OrganizationSummary & {
+    inheritPlanFromParent?: boolean;
+    planId?: string | null;
+    workspaceStatus?: WorkspaceStatus;
+    workspaceNote?: string | null;
+  };
+}> {
   return api.post("/organization/children", {
     name,
     ...(options?.inheritPlanFromParent !== undefined
       ? { inheritPlanFromParent: options.inheritPlanFromParent }
       : {}),
     ...(options?.planId !== undefined ? { planId: options.planId } : {}),
+    ...(options?.workspaceNote !== undefined ? { workspaceNote: options.workspaceNote } : {}),
   });
 }
 
@@ -102,9 +124,88 @@ export async function fetchChildrenPortfolio(): Promise<{
     connectedIntegrations: number;
     lastIntegrationSyncAt: string | null;
     createdAt: string;
+    workspaceStatus?: "ACTIVE" | "PAUSED" | "ARCHIVED";
   }>;
 }> {
   return api.get("/organization/children/portfolio");
+}
+
+export type ChildWorkspaceOperationsRow = {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+  inheritPlanFromParent: boolean;
+  workspaceStatus: WorkspaceStatus;
+  workspaceNote: string | null;
+  memberCount: number;
+  pendingInvitationsCount: number;
+  dashboardCount: number;
+  connectedIntegrations: number;
+  lastIntegrationSyncAt: string | null;
+  lastActivityAt: string | null;
+  staleActivity: boolean;
+  neverAccessed: boolean;
+  needsAttention: boolean;
+};
+
+export type ChildOperationsAlert = {
+  type: string;
+  severity: "info" | "warning" | "critical";
+  organizationId: string;
+  name: string;
+  message: string;
+};
+
+export type ChildrenOperationsDashboard = {
+  parent: {
+    plan: OrganizationContext["plan"];
+    planSource?: OrganizationContext["planSource"];
+    limits: PlanLimits;
+    limitsHaveOverrides: boolean;
+    usage: PlanUsage;
+  };
+  organizations: ChildWorkspaceOperationsRow[];
+  summary: {
+    totalWorkspaces: number;
+    activeWorkspaces: number;
+    pausedWorkspaces: number;
+    archivedWorkspaces: number;
+    withoutIntegration: number;
+    withoutMembers: number;
+    staleActivityCount: number;
+    integrationsTotalAcrossChildren: number;
+    usersTotalAcrossChildren: number;
+    dashboardsTotalAcrossChildren: number;
+    childSlotsUsed: number;
+    childSlotsCap: number | null;
+  };
+  alerts: ChildOperationsAlert[];
+};
+
+export async function fetchChildrenOperationsDashboard(): Promise<ChildrenOperationsDashboard> {
+  return api.get<ChildrenOperationsDashboard>("/organization/children/operations");
+}
+
+export async function patchChildWorkspace(
+  childId: string,
+  body: {
+    name?: string;
+    workspaceStatus?: WorkspaceStatus;
+    workspaceNote?: string | null;
+  }
+): Promise<{
+  organization: {
+    id: string;
+    name: string;
+    slug: string;
+    inheritPlanFromParent: boolean;
+    workspaceStatus: WorkspaceStatus;
+    workspaceNote: string | null;
+    createdAt: string;
+  };
+}> {
+  return api.patch(`/organization/children/${childId}`, body);
 }
 
 export async function patchOrganizationPlanSettings(body: {

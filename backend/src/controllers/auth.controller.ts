@@ -22,7 +22,7 @@ import {
   acceptInvitationExistingUser,
 } from "../services/invitations.service.js";
 import { updateProfileSchema } from "../validators/workspace.validator.js";
-import { getDatabaseUnavailableResponse } from "../utils/prisma-connection-error.js";
+import { respondIfDatabaseUnavailable } from "../utils/prisma-connection-error.js";
 
 export async function login(req: Request, res: Response) {
   const parsed = loginSchema.safeParse(req.body);
@@ -35,10 +35,7 @@ export async function login(req: Request, res: Response) {
     const result = await loginService(parsed.data);
     return res.json(result);
   } catch (e) {
-    const dbErr = getDatabaseUnavailableResponse(e);
-    if (dbErr) {
-      return res.status(dbErr.status).json({ message: dbErr.message });
-    }
+    if (respondIfDatabaseUnavailable(res, e, "POST /api/auth/login")) return;
     return res.status(401).json({
       message: e instanceof Error ? e.message : "Erro ao entrar",
     });
@@ -56,10 +53,7 @@ export async function register(req: Request, res: Response) {
     const result = await registerService(parsed.data);
     return res.status(201).json(result);
   } catch (e) {
-    const dbErr = getDatabaseUnavailableResponse(e);
-    if (dbErr) {
-      return res.status(dbErr.status).json({ message: dbErr.message });
-    }
+    if (respondIfDatabaseUnavailable(res, e, "POST /api/auth/register")) return;
     return res.status(400).json({
       message: e instanceof Error ? e.message : "Erro ao cadastrar",
     });
@@ -97,13 +91,19 @@ type JwtUser = { userId: string; email: string; organizationId: string };
 
 export async function me(req: Request, res: Response) {
   const jwtUser = (req as Request & { user: JwtUser }).user;
-  const profile = await getAuthProfileExtended(jwtUser.userId, jwtUser.organizationId);
-  if (!profile) {
-    return res.status(403).json({
-      message: "Usuário não está associado a esta empresa ou o vínculo foi removido.",
-    });
+  try {
+    const profile = await getAuthProfileExtended(jwtUser.userId, jwtUser.organizationId);
+    if (!profile) {
+      return res.status(403).json({
+        message: "Usuário não está associado a esta empresa ou o vínculo foi removido.",
+      });
+    }
+    return res.json(profile);
+  } catch (e) {
+    if (respondIfDatabaseUnavailable(res, e, "GET /api/auth/me")) return;
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao carregar perfil" });
   }
-  return res.json(profile);
 }
 
 export async function switchOrganization(req: Request, res: Response) {
@@ -118,6 +118,7 @@ export async function switchOrganization(req: Request, res: Response) {
     const result = await switchActiveOrganization(jwtUser.userId, parsed.data.organizationId);
     return res.json(result);
   } catch (e) {
+    if (respondIfDatabaseUnavailable(res, e, "POST /api/auth/switch-organization")) return;
     return res.status(403).json({
       message: e instanceof Error ? e.message : "Não foi possível trocar de empresa",
     });
@@ -167,6 +168,7 @@ export async function registerWithInvite(req: Request, res: Response) {
     );
     return res.status(201).json(result);
   } catch (e) {
+    if (respondIfDatabaseUnavailable(res, e, "POST /api/auth/register-with-invite")) return;
     return res.status(400).json({
       message: e instanceof Error ? e.message : "Não foi possível concluir o cadastro",
     });
@@ -189,6 +191,7 @@ export async function acceptInviteLoggedIn(req: Request, res: Response) {
     );
     return res.json(result);
   } catch (e) {
+    if (respondIfDatabaseUnavailable(res, e, "POST /api/auth/accept-invite")) return;
     return res.status(400).json({
       message: e instanceof Error ? e.message : "Não foi possível aceitar o convite",
     });

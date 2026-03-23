@@ -16,7 +16,7 @@ import { SettingsHubPage } from "@/pages/SettingsHubPage";
 import { ProfilePage } from "@/pages/ProfilePage";
 import { CompanySettingsPage } from "@/pages/CompanySettingsPage";
 import { TeamPage } from "@/pages/TeamPage";
-import { SubscriptionPage } from "@/pages/SubscriptionPage";
+import { RevendaWorkspacesPage } from "@/pages/RevendaWorkspacesPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { PlatformPage } from "@/pages/PlatformPage";
 
@@ -51,8 +51,9 @@ export default function App() {
           <Route path="configuracoes/empresa" element={<CompanySettingsPage />} />
           <Route path="perfil" element={<ProfilePage />} />
           <Route path="usuarios" element={<TeamPage />} />
-          <Route path="assinatura" element={<SubscriptionPage />} />
-          <Route path="planos" element={<Navigate to="/assinatura" replace />} />
+          <Route path="revenda" element={<RevendaWorkspacesPage />} />
+          <Route path="assinatura" element={<Navigate to="/revenda" replace />} />
+          <Route path="planos" element={<Navigate to="/revenda" replace />} />
           <Route path="admin" element={<AdminPage />} />
           <Route path="plataforma" element={<PlatformPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

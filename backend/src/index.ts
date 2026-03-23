@@ -1,8 +1,9 @@
-import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { env } from "./config/env.js";
+import { prisma } from "./utils/prisma.js";
+import { logDatabaseConnectionFailure } from "./utils/prisma-connection-error.js";
 import authRoutes from "./routes/auth.routes.js";
 import integrationsRoutes from "./routes/integrations.routes.js";
 import marketingRoutes from "./routes/marketing.routes.js";
@@ -25,6 +26,25 @@ app.use(
 
 app.use(express.json());
 
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok", service: "ativa-dash-api" });
+});
+
+app.get("/api/health/db", async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return res.json({ ok: true, database: "connected" });
+  } catch (e) {
+    logDatabaseConnectionFailure(e, "GET /api/health/db");
+    return res.status(503).json({
+      ok: false,
+      database: "unavailable",
+      message:
+        "PostgreSQL indisponível ou DATABASE_URL incorreta. Veja o terminal do backend para detalhes.",
+    });
+  }
+});
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -42,10 +62,6 @@ app.use("/api/marketing", marketingRoutes);
 app.use("/api/workspace", workspaceRoutes);
 app.use("/api/organization", organizationRoutes);
 app.use("/api/platform", platformRoutes);
-
-app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", service: "ativa-dash-api" });
-});
 
 app.use((_req, res) => {
   res.status(404).json({ message: "Rota não encontrada" });

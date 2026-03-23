@@ -19,7 +19,7 @@ import {
   Wrench,
   X,
   Users2,
-  CreditCard,
+  Layers,
   Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -55,7 +55,7 @@ const navGroups: NavGroup[] = [
     label: "Conexões",
     items: [
       { to: "/marketing/integracoes", label: "Integrações", icon: Plug },
-      { to: "/marketing/configuracoes", label: "Config. Marketing", icon: Wrench },
+      { to: "/marketing/configuracoes", label: "Metas e alertas", icon: Wrench },
     ],
   },
   {
@@ -70,7 +70,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Conta",
     items: [
-      { to: "/assinatura", label: "Assinatura e uso", icon: CreditCard },
+      { to: "/revenda", label: "Gestão de workspaces", icon: Layers },
       { to: "/configuracoes", label: "Configurações", icon: Settings },
     ],
   },

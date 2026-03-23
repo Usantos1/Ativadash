@@ -29,18 +29,16 @@ export function AppTopbar({
       )}
     >
       <div className="flex h-12 w-full min-w-0 items-center gap-2 px-2.5 sm:gap-3 sm:px-4 md:px-5">
-        {/* Esquerda: menu, workspace, ações (tema / notif. / perfil) — tudo alinhado ao início */}
+        {/* Esquerda: colapsar sidebar + workspace */}
         <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
           <SidebarHeaderControl onMobileOpen={onMobileOpen} />
           <span className="hidden h-6 w-px shrink-0 bg-border/70 md:block" aria-hidden />
           <div className="min-w-0 max-w-[min(100vw-12rem,280px)] sm:max-w-[min(100vw-14rem,300px)]">
             <OrganizationSwitcher />
           </div>
-          <span className="hidden h-6 w-px shrink-0 bg-border/70 sm:block" aria-hidden />
-          <TopbarActions onLogout={onLogout} />
         </div>
 
-        {/* Centro: breadcrumb ou traço — só o espaço flexível centraliza */}
+        {/* Centro: breadcrumb */}
         <div className="flex min-w-0 flex-1 justify-center px-1 sm:px-2">
           {crumbs.length > 0 ? (
             <nav
@@ -68,6 +66,10 @@ export function AppTopbar({
           )}
         </div>
 
+        {/* Direita: tema, notificações, perfil */}
+        <div className="ml-auto flex shrink-0 items-center pl-1">
+          <TopbarActions onLogout={onLogout} />
+        </div>
       </div>
     </header>
   );

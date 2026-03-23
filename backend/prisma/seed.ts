@@ -1,4 +1,7 @@
+import { loadAtivadashEnv } from "../src/config/dotenv-load.js";
 import { PrismaClient } from "@prisma/client";
+
+loadAtivadashEnv();
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -137,7 +140,10 @@ async function main() {
       password: hashedPassword,
       name: "Usuário Demo",
     },
-    update: {},
+    update: {
+      password: hashedPassword,
+      name: "Usuário Demo",
+    },
   });
 
   await prisma.membership.upsert({

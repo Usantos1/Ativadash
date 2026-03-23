@@ -5,6 +5,18 @@
 
 Requisito: VPS com Ubuntu 22.04 ou 24.04 (ou Debian equivalente). Nada precisa estar instalado.
 
+### Arquitetura típica: tudo na mesma VPS
+
+Neste deploy, **banco PostgreSQL**, **API (Node + PM2)** e **frontend estático (Nginx)** ficam **no mesmo servidor**:
+
+| Componente | Onde roda | Observação |
+|------------|-----------|------------|
+| PostgreSQL | `localhost:5432` | Só a própria VPS acessa; não é obrigatório abrir a porta 5432 na internet. |
+| API Ativa Dash | `127.0.0.1:3000` | PM2; o Nginx faz `proxy_pass` a partir de `api.ativadash.com`. |
+| Frontend (build) | Pastas servidas pelo Nginx | Ex.: `app.ativadash.com` com `root` apontando para `frontend/dist`. |
+
+Por isso o **`DATABASE_URL` no `backend/.env` usa `localhost`** (ou `127.0.0.1`): a API conecta ao Postgres pela **rede interna da VPS**, não pelo IP público da máquina.
+
 ---
 
 ## 1. Conectar na VPS
@@ -124,6 +136,8 @@ JWT_SECRET=gere-uma-string-aleatoria-longa-aqui
 JWT_REFRESH_SECRET=outra-string-aleatoria-longa
 JWT_EXPIRES_IN=15m
 JWT_REFRESH_EXPIRES_IN=7d
+# CORS: pode listar várias origens separadas por vírgula (dev local só com front + API remota):
+# FRONTEND_URL=https://app.ativadash.com,http://127.0.0.1:5173,http://localhost:5173
 FRONTEND_URL=https://app.ativadash.com
 API_BASE_URL=https://api.ativadash.com
 GOOGLE_CLIENT_ID=seu_client_id_google

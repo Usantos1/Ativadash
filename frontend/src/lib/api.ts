@@ -1,6 +1,6 @@
 import { useAuthStore } from "@/stores/auth-store";
 
-// Em produção (app.ativadash.com) usa a API; em dev usa env ou proxy /api
+// Sem VITE_API_URL em dev: proxy /api → backend local. Com VITE_API_URL: tudo pela API remota (sem banco no PC).
 function getApiBase(): string {
   let base: string;
   if (import.meta.env.VITE_API_URL) {

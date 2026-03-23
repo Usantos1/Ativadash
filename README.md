@@ -21,18 +21,35 @@ Ativadash/
 
 ## Desenvolvimento local
 
-1. **PostgreSQL:** crie um banco (ex.: `ativa_dash`) ou use SQLite para testar (veja abaixo).
+### Modo recomendado: sem banco no PC (só API)
+
+Consultas e alterações **só pela API** (dados na VPS). Rode **apenas o frontend**:
+
+```bash
+cd frontend
+copy .env.local.example .env.local
+# Edite .env.local se a API não for https://api.ativadash.com
+npm install
+npm run dev
+```
+
+Guia completo: **[`docs/DEV-APENAS-API.md`](./docs/DEV-APENAS-API.md)** — inclui **CORS** (`FRONTEND_URL` na VPS com `http://127.0.0.1:5173`).
+
+### Modo full-stack local (Postgres + API no PC)
+
+1. **PostgreSQL** local ou Docker — veja [`docs/LOCAL-SETUP.md`](./docs/LOCAL-SETUP.md).
 2. **Backend:**
 
 ```bash
 cd backend
-cp .env.example .env   # Ajuste DATABASE_URL, JWT_*, GOOGLE_*
 npm install
-npx prisma migrate dev --name init
+npm run prisma:generate
+npm run prisma:migrate
+npm run prisma:seed
 npm run dev
 ```
 
-3. **Frontend:**
+3. **Frontend** (sem `VITE_API_URL` no `.env.local` — usa proxy para `:3000`):
 
 ```bash
 cd frontend
@@ -40,7 +57,9 @@ npm install
 npm run dev
 ```
 
-Acesse **http://localhost:5173**. O proxy aponta `/api` para `http://localhost:3000`.
+Abra **`http://127.0.0.1:5173`**.
+
+**Banco só na VPS no PC:** sem túnel ou Postgres local, use o **modo só API** acima — veja [`docs/BANCO-SO-NA-VPS.md`](./docs/BANCO-SO-NA-VPS.md).
 
 **Dev com SQLite (sem PostgreSQL):** em `backend/prisma/schema.prisma` troque `provider` para `sqlite` e `url` para `env("DATABASE_URL")`; no `.env` use `DATABASE_URL="file:./dev.db"`. Rode `npx prisma migrate dev`.
 
