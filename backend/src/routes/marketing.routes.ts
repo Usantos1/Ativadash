@@ -2,6 +2,12 @@ import { Router } from "express";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
 import { requireJwtOrganizationAccess } from "../middlewares/organization-context.middleware.js";
 import {
+  deleteAlertRuleHandler,
+  getAlertRulesHandler,
+  patchAlertRuleHandler,
+  postAlertRuleHandler,
+} from "../controllers/alert-rules.controller.js";
+import {
   getGoogleAdsMetricsHandler,
   getMetaAdsMetricsHandler,
   getMarketingDashboardHandler,
@@ -41,6 +47,11 @@ router.get("/timeseries", ...authCtx, getMarketingTimeseriesContractHandler);
 router.get("/funnel", ...authCtx, getMarketingFunnelContractHandler);
 router.get("/detail/campaigns", ...authCtx, getMarketingDetailCampaignsHandler);
 router.get("/alerts/insight", ...authCtx, getMarketingAlertsInsightHandler);
+
+router.get("/alert-rules", ...authCtx, getAlertRulesHandler);
+router.post("/alert-rules", ...authCtx, postAlertRuleHandler);
+router.patch("/alert-rules/:id", ...authCtx, patchAlertRuleHandler);
+router.delete("/alert-rules/:id", ...authCtx, deleteAlertRuleHandler);
 
 router.get("/google-ads/metrics", ...authCtx, getGoogleAdsMetricsHandler);
 router.get("/google-ads/ad-groups", ...authCtx, getGoogleAdGroupsHandler);

@@ -15,3 +15,18 @@ export function canUserMutateMarketingAds(role: string | undefined | null): bool
   if (!role) return false;
   return MUTATE_MARKETING_ADS_ROLES.has(role);
 }
+
+/** Alinhado a `CAP_MARKETING_SETTINGS_WRITE` (workspace admin / matriz). */
+const MARKETING_SETTINGS_WRITE_ROLES = new Set([
+  "workspace_owner",
+  "workspace_admin",
+  "owner",
+  "admin",
+  "agency_owner",
+  "agency_admin",
+]);
+
+export function canUserEditMarketingSettings(role: string | undefined | null): boolean {
+  if (!role) return false;
+  return MARKETING_SETTINGS_WRITE_ROLES.has(role);
+}

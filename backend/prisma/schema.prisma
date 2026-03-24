@@ -125,6 +125,7 @@ model Organization {
   metricsSnapshots MetricsSnapshot[]
   webhookEndpoints WebhookEndpoint[]
   webhookEvents    WebhookEvent[]
+  alertRules       AlertRule[]
 
   matrixGrantsAsMatrix   MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantMatrix")
   matrixGrantsAsWorkspace MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantWorkspace")
@@ -271,6 +272,32 @@ model MarketingSettings {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// Regras de alerta customizadas (Fase 6 — avaliação pode integrar ao motor de insights depois)
+model AlertRule {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name      String @db.VarChar(120)
+  /// cpa | roas | spend | ctr (valores atuais do período / agregados)
+  metric    String @db.VarChar(32)
+  /// gt | gte | lt | lte
+  operator  String @db.VarChar(8)
+  threshold Decimal @db.Decimal(14, 4)
+  /// warning | critical
+  severity  String @db.VarChar(16)
+  active    Boolean @default(true)
+
+  /// Silêncio por hora (0–23, UTC servidor). Ambos null = sem janela de mute.
+  muteStartHour Int?
+  muteEndHour   Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
 }
 
 model Plan {

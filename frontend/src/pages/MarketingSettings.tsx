@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowLeft,
@@ -6,11 +6,14 @@ import {
   Bell,
   ChevronRight,
   LayoutDashboard,
+  ListPlus,
   Loader2,
   MessageCircle,
+  Plus,
   Save,
   SlidersHorizontal,
   Target,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +22,13 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { PageHeaderPremium } from "@/components/premium";
 import { StatusBadge } from "@/components/premium/status-badge";
 import {
@@ -26,6 +36,18 @@ import {
   saveMarketingSettings,
   type MarketingSettingsDto,
 } from "@/lib/marketing-settings-api";
+import {
+  createAlertRule,
+  deleteAlertRule,
+  fetchAlertRules,
+  patchAlertRule,
+  type AlertRuleDto,
+  type AlertRuleMetric,
+  type AlertRuleOperator,
+  type AlertRuleSeverity,
+} from "@/lib/alert-rules-api";
+import { canUserEditMarketingSettings } from "@/lib/marketing-ads-permissions";
+import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
 
 function dtoToForm(s: MarketingSettingsDto) {
@@ -175,6 +197,356 @@ function AlertRuleRow({
         aria-labelledby={`${id}-label`}
       />
     </div>
+  );
+}
+
+const METRIC_LABEL: Record<AlertRuleMetric, string> = {
+  cpa: "CPA (R$)",
+  roas: "ROAS (×)",
+  spend: "Gasto (R$)",
+  ctr: "CTR (%)",
+};
+
+const OP_LABEL: Record<AlertRuleOperator, string> = {
+  gt: "maior que (>)",
+  gte: "maior ou igual (≥)",
+  lt: "menor que (<)",
+  lte: "menor ou igual (≤)",
+};
+
+function CustomAlertRulesPanel() {
+  const user = useAuthStore((s) => s.user);
+  const memberships = useAuthStore((s) => s.memberships);
+  const canEdit = useMemo(() => {
+    if (!user?.organizationId) return false;
+    const r = memberships?.find((m) => m.organizationId === user.organizationId)?.role;
+    return canUserEditMarketingSettings(r);
+  }, [user?.organizationId, memberships]);
+
+  const [pack, setPack] = useState<{ items: AlertRuleDto[]; performanceAlerts: boolean } | null>(null);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [panelErr, setPanelErr] = useState<string | null>(null);
+  const [panelOk, setPanelOk] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const [nName, setNName] = useState("");
+  const [nMetric, setNMetric] = useState<AlertRuleMetric>("cpa");
+  const [nOp, setNOp] = useState<AlertRuleOperator>("gt");
+  const [nThreshold, setNThreshold] = useState("");
+  const [nSeverity, setNSeverity] = useState<AlertRuleSeverity>("warning");
+  const [nMuteA, setNMuteA] = useState("");
+  const [nMuteB, setNMuteB] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  const load = useCallback(() => {
+    setLoadErr(null);
+    fetchAlertRules()
+      .then((r) => setPack({ items: r.items, performanceAlerts: r.performanceAlerts }))
+      .catch(() => {
+        setLoadErr("Não foi possível carregar as regras.");
+        setPack({ items: [], performanceAlerts: false });
+      });
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  if (pack === null) {
+    return (
+      <SectionShell
+        icon={ListPlus}
+        title="Regras de alerta customizadas"
+        description="Carregando…"
+      >
+        <Skeleton className="h-24 w-full rounded-xl" />
+      </SectionShell>
+    );
+  }
+
+  if (!pack.performanceAlerts) {
+    return (
+      <SectionShell
+        icon={ListPlus}
+        title="Regras de alerta customizadas"
+        description="Defina limites adicionais por métrica. A avaliação automática no painel será integrada em uma próxima versão."
+      >
+        <p className="text-sm text-muted-foreground">
+          Este recurso exige o módulo <strong className="font-medium text-foreground">alertas de performance</strong> no
+          plano da empresa. Fale com a matriz ou com o suporte para habilitar.
+        </p>
+      </SectionShell>
+    );
+  }
+
+  async function handleCreate() {
+    setPanelErr(null);
+    setPanelOk(null);
+    const name = nName.trim();
+    const t = parseFloat(nThreshold.replace(",", "."));
+    if (!name) {
+      setPanelErr("Informe um nome para a regra.");
+      return;
+    }
+    if (!Number.isFinite(t)) {
+      setPanelErr("Informe um limite numérico válido.");
+      return;
+    }
+    if (nMetric === "ctr" && (t < 0 || t > 100)) {
+      setPanelErr("CTR deve estar entre 0 e 100.");
+      return;
+    }
+    if (nMetric !== "ctr" && t <= 0) {
+      setPanelErr("O limite deve ser maior que zero para esta métrica.");
+      return;
+    }
+    let muteStartHour: number | null = null;
+    let muteEndHour: number | null = null;
+    if (nMuteA.trim() !== "" || nMuteB.trim() !== "") {
+      const a = Number.parseInt(nMuteA.trim(), 10);
+      const b = Number.parseInt(nMuteB.trim(), 10);
+      if (!Number.isFinite(a) || !Number.isFinite(b) || a < 0 || a > 23 || b < 0 || b > 23) {
+        setPanelErr("Horas de silêncio: use inteiros de 0 a 23 (UTC do servidor) ou deixe os dois vazios.");
+        return;
+      }
+      muteStartHour = a;
+      muteEndHour = b;
+    }
+    setCreating(true);
+    try {
+      await createAlertRule({
+        name,
+        metric: nMetric,
+        operator: nOp,
+        threshold: t,
+        severity: nSeverity,
+        active: true,
+        muteStartHour,
+        muteEndHour,
+      });
+      setNName("");
+      setNThreshold("");
+      setNMuteA("");
+      setNMuteB("");
+      setPanelOk("Regra criada.");
+      load();
+    } catch (e) {
+      setPanelErr(e instanceof Error ? e.message : "Erro ao criar regra.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleToggleActive(rule: AlertRuleDto) {
+    setPanelErr(null);
+    setPanelOk(null);
+    setBusy(rule.id);
+    try {
+      await patchAlertRule(rule.id, { active: !rule.active });
+      setPanelOk(rule.active ? "Regra desativada." : "Regra ativada.");
+      load();
+    } catch (e) {
+      setPanelErr(e instanceof Error ? e.message : "Erro ao atualizar.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!window.confirm("Excluir esta regra?")) return;
+    setPanelErr(null);
+    setPanelOk(null);
+    setBusy(id);
+    try {
+      await deleteAlertRule(id);
+      setPanelOk("Regra removida.");
+      load();
+    } catch (e) {
+      setPanelErr(e instanceof Error ? e.message : "Erro ao excluir.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <SectionShell
+      icon={ListPlus}
+      title="Regras de alerta customizadas"
+      description="Cadastro de limites por métrica (CPA, ROAS, gasto, CTR). A integração com o painel de insights e WhatsApp virá nas próximas iterações."
+    >
+      {loadErr ? <p className="mb-3 text-sm text-destructive">{loadErr}</p> : null}
+      {panelErr ? (
+        <p className="mb-3 rounded-lg border border-destructive/35 bg-destructive/[0.08] px-3 py-2 text-sm text-destructive">
+          {panelErr}
+        </p>
+      ) : null}
+      {panelOk ? (
+        <p className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/[0.08] px-3 py-2 text-sm text-emerald-900 dark:text-emerald-200">
+          {panelOk}
+        </p>
+      ) : null}
+
+      <div className="space-y-3">
+        {pack.items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhuma regra customizada ainda.</p>
+        ) : (
+          pack.items.map((rule) => (
+            <div
+              key={rule.id}
+              className="flex flex-col gap-3 rounded-xl border border-border/55 bg-muted/[0.25] p-4 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0 space-y-1">
+                <p className="font-medium text-foreground">{rule.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {METRIC_LABEL[rule.metric as AlertRuleMetric] ?? rule.metric} {OP_LABEL[rule.operator as AlertRuleOperator] ?? rule.operator}{" "}
+                  <span className="font-mono font-semibold text-foreground">{rule.threshold}</span>
+                  {" · "}
+                  <span className="capitalize">{rule.severity}</span>
+                  {rule.muteStartHour != null && rule.muteEndHour != null ? (
+                    <span>
+                      {" "}
+                      · silêncio {rule.muteStartHour}h–{rule.muteEndHour}h UTC
+                    </span>
+                  ) : null}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {canEdit ? (
+                  <>
+                    <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-background/80 px-3 py-1.5">
+                      <span className="text-xs text-muted-foreground">Ativa</span>
+                      <Switch
+                        checked={rule.active}
+                        disabled={busy === rule.id}
+                        onCheckedChange={() => void handleToggleActive(rule)}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 text-destructive hover:text-destructive"
+                      title="Excluir"
+                      disabled={busy === rule.id}
+                      onClick={() => void handleDelete(rule.id)}
+                    >
+                      {busy === rule.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    </Button>
+                  </>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Somente leitura</span>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {canEdit ? (
+        <>
+          <Separator className="my-6 bg-border/60" />
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nova regra</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="ar-name">Nome</Label>
+              <Input
+                id="ar-name"
+                value={nName}
+                onChange={(e) => setNName(e.target.value)}
+                placeholder="Ex.: CPA crítico lançamento X"
+                className="h-11 rounded-xl"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Métrica</Label>
+              <Select value={nMetric} onValueChange={(v) => setNMetric(v as AlertRuleMetric)}>
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(METRIC_LABEL) as AlertRuleMetric[]).map((k) => (
+                    <SelectItem key={k} value={k}>
+                      {METRIC_LABEL[k]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Condição</Label>
+              <Select value={nOp} onValueChange={(v) => setNOp(v as AlertRuleOperator)}>
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(OP_LABEL) as AlertRuleOperator[]).map((k) => (
+                    <SelectItem key={k} value={k}>
+                      {OP_LABEL[k]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ar-th">Limite</Label>
+              <Input
+                id="ar-th"
+                inputMode="decimal"
+                value={nThreshold}
+                onChange={(e) => setNThreshold(e.target.value)}
+                placeholder={nMetric === "ctr" ? "2,5" : "100"}
+                className="h-11 rounded-xl font-mono"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Severidade</Label>
+              <Select value={nSeverity} onValueChange={(v) => setNSeverity(v as AlertRuleSeverity)}>
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="warning">Aviso</SelectItem>
+                  <SelectItem value="critical">Crítico</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ar-mute-a">Silêncio UTC — início (0–23)</Label>
+              <Input
+                id="ar-mute-a"
+                inputMode="numeric"
+                value={nMuteA}
+                onChange={(e) => setNMuteA(e.target.value)}
+                placeholder="vazio = sem janela"
+                className="h-11 rounded-xl font-mono"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ar-mute-b">Silêncio UTC — fim (0–23)</Label>
+              <Input
+                id="ar-mute-b"
+                inputMode="numeric"
+                value={nMuteB}
+                onChange={(e) => setNMuteB(e.target.value)}
+                placeholder="vazio = sem janela"
+                className="h-11 rounded-xl font-mono"
+              />
+            </div>
+          </div>
+          <Button
+            type="button"
+            className="mt-4 rounded-xl"
+            onClick={() => void handleCreate()}
+            disabled={creating}
+          >
+            {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+            Adicionar regra
+          </Button>
+        </>
+      ) : (
+        <p className="mt-4 text-xs text-muted-foreground">Apenas administradores do workspace podem criar ou editar regras.</p>
+      )}
+    </SectionShell>
   );
 }
 
@@ -359,7 +731,8 @@ export function MarketingSettings() {
       />
 
       <div className="grid gap-8 lg:grid-cols-[1fr_minmax(280px,320px)] lg:items-start">
-        <form onSubmit={handleSubmit} className="min-w-0 space-y-8">
+        <div className="min-w-0 space-y-8">
+        <form onSubmit={handleSubmit} className="space-y-8">
           {error ? (
             <div className="rounded-xl border border-destructive/35 bg-destructive/[0.08] px-4 py-3 text-sm text-destructive">
               {error}
@@ -514,6 +887,9 @@ export function MarketingSettings() {
             </div>
           </div>
         </form>
+
+        <CustomAlertRulesPanel />
+        </div>
 
         <aside className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-4">
           <Card className="rounded-2xl border-border/60 shadow-[var(--shadow-surface-sm)]">
