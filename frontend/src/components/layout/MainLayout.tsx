@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, Outlet } from "react-router-dom";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { AppTopbar } from "@/components/layout/AppTopbar";
+import { AppShell } from "@/components/shell/AppShell";
 import { useUIStore } from "@/stores/ui-store";
 import { useAuthStore, type AuthMeResponse } from "@/stores/auth-store";
 import { api } from "@/lib/api";
@@ -63,7 +64,7 @@ export function MainLayout() {
   }, [sidebarOpen]);
 
   return (
-    <div className="min-h-dvh bg-background bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,hsl(var(--primary)/0.06),transparent_50%)]">
+    <AppShell>
       <Sidebar
         mobileOpen={sidebarOpen}
         onMobileClose={() => setSidebarOpen(false)}
@@ -86,6 +87,6 @@ export function MainLayout() {
           </AnalyticsShell>
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }

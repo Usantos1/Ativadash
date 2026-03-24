@@ -241,14 +241,12 @@ async function searchStream(
     results.push(...(r as MetricRow[]));
   }
 
-  const campaigns: GoogleAdsCampaignRow[] = [];
-  const summary: GoogleAdsMetricsSummary = {
-    impressions: 0,
-    clicks: 0,
-    costMicros: 0,
-    conversions: 0,
-    conversionsValue: 0,
-  };
+  /**
+   * GAQL com `segments.date` no WHERE retorna uma linha por (campanha × dia).
+   * Somar métricas por `campaign.id` garante: uma linha por campanha no período e
+   * `summary === Σ campaigns` (fonte única de verdade para a UI).
+   */
+  const byCampaign = new Map<string, GoogleAdsCampaignRow>();
 
   for (const row of results) {
     const m = row.metrics ?? {};
@@ -260,21 +258,40 @@ async function searchStream(
       (m as Record<string, unknown>).conversionsValue ?? (m as Record<string, unknown>).conversions_value ?? 0
     );
     const cid = row.campaign?.id != null ? String(row.campaign.id) : undefined;
-    campaigns.push({
-      campaignName: row.campaign?.name ?? "",
-      ...(cid ? { campaignId: cid } : {}),
-      impressions,
-      clicks,
-      costMicros,
-      conversions,
-      conversionsValue,
-    });
-    summary.impressions += impressions;
-    summary.clicks += clicks;
-    summary.costMicros += costMicros;
-    summary.conversions += conversions;
-    summary.conversionsValue += conversionsValue;
+    const name = row.campaign?.name ?? "";
+    const key = cid ?? `__name:${name}`;
+
+    const existing = byCampaign.get(key);
+    if (existing) {
+      existing.impressions += impressions;
+      existing.clicks += clicks;
+      existing.costMicros += costMicros;
+      existing.conversions += conversions;
+      existing.conversionsValue += conversionsValue;
+    } else {
+      byCampaign.set(key, {
+        campaignName: name,
+        ...(cid ? { campaignId: cid } : {}),
+        impressions,
+        clicks,
+        costMicros,
+        conversions,
+        conversionsValue,
+      });
+    }
   }
+
+  const campaigns = Array.from(byCampaign.values()).sort((a, b) => b.costMicros - a.costMicros);
+  const summary: GoogleAdsMetricsSummary = campaigns.reduce(
+    (acc, r) => ({
+      impressions: acc.impressions + r.impressions,
+      clicks: acc.clicks + r.clicks,
+      costMicros: acc.costMicros + r.costMicros,
+      conversions: acc.conversions + r.conversions,
+      conversionsValue: acc.conversionsValue + r.conversionsValue,
+    }),
+    { impressions: 0, clicks: 0, costMicros: 0, conversions: 0, conversionsValue: 0 }
+  );
 
   return { summary, campaigns };
 }
@@ -294,7 +311,7 @@ async function searchStreamDaily(
       metrics.conversions
     FROM campaign
     WHERE segments.date BETWEEN '${range.start}' AND '${range.end}'
-      AND campaign.status = 'ENABLED'
+      AND campaign.status IN ('ENABLED', 'PAUSED')
   `.trim();
 
   const res = await fetch(

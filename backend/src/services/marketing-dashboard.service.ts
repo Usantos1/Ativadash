@@ -5,6 +5,7 @@
 
 import { prisma } from "../utils/prisma.js";
 import { computeGoogleAdsIntegrationUiStatus } from "../utils/google-ads-readiness.js";
+import { fetchGoogleAdsMetrics } from "./google-ads-metrics.service.js";
 import { metaGraphGet, metaGraphGetAllPages, getMetaAppSecret } from "./meta/meta-graph.js";
 import {
   type ActionEntry,
@@ -18,6 +19,36 @@ import {
 
 const META_SLUG = "meta";
 const GOOGLE_SLUG = "google-ads";
+
+/** Gasto Google no período (BRL), mesma fonte que GET /marketing/google-ads/metrics. */
+async function googleSpendBrlForOrg(
+  organizationId: string,
+  range: { start: string; end: string },
+  googleConnected: boolean
+): Promise<number> {
+  if (!googleConnected) return 0;
+  const res = await fetchGoogleAdsMetrics(organizationId, range);
+  return res.ok ? res.summary.costMicros / 1_000_000 : 0;
+}
+
+/** Participação Meta vs Google alinhada ao endpoint de métricas Google (não só Meta 100%). */
+function distributionByPlatform(metaSpendBrl: number, googleSpendBrl: number) {
+  const m = Number.isFinite(metaSpendBrl) ? metaSpendBrl : 0;
+  const g = Number.isFinite(googleSpendBrl) ? googleSpendBrl : 0;
+  const total = m + g;
+  if (total <= 0) {
+    return [
+      { platform: "Meta Ads" as const, spendSharePct: 100, spend: "0.00" },
+      { platform: "Google Ads" as const, spendSharePct: 0, spend: "0.00" },
+    ];
+  }
+  const rows = [
+    { platform: "Meta Ads" as const, spendSharePct: (m / total) * 100, spend: m.toFixed(2) },
+    { platform: "Google Ads" as const, spendSharePct: (g / total) * 100, spend: g.toFixed(2) },
+  ];
+  rows.sort((a, b) => parseFloat(b.spend) - parseFloat(a.spend));
+  return rows;
+}
 
 const HOT_NAME_RE =
   /remarketing|retarget|retargeting|\brmkt\b|quente|warm|carrinho|checkout|compra|venda|purchase|boiler|\bsig\b|vivo|convers/i;
@@ -471,7 +502,7 @@ export async function fetchMarketingDashboardPayload(
         },
         timeseries: [],
         distribution: {
-          byPlatform: [{ platform: "Meta Ads", spendSharePct: 100, spend: "0" }],
+          byPlatform: distributionByPlatform(0, googleSpendBrl),
           byTemperature: [],
           byScore: { A: 0, B: 0, C: 0, D: 0 },
         },
@@ -819,13 +850,15 @@ export async function fetchMarketingDashboardPayload(
       }))
     );
 
+    const googleSpendBrl = await googleSpendBrlForOrg(organizationId, range, googleConnected);
+
     return {
       ok: true,
       range,
       summary,
       timeseries,
       distribution: {
-        byPlatform: [{ platform: "Meta Ads", spendSharePct: 100, spend: sumSpend.toFixed(2) }],
+        byPlatform: distributionByPlatform(sumSpend, googleSpendBrl),
         byTemperature: byTemperature,
         byScore,
       },

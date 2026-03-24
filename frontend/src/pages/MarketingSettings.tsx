@@ -403,18 +403,20 @@ function CustomAlertRulesPanel() {
       ) : null}
 
       <div className="space-y-3">
-        <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Últimos disparos
+        <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/20 p-4 shadow-inner">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Histórico de alertas (API)</p>
+          <p className="text-xs text-muted-foreground">
+            Disparos persistidos pela avaliação de performance (dedupe ~4h por regra). Útil para provar ao cliente o que já
+            foi sinalizado.
           </p>
           {occurrences.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhum disparo registrado ainda.</p>
+            <p className="pt-1 text-sm text-muted-foreground">Nenhum disparo registrado ainda.</p>
           ) : (
-            <ul className="space-y-2 text-sm">
+            <ul className="mt-3 max-h-64 space-y-2 overflow-y-auto text-sm">
               {occurrences.map((o) => (
                 <li
                   key={o.id}
-                  className="rounded-lg border border-border/50 bg-background/80 px-3 py-2"
+                  className="rounded-xl border border-border/55 bg-card px-3 py-2.5 shadow-[var(--shadow-surface-sm)]"
                 >
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <span className="font-medium text-foreground">{o.ruleName}</span>
@@ -662,6 +664,25 @@ export function MarketingSettings() {
     return { target, max, roas, minSpend };
   }, [targetCpaBrl, maxCpaBrl, targetRoas, minSpendForAlertsBrl]);
 
+  function applyMetasPreset(which: "performance" | "escala" | "marca") {
+    if (which === "performance") {
+      setTargetCpaBrl("38");
+      setMaxCpaBrl("62");
+      setTargetRoas("2.8");
+      setMinSpendForAlertsBrl("400");
+    } else if (which === "escala") {
+      setTargetCpaBrl("52");
+      setMaxCpaBrl("88");
+      setTargetRoas("2.2");
+      setMinSpendForAlertsBrl("250");
+    } else {
+      setTargetCpaBrl("75");
+      setMaxCpaBrl("115");
+      setTargetRoas("1.6");
+      setMinSpendForAlertsBrl("900");
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSavedMsg(null);
@@ -787,6 +808,28 @@ export function MarketingSettings() {
               {savedMsg}
             </div>
           ) : null}
+
+          <Card className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.05] to-card shadow-[var(--shadow-surface-sm)]">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">Presets de metas</CardTitle>
+              <CardDescription className="text-xs leading-relaxed">
+                Preenche CPA, ROAS e gasto mínimo com cenários típicos de agência. Nada é gravado até você usar{" "}
+                <span className="font-medium text-foreground">Salvar configurações</span>. A pré-visualização à direita
+                atualiza na hora.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" size="sm" className="rounded-lg" onClick={() => applyMetasPreset("performance")}>
+                Performance apertado
+              </Button>
+              <Button type="button" variant="secondary" size="sm" className="rounded-lg" onClick={() => applyMetasPreset("escala")}>
+                Escala / volume
+              </Button>
+              <Button type="button" variant="secondary" size="sm" className="rounded-lg" onClick={() => applyMetasPreset("marca")}>
+                Marca / awareness
+              </Button>
+            </CardContent>
+          </Card>
 
           <SectionShell
             icon={Target}

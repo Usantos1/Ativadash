@@ -610,9 +610,9 @@ export function Marketing() {
   return (
     <div className="w-full space-y-6">
       <PageHeaderPremium
-        eyebrow="Captação & performance"
+        eyebrow="Cockpit operacional"
         title="Marketing"
-        subtitle="Visão executiva de investimento, captação e retorno — consolidado por lançamento, temperatura de tráfego e período."
+        subtitle="Substitui parte do fluxo do Ads Manager: Meta + Google no mesmo período, com filtros por lançamento, temperatura e ações rápidas nas campanhas."
         meta={
           <>
             {lastUpdated ? (
@@ -685,6 +685,72 @@ export function Marketing() {
         }
       />
 
+      {(hasGoogle || hasMeta) && (
+        <section
+          aria-label="Resumo por rede"
+          className="grid gap-3 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.06] via-card to-muted/25 p-4 shadow-[var(--shadow-surface-sm)] sm:grid-cols-3"
+        >
+          <div className="rounded-xl border border-border/50 bg-card/95 px-4 py-3.5">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Meta Ads</p>
+            <p className="mt-1.5 text-2xl font-bold tabular-nums tracking-tight">
+              {metaMetrics?.ok ? formatSpend(metaMetrics.summary.spend) : "—"}
+            </p>
+            {compareEnabled ? (
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Período anterior:{" "}
+                <span className="font-medium text-foreground">
+                  {cmpMetaMetrics?.ok ? formatSpend(cmpMetaMetrics.summary.spend) : "—"}
+                </span>
+              </p>
+            ) : (
+              <p className="mt-2 text-[11px] text-muted-foreground">Gasto no intervalo selecionado</p>
+            )}
+          </div>
+          <div className="rounded-xl border border-border/50 bg-card/95 px-4 py-3.5">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Google Ads</p>
+            <p className="mt-1.5 text-2xl font-bold tabular-nums tracking-tight">
+              {metrics?.ok ? formatCost(metrics.summary.costMicros) : "—"}
+            </p>
+            {compareEnabled ? (
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Período anterior:{" "}
+                <span className="font-medium text-foreground">
+                  {cmpMetrics?.ok ? formatCost(cmpMetrics.summary.costMicros) : "—"}
+                </span>
+              </p>
+            ) : (
+              <p className="mt-2 text-[11px] text-muted-foreground">Mesma base da tabela consolidada (por campanha)</p>
+            )}
+          </div>
+          <div className="rounded-xl border border-primary/30 bg-primary/[0.09] px-4 py-3.5 sm:flex sm:flex-col sm:justify-center">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-primary">Total em mídia</p>
+            <p className="mt-1.5 text-2xl font-bold tabular-nums tracking-tight text-foreground">
+              {formatSpend(currentSpendBrl)}
+            </p>
+            <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+              {compareEnabled && cmpLoading ? (
+                "Carregando período anterior…"
+              ) : compareEnabled ? (
+                <>
+                  vs anterior{" "}
+                  <span className="font-semibold text-foreground">{formatSpend(prevSpendBrl)}</span>
+                  {prevSpendBrl > 0 ? (
+                    <span className="tabular-nums">
+                      {" "}
+                      (
+                      {currentSpendBrl >= prevSpendBrl ? "+" : ""}
+                      {(((currentSpendBrl - prevSpendBrl) / prevSpendBrl) * 100).toFixed(1)}%)
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                "Ative comparação no calendário para ver variação."
+              )}
+            </p>
+          </div>
+        </section>
+      )}
+
       {adsActionHint ? (
         <div
           className={cn(
@@ -710,6 +776,7 @@ export function Marketing() {
       ) : null}
 
       <FilterBarPremium
+        sticky
         label="Contexto e período"
         footer={
           launchId !== "all" && selectedLaunch ? (
@@ -1094,10 +1161,25 @@ export function Marketing() {
 
           {(metrics?.ok || metaMetrics?.ok) && unifiedCampaignRows.length > 0 && (
             <AnalyticsSection
+              eyebrow="Tabela mestra"
               title="Campanhas consolidadas"
-              description="Visão única Meta + Google, ordenada por investimento. Ideal para revisão executiva e priorização."
+              description="Uma linha por campanha no período (Google agregado por campanha na API). Ordenação por investimento; ações de pausa/orçamento quando o plano permitir."
               dense
             >
+              <div className="mb-3 flex flex-col gap-2 rounded-xl border border-border/60 bg-gradient-to-r from-muted/40 to-background px-3 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
+                <p className="font-medium text-foreground">
+                  <span className="tabular-nums text-lg font-bold">{unifiedCampaignRows.length}</span>{" "}
+                  <span className="text-muted-foreground">campanhas neste recorte</span>
+                </p>
+                <p className="max-w-xl text-muted-foreground">
+                  Filtros de lançamento e temperatura aplicam-se aqui e nos gráficos. Card Google e totais usam a mesma
+                  agregação da API — se algo divergir, confira{" "}
+                  <Link to="/marketing/integracoes" className="font-semibold text-primary underline-offset-4 hover:underline">
+                    Integrações
+                  </Link>
+                  .
+                </p>
+              </div>
               <ScrollRegion className="scrollbar-thin">
                 <DataTablePremium zebra className="min-w-[920px] text-[13px]">
                   <thead>

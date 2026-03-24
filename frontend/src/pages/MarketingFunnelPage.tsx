@@ -56,6 +56,34 @@ const VARIANT_EYEBROW: Record<FunnelVariant, string> = {
   receita: "Funil · monetização",
 };
 
+/** Bloco de foco visível por rota (captação / conversão / receita). */
+const VARIANT_FOCUS: Record<FunnelVariant, { title: string; bullets: string[] }> = {
+  captacao: {
+    title: "Foco desta tela",
+    bullets: [
+      "Rankings de campanha por volume e CPL — o que mais puxa aquisição",
+      "Comparativo com o período anterior quando a comparação estiver ativa",
+      "Temperatura (frio/quente) espelhada da visão Marketing",
+    ],
+  },
+  conversao: {
+    title: "Foco desta tela",
+    bullets: [
+      "Gargalos entre clique → lead → venda com leitura por faixa",
+      "CPA e ROAS lado a lado com alertas de meta",
+      "Campanhas que concentram desperdício ou conversão fraca",
+    ],
+  },
+  receita: {
+    title: "Foco desta tela",
+    bullets: [
+      "Receita atribuída (Google) e valor de compra (Meta) no mesmo recorte",
+      "Diferença explícita entre zero real e dado ausente da API",
+      "Estimativas de composição quando só uma plataforma tem valor",
+    ],
+  },
+};
+
 const VARIANT_COPY: Record<
   FunnelVariant,
   { title: string; subtitle: string; emptyHint: string }
@@ -371,7 +399,26 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
         }
       />
 
+      <div
+        className={cn(
+          "rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/[0.07] via-background to-background px-4 py-3.5 shadow-[var(--shadow-surface-sm)]"
+        )}
+      >
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+          {VARIANT_FOCUS[variant].title}
+        </p>
+        <ul className="mt-2.5 grid gap-2 text-sm leading-snug text-muted-foreground sm:grid-cols-3">
+          {VARIANT_FOCUS[variant].bullets.map((b) => (
+            <li key={b} className="flex gap-2">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/80" aria-hidden />
+              <span>{b}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
       <FilterBarPremium
+        sticky
         label="Contexto e período"
         footer={
           launchId !== "all" && selectedLaunch ? (
@@ -1046,14 +1093,47 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
               />
             </div>
             {attributedRevenue <= 0 && (
-              <div
-                className="mt-4 rounded-xl border border-sky-500/25 bg-sky-500/[0.06] p-4 text-sm leading-relaxed text-muted-foreground dark:bg-sky-950/20"
-                role="status"
-              >
-                <p className="font-semibold text-foreground">Nenhuma receita atribuída neste período</p>
-                <p className="mt-2">
-                  Use a visão <Link to="/marketing/conversao" className="font-medium text-primary underline-offset-4 hover:underline">Conversão</Link> para volume de leads e vendas Meta; confira se o pixel e os valores de conversão estão configurados nas contas.
-                </p>
+              <div className="mt-4 grid gap-3 lg:grid-cols-2" role="status">
+                <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] p-4 text-sm leading-relaxed text-muted-foreground dark:bg-emerald-950/15">
+                  <p className="font-semibold text-foreground">Zero real no período</p>
+                  <p className="mt-2">
+                    Quando Google e Meta respondem com sucesso e a soma de valores atribuídos é R$&nbsp;0,00, o painel está
+                    coerente: não houve valor de conversão rastreado neste recorte (ou as contas não enviam valor nas
+                    conversões).
+                  </p>
+                </div>
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.07] p-4 text-sm leading-relaxed text-muted-foreground dark:bg-amber-950/20">
+                  <p className="font-semibold text-foreground">Indisponível ≠ zero</p>
+                  <div className="mt-2 space-y-2">
+                    {hasGoogle && !metricsLoading && metrics?.ok !== true ? (
+                      <p>
+                        · <strong className="text-foreground">Google Ads:</strong> sem métricas válidas neste momento — a
+                        receita desse canal não entra no total até a API responder ou a integração for corrigida.
+                      </p>
+                    ) : null}
+                    {hasMeta && !metaMetricsLoading && metaMetrics?.ok !== true ? (
+                      <p>
+                        · <strong className="text-foreground">Meta Ads:</strong> sem métricas válidas — compras e valor
+                        podem ficar em branco mesmo com gasto.
+                      </p>
+                    ) : null}
+                    {!(
+                      (hasGoogle && !metricsLoading && metrics?.ok !== true) ||
+                      (hasMeta && !metaMetricsLoading && metaMetrics?.ok !== true)
+                    ) ? (
+                      <p>
+                        Nenhuma indisponibilidade detectada para os canais conectados. Use{" "}
+                        <Link
+                          to="/marketing/conversao"
+                          className="font-medium text-primary underline-offset-4 hover:underline"
+                        >
+                          Conversão
+                        </Link>{" "}
+                        para volume de leads/vendas e confira pixel e valores de conversão nas contas.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
               </div>
             )}
             {attributedRevenue > 0 && (

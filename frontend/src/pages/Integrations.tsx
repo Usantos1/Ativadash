@@ -38,6 +38,7 @@ import { AnalyticsPageHeader } from "@/components/analytics/AnalyticsPageHeader"
 import { AnalyticsSection } from "@/components/analytics/AnalyticsSection";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { IntegrationHealth } from "@/components/integrations/IntegrationCard";
+import { StatusBadge } from "@/components/premium";
 
 export type IntegrationId =
   | "google-ads"
@@ -138,6 +139,22 @@ function formatLastSync(iso: string | null): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function formatSyncDetailed(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "medium" });
+  } catch {
+    return "—";
+  }
+}
+
+function healthTone(h: IntegrationHealth | undefined, connected: boolean): "healthy" | "alert" | "disconnected" {
+  if (!connected) return "disconnected";
+  if (h === "healthy") return "healthy";
+  if (h === "warning") return "alert";
+  return "disconnected";
 }
 
 function AtivaCrmIntegrationPanel({
@@ -589,6 +606,7 @@ export function Integrations() {
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [sessionEvents, setSessionEvents] = useState<{ t: number; kind: "ok" | "err"; text: string }[]>([]);
   const [clients, setClients] = useState<ClientAccount[]>([]);
 
   const refetchIntegrations = useCallback(async () => {
@@ -662,6 +680,12 @@ export function Integrations() {
       }, { replace: true });
     }
   }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!message) return;
+    const kind: "ok" | "err" = message.type === "success" ? "ok" : "err";
+    setSessionEvents((prev) => [{ t: Date.now(), kind, text: message.text }, ...prev].slice(0, 8));
+  }, [message]);
 
   const connectedBySlug = new Map(list.filter((i) => i.status === "connected").map((i) => [i.slug, i]));
 
@@ -884,6 +908,86 @@ export function Integrations() {
               </div>
             ) : (
               <>
+                <Card className="mb-6 rounded-2xl border-primary/15 bg-gradient-to-br from-primary/[0.04] to-card shadow-[var(--shadow-surface-sm)]">
+                  <CardHeader className="pb-2">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <CardTitle className="text-base font-semibold">Saúde das APIs de mídia</CardTitle>
+                        <CardDescription className="text-xs leading-relaxed">
+                          Cobertura no Marketing e no dashboard usa as contas vinculadas por OAuth (uma Google e uma Meta por
+                          organização). Vincule cada card a um cliente comercial para segmentar relatórios e cobrança.
+                        </CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {(
+                        [
+                          { slug: "google-ads" as const, label: "Google Ads" },
+                          { slug: "meta" as const, label: "Meta Ads" },
+                        ] as const
+                      ).map(({ slug, label }) => {
+                        const row = connectedBySlug.get(slug);
+                        const connected = !!row;
+                        const h = connected ? healthFromLastSync(row.lastSyncAt) : undefined;
+                        const tone = healthTone(h, connected);
+                        return (
+                          <div
+                            key={slug}
+                            className="rounded-xl border border-border/60 bg-background/90 px-3 py-3 shadow-inner"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-sm font-semibold text-foreground">{label}</span>
+                              <StatusBadge tone={tone} dot>
+                                {connected
+                                  ? tone === "healthy"
+                                    ? "Sincronizado recente"
+                                    : tone === "alert"
+                                      ? "Revisar token / sync"
+                                      : "Aguardando primeira sync"
+                                  : "Desconectado"}
+                              </StatusBadge>
+                            </div>
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              Última atividade OAuth/API:{" "}
+                              <span className="font-mono tabular-nums text-foreground/90">
+                                {connected ? formatSyncDetailed(row.lastSyncAt) : "—"}
+                              </span>
+                            </p>
+                            {connected && row.platform ? (
+                              <p className="mt-1 text-[11px] text-muted-foreground">
+                                Conta na API: <span className="font-medium text-foreground/80">{row.platform}</span>
+                              </p>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {sessionEvents.length > 0 ? (
+                      <div className="rounded-xl border border-border/50 bg-muted/25 px-3 py-2.5">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Últimos eventos nesta sessão
+                        </p>
+                        <ul className="mt-2 max-h-36 space-y-1.5 overflow-y-auto text-xs">
+                          {sessionEvents.map((ev, idx) => (
+                            <li
+                              key={`${ev.t}-${idx}-${ev.text.slice(0, 24)}`}
+                              className={
+                                ev.kind === "err"
+                                  ? "rounded-md border border-destructive/25 bg-destructive/[0.06] px-2 py-1.5 text-destructive"
+                                  : "rounded-md border border-emerald-500/20 bg-emerald-500/[0.06] px-2 py-1.5 text-emerald-900 dark:text-emerald-100/90"
+                              }
+                            >
+                              {ev.text}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+
                 <div className="space-y-6">
                   {filteredNow.length > 0 && (
                     <AnalyticsSection title={IX.disponiveisAgora} description={IX.sectionDisponiveisDesc} dense>

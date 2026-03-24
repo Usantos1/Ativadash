@@ -42,10 +42,12 @@ const shellInteractive = cn(
 
 function OrgFace({
   name,
+  subtitleLine,
   loading,
   showChevron,
 }: {
   name: string;
+  subtitleLine: string;
   loading: boolean;
   showChevron: boolean;
 }) {
@@ -61,7 +63,7 @@ function OrgFace({
       <span className="min-w-0 flex-1 text-left leading-none">
         <span className="block truncate text-[13px] font-semibold tracking-tight text-foreground">{name}</span>
         <span className="mt-0.5 block truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/75">
-          Workspace
+          {subtitleLine}
         </span>
       </span>
       {showChevron ? (
@@ -85,6 +87,8 @@ export function OrganizationSwitcher() {
   const options = collectOptions(currentOrgId, memberships, managed);
   const displayName = user.organization?.name ?? "Empresa";
   const canSwitch = options.length > 1;
+  const membership = memberships?.find((m) => m.organizationId === currentOrgId);
+  const workspaceSubtitle = membership ? `Ativo · ${membership.role}` : "Workspace";
 
   async function onSelect(organizationId: string) {
     if (organizationId === currentOrgId || loading) return;
@@ -119,7 +123,7 @@ export function OrganizationSwitcher() {
         role="status"
         aria-label={`Organização ativa: ${displayName}`}
       >
-        <OrgFace name={displayName} loading={false} showChevron={false} />
+        <OrgFace name={displayName} subtitleLine={workspaceSubtitle} loading={false} showChevron={false} />
       </div>
     );
   }
@@ -136,7 +140,7 @@ export function OrganizationSwitcher() {
           disabled={loading}
           aria-label="Trocar organização"
         >
-          <OrgFace name={displayName} loading={loading} showChevron={!loading} />
+          <OrgFace name={displayName} subtitleLine={workspaceSubtitle} loading={loading} showChevron={!loading} />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

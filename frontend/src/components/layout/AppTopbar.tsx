@@ -3,9 +3,11 @@ import { Link, useLocation } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SidebarHeaderControl } from "@/components/layout/Sidebar";
-import { OrganizationSwitcher } from "@/components/layout/OrganizationSwitcher";
+import { WorkspaceSwitcher } from "@/components/layout/WorkspaceSwitcher";
 import { TopbarActions } from "@/components/layout/TopbarActions";
 import { resolveTopbarCrumbs } from "@/components/layout/topbar-crumbs";
+import { useAuthStore } from "@/stores/auth-store";
+import { executiveGreetingLine } from "@/lib/display-name";
 
 export function AppTopbar({
   sidebarCollapsed,
@@ -18,6 +20,13 @@ export function AppTopbar({
 }) {
   const { pathname } = useLocation();
   const crumbs = useMemo(() => resolveTopbarCrumbs(pathname), [pathname]);
+  const user = useAuthStore((s) => s.user);
+  const greeting = executiveGreetingLine(user);
+  const contextLabel = useMemo(() => {
+    if (crumbs.length === 0) return "Área de trabalho";
+    const last = crumbs[crumbs.length - 1];
+    return last?.label ?? "Área de trabalho";
+  }, [crumbs]);
 
   return (
     <header
@@ -34,8 +43,15 @@ export function AppTopbar({
           <SidebarHeaderControl onMobileOpen={onMobileOpen} />
           <span className="hidden h-6 w-px shrink-0 bg-border/70 md:block" aria-hidden />
           <div className="min-w-0 max-w-[min(100vw-12rem,280px)] sm:max-w-[min(100vw-14rem,300px)]">
-            <OrganizationSwitcher />
+            <WorkspaceSwitcher />
           </div>
+        </div>
+
+        <div className="hidden min-w-0 max-w-[200px] flex-col px-1 lg:flex xl:max-w-[240px]">
+          <span className="truncate text-xs font-semibold leading-tight text-foreground">{greeting}</span>
+          <span className="truncate text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/90">
+            {contextLabel}
+          </span>
         </div>
 
         {/* Centro: breadcrumb */}

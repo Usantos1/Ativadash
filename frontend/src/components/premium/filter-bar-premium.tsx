@@ -8,16 +8,21 @@ export function FilterBarPremium({
   children,
   footer,
   className,
+  sticky,
 }: {
   label?: string;
   children: ReactNode;
   footer?: ReactNode;
   className?: string;
+  /** Gruda abaixo da topbar em viewports largas (cockpit operacional). */
+  sticky?: boolean;
 }) {
   return (
     <div
       className={cn(
         "rounded-2xl border border-border/60 bg-gradient-to-b from-card via-card to-muted/20 shadow-[var(--shadow-surface)]",
+        sticky &&
+          "lg:sticky lg:top-[calc(3rem+0.75rem+env(safe-area-inset-top,0px))] lg:z-10 lg:backdrop-blur-md lg:supports-[backdrop-filter]:bg-card/92",
         className
       )}
     >

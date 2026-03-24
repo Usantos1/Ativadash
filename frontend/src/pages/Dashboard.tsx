@@ -95,6 +95,7 @@ export function Dashboard() {
     hasGoogle,
     hasMeta,
     metrics,
+    cmpMetrics,
     cmpMetaMetrics,
     cmpLoading,
     metricsLoading,
@@ -125,7 +126,11 @@ export function Dashboard() {
   const summary = metaOk ? dash.summary : null;
 
   const metaSpend = summary?.spend ?? 0;
+  const googleSpendBrl = googleOk ? metrics.summary.costMicros / 1_000_000 : 0;
+  const blendedInvestBrl = metaSpend + googleSpendBrl;
   const cmpMetaSpend = cmpMetaMetrics?.ok ? cmpMetaMetrics.summary.spend : 0;
+  const cmpGoogleSpendBrl = cmpMetrics?.ok ? cmpMetrics.summary.costMicros / 1_000_000 : 0;
+  const cmpBlendedInvestBrl = cmpMetaSpend + cmpGoogleSpendBrl;
 
   const hasAnyChannel = hasGoogle || hasMeta;
 
@@ -332,14 +337,30 @@ export function Dashboard() {
                 </span>
               ) : null}
               <h2 className="px-0.5 text-lg font-bold tracking-tight text-foreground">Indicadores principais</h2>
+              {googleOk ? (
+                <p className="px-0.5 text-xs leading-relaxed text-muted-foreground">
+                  Investimento total = Meta (painel) + Google Ads, alinhado ao gráfico "Plataforma · investimento". Demais KPIs
+                  desta faixa continuam da Meta.
+                </p>
+              ) : null}
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
                 <KpiCardPremium
                   variant="primary"
                   label="Investimento"
-                  value={formatSpend(metaSpend)}
+                  value={formatSpend(googleOk ? blendedInvestBrl : metaSpend)}
                   icon={DollarSign}
                   hideSource
-                  delta={relDelta(metaSpend, cmpMetaSpend, compareEnabled)}
+                  hint={
+                    googleOk
+                      ? "Soma Meta (painel) + Google Ads no período — mesma base do card «Plataforma · investimento»."
+                      : "Gasto Meta no período. Conecte o Google Ads para ver investimento unificado."
+                  }
+                  hintAsTooltip
+                  delta={relDelta(
+                    googleOk ? blendedInvestBrl : metaSpend,
+                    googleOk ? cmpBlendedInvestBrl : cmpMetaSpend,
+                    compareEnabled
+                  )}
                 />
                 <KpiCardPremium
                   variant="primary"
@@ -416,6 +437,22 @@ export function Dashboard() {
                 <div className="mt-3 rounded-lg border border-border/40 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                   {cmpLoading ? (
                     "Carregando período anterior…"
+                  ) : googleOk ? (
+                    cmpBlendedInvestBrl <= 0 && blendedInvestBrl <= 0 ? (
+                      "Comparação ativa — sem gasto Meta+Google nos dois períodos."
+                    ) : (
+                      <>
+                        <span className="font-medium text-foreground">Investimento total período anterior:</span>{" "}
+                        <span className="tabular-nums text-foreground">{formatSpend(cmpBlendedInvestBrl)}</span>
+                        {blendedInvestBrl > 0 && cmpBlendedInvestBrl > 0 ? (
+                          <>
+                            {" "}
+                            ({blendedInvestBrl >= cmpBlendedInvestBrl ? "+" : ""}
+                            {(((blendedInvestBrl - cmpBlendedInvestBrl) / cmpBlendedInvestBrl) * 100).toFixed(1)}%)
+                          </>
+                        ) : null}
+                      </>
+                    )
                   ) : cmpMetaSpend <= 0 && metaSpend <= 0 ? (
                     "Comparação ativa — sem gasto Meta nos dois períodos."
                   ) : (
