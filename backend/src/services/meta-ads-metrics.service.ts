@@ -828,3 +828,31 @@ export async function updateMetaCampaignStatus(
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
 }
+
+/**
+ * Define orçamento diário da campanha (Marketing API).
+ * `dailyBudgetMajorUnits`: valor na moeda principal (ex.: 120.5 BRL); enviado à Meta em unidade mínima (centavos × 100).
+ */
+export async function updateMetaCampaignDailyBudget(
+  organizationId: string,
+  metaCampaignId: string,
+  dailyBudgetMajorUnits: number
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const config = await getMetaAdsConfig(organizationId);
+  if (!config?.access_token) {
+    return { ok: false, message: "Meta Ads não conectado." };
+  }
+  const appSecret = env.META_APP_SECRET;
+  if (!appSecret) {
+    return { ok: false, message: "META_APP_SECRET não configurado." };
+  }
+  const minor = Math.max(1, Math.round(dailyBudgetMajorUnits * 100));
+  try {
+    await graphPost(`/${metaCampaignId}`, config.access_token, appSecret, {
+      daily_budget: String(minor),
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}

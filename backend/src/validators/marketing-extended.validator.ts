@@ -14,6 +14,7 @@ export const googleCampaignStatusContractSchema = z.object({
   status: z.enum(["ENABLED", "PAUSED"]),
 });
 
+/** Valor na moeda da conta (ex.: BRL inteiro ou com centavos); o servidor converte para unidade mínima da Meta. */
 export const metaCampaignBudgetContractSchema = z.object({
-  dailyBudget: z.number().positive().optional(),
+  dailyBudget: z.number().positive(),
 });

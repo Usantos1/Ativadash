@@ -3,10 +3,12 @@ import { useAuthStore } from "@/stores/auth-store";
 import type { MetricsDateRange } from "@/lib/integrations-api";
 import type { MarketingDashboardPayload, MarketingDashboardSummary } from "@/lib/marketing-dashboard-api";
 import {
+  fetchMarketingSummaryContract,
+  fetchMarketingTimeseriesContract,
+} from "@/lib/marketing-contract-api";
+import {
   fetchMarketingDashboardIntegrationStatus,
   fetchMarketingDashboardPerformance,
-  fetchMarketingDashboardSummary,
-  fetchMarketingDashboardTimeseries,
 } from "@/lib/marketing-dashboard-api";
 
 export type DashboardBlockKey = "summary" | "timeseries" | "performance" | "integration";
@@ -153,8 +155,8 @@ export function useMarketingDashboardBlocks(hasMeta: boolean, dateRange: Metrics
       });
 
       const [sumRes, tsRes, perfRes, integRes] = await Promise.all([
-        fetchMarketingDashboardSummary(dateRange, refresh),
-        fetchMarketingDashboardTimeseries(dateRange, refresh),
+        fetchMarketingSummaryContract(dateRange, refresh),
+        fetchMarketingTimeseriesContract(dateRange, refresh),
         fetchMarketingDashboardPerformance(dateRange, refresh),
         fetchMarketingDashboardIntegrationStatus(dateRange, refresh),
       ]);
@@ -179,7 +181,7 @@ export function useMarketingDashboardBlocks(hasMeta: boolean, dateRange: Metrics
       }));
 
       if (tsRes.ok) {
-        setSlice((s) => ({ ...s, timeseries: tsRes.timeseries }));
+        setSlice((s) => ({ ...s, timeseries: tsRes.points }));
         setBlocks((b) => ({ ...b, timeseries: { ...b.timeseries, loading: false, refreshing: false, error: null } }));
       } else {
         setBlocks((b) => ({
@@ -225,7 +227,7 @@ export function useMarketingDashboardBlocks(hasMeta: boolean, dateRange: Metrics
           ok: true,
           range: sumRes.range,
           summary: sumRes.summary,
-          timeseries: tsRes.timeseries,
+          timeseries: tsRes.points,
           distribution: sumRes.distribution,
           performanceByLevel: perfRes.performanceByLevel,
           integrationStatus: integRes.integrationStatus,

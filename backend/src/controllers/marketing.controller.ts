@@ -16,6 +16,7 @@ import {
   fetchMetaAdLevelMetrics,
   fetchMetaAgeGenderBreakdown,
   updateMetaCampaignStatus,
+  updateMetaCampaignDailyBudget,
 } from "../services/meta-ads-metrics.service.js";
 import { userCanReadMarketing, assertCanMutateAds } from "../services/marketing-permissions.service.js";
 import { upsertMetricsSnapshot, getLatestMetricsSnapshot } from "../services/metrics-snapshot.service.js";
@@ -436,9 +437,10 @@ export async function patchMetaCampaignStatusContractHandler(req: Request, res: 
   return applyMetaCampaignStatusChange(req, res, userId, organizationId, externalId, parsed.data.status);
 }
 
-/** Contrato: PATCH /marketing/meta/campaigns/:externalId/budget — roadmap */
+/** Contrato: PATCH /marketing/meta/campaigns/:externalId/budget */
 export async function patchMetaCampaignBudgetContractHandler(req: Request, res: Response) {
   const { userId, organizationId } = (req as AuthRequest).user;
+  const { externalId } = req.params;
   const parsed = metaCampaignBudgetContractSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ message: "Dados inválidos" });
@@ -448,10 +450,21 @@ export async function patchMetaCampaignBudgetContractHandler(req: Request, res: 
   } catch (e) {
     return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
   }
-  return res.status(501).json({
-    ok: false,
-    message: "Ajuste de orçamento de campanha Meta via API ainda não está habilitado nesta versão.",
-  });
+  const out = await updateMetaCampaignDailyBudget(organizationId, externalId, parsed.data.dailyBudget);
+  if (!out.ok) {
+    return res.status(400).json({ ok: false, message: out.message });
+  }
+  await appendAuditLog({
+    actorUserId: userId,
+    organizationId,
+    action: "media.meta.campaign.budget",
+    entityType: "MetaCampaign",
+    entityId: externalId,
+    metadata: { dailyBudget: parsed.data.dailyBudget },
+    ip: req.ip,
+    userAgent: req.get("user-agent") ?? undefined,
+  }).catch((err) => console.error("[audit] media.meta.campaign.budget", err));
+  return res.json({ ok: true });
 }
 
 /** Contrato: PATCH /marketing/google/campaigns/:externalId/status */
@@ -469,7 +482,20 @@ export async function patchGoogleCampaignStatusContractHandler(req: Request, res
   }
   const enabled = parsed.data.status === "ENABLED";
   const out = await mutateGoogleCampaignStatus(organizationId, externalId, enabled);
-  return res.status(501).json(out);
+  if (!out.ok) {
+    return res.status(400).json({ ok: false, message: out.message });
+  }
+  await appendAuditLog({
+    actorUserId: userId,
+    organizationId,
+    action: "media.google.campaign.status",
+    entityType: "GoogleAdsCampaign",
+    entityId: externalId,
+    metadata: { status: parsed.data.status },
+    ip: req.ip,
+    userAgent: req.get("user-agent") ?? undefined,
+  }).catch((err) => console.error("[audit] media.google.campaign.status", err));
+  return res.json({ ok: true });
 }
 
 export async function getGoogleAdGroupsHandler(req: Request, res: Response) {
@@ -583,6 +609,7 @@ export async function getMarketingSummaryContractHandler(req: Request, res: Resp
       summary: result.summary,
       derived: result.summary.derived,
       compare: null,
+      distribution: result.distribution,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

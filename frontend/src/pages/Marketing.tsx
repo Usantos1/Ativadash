@@ -14,11 +14,18 @@ import {
   UserPlus,
   TrendingUp,
   Pencil,
+  Pause,
+  Play,
+  Wallet,
+  Loader2,
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createColumnHelper } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -51,6 +58,13 @@ import { useMarketingMetrics } from "@/hooks/useMarketingMetrics";
 import { PerformanceAlerts } from "@/components/marketing/PerformanceAlerts";
 import { fetchLaunches, fetchGoals, type LaunchRow } from "@/lib/workspace-api";
 import { fetchMarketingSettings, type MarketingSettingsDto } from "@/lib/marketing-settings-api";
+import { useAuthStore } from "@/stores/auth-store";
+import {
+  patchMarketingGoogleCampaignStatus,
+  patchMarketingMetaCampaignBudget,
+  patchMarketingMetaCampaignStatus,
+} from "@/lib/marketing-contract-api";
+import { canUserMutateMarketingAds } from "@/lib/marketing-ads-permissions";
 import {
   type TempFilter,
   aggregateGoogle,
@@ -77,60 +91,6 @@ function relDelta(
   if (!compareEnabled || prev <= 0 || !Number.isFinite(current) || !Number.isFinite(prev)) return undefined;
   return { pct: ((current - prev) / prev) * 100 };
 }
-
-const columnHelper = createColumnHelper<MetaAdsCampaignRow>();
-const metaAdsCampaignColumns = [
-  columnHelper.accessor("campaignName", {
-    header: "Campanha",
-    cell: (ctx) => <span className="font-medium">{ctx.getValue() || "—"}</span>,
-  }),
-  columnHelper.accessor("impressions", {
-    header: "Impressões",
-    cell: (ctx) => formatNumber(ctx.getValue()),
-  }),
-  columnHelper.accessor("clicks", {
-    header: "Cliques",
-    cell: (ctx) => formatNumber(ctx.getValue()),
-  }),
-  columnHelper.accessor("spend", {
-    header: "Gasto",
-    cell: (ctx) => formatSpend(ctx.getValue()),
-  }),
-  columnHelper.accessor("leads", {
-    header: "Leads",
-    cell: (ctx) => formatNumber(ctx.getValue() ?? 0),
-  }),
-  columnHelper.accessor("purchases", {
-    header: "Vendas",
-    cell: (ctx) => formatNumber(ctx.getValue() ?? 0),
-  }),
-  columnHelper.display({
-    id: "valorVendas",
-    header: "Valor vendas",
-    cell: (ctx) => {
-      const v = ctx.row.original.purchaseValue;
-      return v != null && v > 0 ? formatSpend(v) : "—";
-    },
-  }),
-  columnHelper.display({
-    id: "ctr",
-    header: "CTR",
-    cell: (ctx) => {
-      const imp = ctx.row.original.impressions;
-      const clk = ctx.row.original.clicks;
-      return imp > 0 ? `${((clk / imp) * 100).toFixed(2)}%` : "—";
-    },
-  }),
-  columnHelper.display({
-    id: "cpc",
-    header: "CPC",
-    cell: (ctx) => {
-      const clk = ctx.row.original.clicks;
-      const sp = ctx.row.original.spend;
-      return clk > 0 ? formatSpend(sp / clk) : "—";
-    },
-  }),
-];
 
 export function Marketing() {
   const navigate = useNavigate();
@@ -161,12 +121,27 @@ export function Marketing() {
     insightLoading,
   } = useMarketingMetrics();
 
+  const user = useAuthStore((s) => s.user);
+  const memberships = useAuthStore((s) => s.memberships);
+
   const [launches, setLaunches] = useState<LaunchRow[]>([]);
   const [launchId, setLaunchId] = useState<string>("all");
   const [tempFilter, setTempFilter] = useState<TempFilter>("geral");
   const [settings, setSettings] = useState<MarketingSettingsDto | null>(null);
   const [leadGoalTarget, setLeadGoalTarget] = useState<number | null>(null);
   const [shareHint, setShareHint] = useState<string | null>(null);
+  const [adsActionHint, setAdsActionHint] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
+  const [mutatingAdsKey, setMutatingAdsKey] = useState<string | null>(null);
+  const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
+  const [budgetTarget, setBudgetTarget] = useState<{ id: string; name: string } | null>(null);
+  const [budgetInput, setBudgetInput] = useState("");
+  const [budgetSaving, setBudgetSaving] = useState(false);
+
+  const membershipRole = useMemo(() => {
+    if (!user?.organizationId) return null;
+    return memberships?.find((m) => m.organizationId === user.organizationId)?.role ?? null;
+  }, [user?.organizationId, memberships]);
+  const canMutateAds = canUserMutateMarketingAds(membershipRole);
 
   useEffect(() => {
     let c = false;
@@ -201,6 +176,203 @@ export function Marketing() {
     [launches, launchId]
   );
   const launchNameForFilter = selectedLaunch?.name ?? null;
+
+  const runMetaStatus = useCallback(
+    async (id: string, status: "PAUSED" | "ACTIVE") => {
+      const key = `meta:${id}:${status}`;
+      setMutatingAdsKey(key);
+      setAdsActionHint(null);
+      try {
+        await patchMarketingMetaCampaignStatus(id, status);
+        setAdsActionHint({
+          tone: "ok",
+          text: status === "PAUSED" ? "Campanha Meta pausada." : "Campanha Meta ativada.",
+        });
+        refreshAll();
+      } catch (e) {
+        setAdsActionHint({
+          tone: "err",
+          text: e instanceof Error ? e.message : "Não foi possível alterar a campanha na Meta.",
+        });
+      } finally {
+        setMutatingAdsKey(null);
+      }
+    },
+    [refreshAll]
+  );
+
+  const runGoogleStatus = useCallback(
+    async (id: string, status: "ENABLED" | "PAUSED") => {
+      setMutatingAdsKey(`google:${id}:${status}`);
+      setAdsActionHint(null);
+      try {
+        await patchMarketingGoogleCampaignStatus(id, status);
+        setAdsActionHint({
+          tone: "ok",
+          text: status === "PAUSED" ? "Campanha Google pausada." : "Campanha Google ativada.",
+        });
+        refreshAll();
+      } catch (e) {
+        setAdsActionHint({
+          tone: "err",
+          text: e instanceof Error ? e.message : "Não foi possível alterar a campanha no Google.",
+        });
+      } finally {
+        setMutatingAdsKey(null);
+      }
+    },
+    [refreshAll]
+  );
+
+  const openBudgetDialog = useCallback((id: string, name: string) => {
+    setBudgetTarget({ id, name });
+    setBudgetInput("");
+    setBudgetDialogOpen(true);
+    setAdsActionHint(null);
+  }, []);
+
+  const submitMetaBudget = useCallback(async () => {
+    if (!budgetTarget) return;
+    const v = parseFloat(budgetInput.replace(",", "."));
+    if (!Number.isFinite(v) || v <= 0) {
+      setAdsActionHint({ tone: "err", text: "Informe um valor diário maior que zero." });
+      return;
+    }
+    setBudgetSaving(true);
+    setAdsActionHint(null);
+    try {
+      await patchMarketingMetaCampaignBudget(budgetTarget.id, v);
+      setAdsActionHint({ tone: "ok", text: "Orçamento diário da campanha Meta atualizado." });
+      setBudgetDialogOpen(false);
+      setBudgetTarget(null);
+      refreshAll();
+    } catch (e) {
+      setAdsActionHint({
+        tone: "err",
+        text: e instanceof Error ? e.message : "Não foi possível atualizar o orçamento.",
+      });
+    } finally {
+      setBudgetSaving(false);
+    }
+  }, [budgetTarget, budgetInput, refreshAll]);
+
+  const metaAdsCampaignColumns = useMemo(() => {
+    const columnHelper = createColumnHelper<MetaAdsCampaignRow>();
+    const cols = [
+      columnHelper.accessor("campaignName", {
+        header: "Campanha",
+        cell: (ctx) => <span className="font-medium">{ctx.getValue() || "—"}</span>,
+      }),
+      columnHelper.accessor("impressions", {
+        header: "Impressões",
+        cell: (ctx) => formatNumber(ctx.getValue()),
+      }),
+      columnHelper.accessor("clicks", {
+        header: "Cliques",
+        cell: (ctx) => formatNumber(ctx.getValue()),
+      }),
+      columnHelper.accessor("spend", {
+        header: "Gasto",
+        cell: (ctx) => formatSpend(ctx.getValue()),
+      }),
+      columnHelper.accessor("leads", {
+        header: "Leads",
+        cell: (ctx) => formatNumber(ctx.getValue() ?? 0),
+      }),
+      columnHelper.accessor("purchases", {
+        header: "Vendas",
+        cell: (ctx) => formatNumber(ctx.getValue() ?? 0),
+      }),
+      columnHelper.display({
+        id: "valorVendas",
+        header: "Valor vendas",
+        cell: (ctx) => {
+          const v = ctx.row.original.purchaseValue;
+          return v != null && v > 0 ? formatSpend(v) : "—";
+        },
+      }),
+      columnHelper.display({
+        id: "ctr",
+        header: "CTR",
+        cell: (ctx) => {
+          const imp = ctx.row.original.impressions;
+          const clk = ctx.row.original.clicks;
+          return imp > 0 ? `${((clk / imp) * 100).toFixed(2)}%` : "—";
+        },
+      }),
+      columnHelper.display({
+        id: "cpc",
+        header: "CPC",
+        cell: (ctx) => {
+          const clk = ctx.row.original.clicks;
+          const sp = ctx.row.original.spend;
+          return clk > 0 ? formatSpend(sp / clk) : "—";
+        },
+      }),
+    ];
+    if (canMutateAds) {
+      cols.push(
+        columnHelper.display({
+          id: "acoes",
+          header: "Ações",
+          cell: (ctx) => {
+            const row = ctx.row.original;
+            const id = row.campaignId;
+            if (!id) {
+              return <span className="text-xs text-muted-foreground">—</span>;
+            }
+            const busy = mutatingAdsKey?.startsWith(`meta:${id}:`) ?? false;
+            return (
+              <div className="flex flex-wrap items-center gap-0.5">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  title="Pausar campanha"
+                  disabled={busy}
+                  onClick={() => void runMetaStatus(id, "PAUSED")}
+                >
+                  {busy && mutatingAdsKey === `meta:${id}:PAUSED` ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Pause className="h-4 w-4" />
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  title="Ativar campanha"
+                  disabled={busy}
+                  onClick={() => void runMetaStatus(id, "ACTIVE")}
+                >
+                  {busy && mutatingAdsKey === `meta:${id}:ACTIVE` ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Play className="h-4 w-4" />
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  title="Orçamento diário (Meta)"
+                  disabled={busy}
+                  onClick={() => openBudgetDialog(id, row.campaignName || id)}
+                >
+                  <Wallet className="h-4 w-4" />
+                </Button>
+              </div>
+            );
+          },
+        })
+      );
+    }
+    return cols;
+  }, [canMutateAds, mutatingAdsKey, openBudgetDialog, runMetaStatus]);
 
   const googleDaily = metrics?.ok ? metrics.daily ?? [] : [];
   const metaDaily = metaMetrics?.ok ? metaMetrics.daily ?? [] : [];
@@ -278,6 +450,7 @@ export function Marketing() {
     const out: {
       channel: "Google" | "Meta";
       campaignName: string;
+      externalId?: string;
       spend: number;
       impressions: number;
       clicks: number;
@@ -289,6 +462,7 @@ export function Marketing() {
       out.push({
         channel: "Google",
         campaignName: r.campaignName,
+        externalId: r.campaignId,
         spend: r.costMicros / 1_000_000,
         impressions: r.impressions,
         clicks: r.clicks,
@@ -301,6 +475,7 @@ export function Marketing() {
       out.push({
         channel: "Meta",
         campaignName: r.campaignName,
+        externalId: r.campaignId,
         spend: r.spend,
         impressions: r.impressions,
         clicks: r.clicks,
@@ -491,6 +666,20 @@ export function Marketing() {
           ) : null
         }
       />
+
+      {adsActionHint ? (
+        <div
+          className={cn(
+            "rounded-xl border px-4 py-3 text-sm",
+            adsActionHint.tone === "ok"
+              ? "border-emerald-500/35 bg-emerald-500/[0.08] text-foreground"
+              : "border-destructive/40 bg-destructive/10 text-destructive"
+          )}
+          role="status"
+        >
+          {adsActionHint.text}
+        </div>
+      ) : null}
 
       <FilterBarPremium
         label="Contexto e período"
@@ -897,6 +1086,7 @@ export function Marketing() {
                       <th className="text-right">Receita</th>
                       <th className="text-right">CPA</th>
                       <th className="text-right">ROAS</th>
+                      {canMutateAds ? <th className="text-right">Ações</th> : null}
                     </tr>
                   </thead>
                   <tbody>
@@ -906,6 +1096,9 @@ export function Marketing() {
                       const leadish = row.leads + row.sales;
                       const cpa = leadish > 0 ? row.spend / leadish : null;
                       const roasRow = row.spend > 0 && row.revenue > 0 ? row.revenue / row.spend : null;
+                      const ext = row.externalId;
+                      const gBusy = ext && mutatingAdsKey?.startsWith(`google:${ext}:`);
+                      const mBusy = ext && mutatingAdsKey?.startsWith(`meta:${ext}:`);
                       return (
                         <tr key={`${row.channel}-${row.campaignName}-${i}`}>
                           <td className="text-left">
@@ -939,6 +1132,90 @@ export function Marketing() {
                           <td className="text-right tabular-nums font-medium">
                             {roasRow != null ? `${roasRow.toFixed(2)}x` : "—"}
                           </td>
+                          {canMutateAds ? (
+                            <td className="text-right">
+                              {row.channel === "Meta" && ext ? (
+                                <div className="inline-flex items-center justify-end gap-0.5">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    title="Pausar (Meta)"
+                                    disabled={!!mBusy}
+                                    onClick={() => void runMetaStatus(ext, "PAUSED")}
+                                  >
+                                    {mBusy && mutatingAdsKey === `meta:${ext}:PAUSED` ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Pause className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    title="Ativar (Meta)"
+                                    disabled={!!mBusy}
+                                    onClick={() => void runMetaStatus(ext, "ACTIVE")}
+                                  >
+                                    {mBusy && mutatingAdsKey === `meta:${ext}:ACTIVE` ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Play className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    title="Orçamento diário"
+                                    disabled={!!mBusy}
+                                    onClick={() => openBudgetDialog(ext, row.campaignName)}
+                                  >
+                                    <Wallet className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              ) : row.channel === "Google" && ext ? (
+                                <div className="inline-flex items-center justify-end gap-0.5">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    title="Pausar (Google)"
+                                    disabled={!!gBusy}
+                                    onClick={() => void runGoogleStatus(ext, "PAUSED")}
+                                  >
+                                    {gBusy && mutatingAdsKey === `google:${ext}:PAUSED` ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Pause className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    title="Ativar (Google)"
+                                    disabled={!!gBusy}
+                                    onClick={() => void runGoogleStatus(ext, "ENABLED")}
+                                  >
+                                    {gBusy && mutatingAdsKey === `google:${ext}:ENABLED` ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Play className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                            </td>
+                          ) : null}
                         </tr>
                       );
                     })}
@@ -1107,6 +1384,9 @@ export function Marketing() {
                                       <th className="pb-2 font-medium text-right">Custo</th>
                                       <th className="pb-2 font-medium text-right">Conversões</th>
                                       <th className="pb-2 font-medium text-right">Valor conv.</th>
+                                      {canMutateAds ? (
+                                        <th className="pb-2 text-right font-medium">Ações</th>
+                                      ) : null}
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -1116,16 +1396,63 @@ export function Marketing() {
                                           campaignMatchesLaunch(row.campaignName, launchNameForFilter) &&
                                           matchesTempFilter(row.campaignName, tempFilter)
                                       )
-                                      .map((row, i) => (
-                                        <tr key={`${row.campaignName}-${i}`} className="border-b border-border/50 last:border-0">
-                                          <td className="py-2 font-medium">{row.campaignName || "—"}</td>
-                                          <td className="py-2 text-right">{formatNumber(row.impressions)}</td>
-                                          <td className="py-2 text-right">{formatNumber(row.clicks)}</td>
-                                          <td className="py-2 text-right">{formatCost(row.costMicros)}</td>
-                                          <td className="py-2 text-right">{formatNumber(row.conversions)}</td>
-                                          <td className="py-2 text-right">{formatSpend(row.conversionsValue ?? 0)}</td>
-                                        </tr>
-                                      ))}
+                                      .map((row, i) => {
+                                        const gid = row.campaignId;
+                                        const gBusy = gid && mutatingAdsKey?.startsWith(`google:${gid}:`);
+                                        return (
+                                          <tr
+                                            key={`${row.campaignName}-${i}`}
+                                            className="border-b border-border/50 last:border-0"
+                                          >
+                                            <td className="py-2 font-medium">{row.campaignName || "—"}</td>
+                                            <td className="py-2 text-right">{formatNumber(row.impressions)}</td>
+                                            <td className="py-2 text-right">{formatNumber(row.clicks)}</td>
+                                            <td className="py-2 text-right">{formatCost(row.costMicros)}</td>
+                                            <td className="py-2 text-right">{formatNumber(row.conversions)}</td>
+                                            <td className="py-2 text-right">{formatSpend(row.conversionsValue ?? 0)}</td>
+                                            {canMutateAds ? (
+                                              <td className="py-2 text-right">
+                                                {gid ? (
+                                                  <div className="inline-flex justify-end gap-0.5">
+                                                    <Button
+                                                      type="button"
+                                                      variant="ghost"
+                                                      size="icon"
+                                                      className="h-8 w-8"
+                                                      title="Pausar"
+                                                      disabled={!!gBusy}
+                                                      onClick={() => void runGoogleStatus(gid, "PAUSED")}
+                                                    >
+                                                      {gBusy && mutatingAdsKey === `google:${gid}:PAUSED` ? (
+                                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                                      ) : (
+                                                        <Pause className="h-4 w-4" />
+                                                      )}
+                                                    </Button>
+                                                    <Button
+                                                      type="button"
+                                                      variant="ghost"
+                                                      size="icon"
+                                                      className="h-8 w-8"
+                                                      title="Ativar"
+                                                      disabled={!!gBusy}
+                                                      onClick={() => void runGoogleStatus(gid, "ENABLED")}
+                                                    >
+                                                      {gBusy && mutatingAdsKey === `google:${gid}:ENABLED` ? (
+                                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                                      ) : (
+                                                        <Play className="h-4 w-4" />
+                                                      )}
+                                                    </Button>
+                                                  </div>
+                                                ) : (
+                                                  <span className="text-xs text-muted-foreground">—</span>
+                                                )}
+                                              </td>
+                                            ) : null}
+                                          </tr>
+                                        );
+                                      })}
                                   </tbody>
                                 </table>
                               </ScrollRegion>
@@ -1317,6 +1644,46 @@ export function Marketing() {
             )}
         </div>
       )}
+
+      <Dialog
+        open={budgetDialogOpen}
+        onOpenChange={(open) => {
+          setBudgetDialogOpen(open);
+          if (!open) setBudgetTarget(null);
+        }}
+      >
+        <DialogContent title="Orçamento diário · Meta" showClose alignTop>
+          {budgetTarget?.name ? (
+            <p className="text-sm text-muted-foreground">Campanha: {budgetTarget.name}</p>
+          ) : null}
+          <div className="space-y-2 py-2">
+            <Label htmlFor="meta-daily-budget">Valor diário (moeda da conta)</Label>
+            <Input
+              id="meta-daily-budget"
+              inputMode="decimal"
+              placeholder="Ex.: 120,50"
+              value={budgetInput}
+              onChange={(e) => setBudgetInput(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setBudgetDialogOpen(false);
+                setBudgetTarget(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button type="button" disabled={budgetSaving} onClick={() => void submitMetaBudget()}>
+              {budgetSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

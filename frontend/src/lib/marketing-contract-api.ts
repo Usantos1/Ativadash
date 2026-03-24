@@ -6,6 +6,7 @@ import { api } from "./api";
 import type { MetricsDateRange } from "./integrations-api";
 import type {
   MarketingDashboardDerived,
+  MarketingDashboardPayload,
   MarketingDashboardPerfRow,
   MarketingDashboardSummary,
   MarketingDashboardTimeseriesRow,
@@ -32,6 +33,7 @@ export type MarketingSummaryContractResponse =
       summary: MarketingDashboardSummary;
       derived: MarketingDashboardDerived;
       compare: null;
+      distribution: Extract<MarketingDashboardPayload, { ok: true }>["distribution"];
     }
   | { ok: false; message: string };
 
@@ -119,4 +121,28 @@ export async function fetchMarketingAlertsInsight(
   refresh?: boolean
 ): Promise<MarketingAlertsInsightResponse> {
   return api.get(`/marketing/alerts/insight?${rangeQuery(range, refresh)}`);
+}
+
+/** Contrato §10: status da campanha Meta (PAUSED | ACTIVE). */
+export async function patchMarketingMetaCampaignStatus(
+  externalId: string,
+  status: "PAUSED" | "ACTIVE"
+): Promise<void> {
+  const enc = encodeURIComponent(externalId);
+  await api.patch(`/marketing/meta/campaigns/${enc}/status`, { status });
+}
+
+/** Contrato §10: orçamento diário na moeda principal da conta (ex.: BRL). */
+export async function patchMarketingMetaCampaignBudget(externalId: string, dailyBudget: number): Promise<void> {
+  const enc = encodeURIComponent(externalId);
+  await api.patch(`/marketing/meta/campaigns/${enc}/budget`, { dailyBudget });
+}
+
+/** Contrato §10: status da campanha Google (ENABLED | PAUSED). */
+export async function patchMarketingGoogleCampaignStatus(
+  externalId: string,
+  status: "ENABLED" | "PAUSED"
+): Promise<void> {
+  const enc = encodeURIComponent(externalId);
+  await api.patch(`/marketing/google/campaigns/${enc}/status`, { status });
 }

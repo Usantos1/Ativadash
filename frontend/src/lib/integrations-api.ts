@@ -47,6 +47,7 @@ export interface GoogleAdsMetricsSummary {
 
 export interface GoogleAdsCampaignRow {
   campaignName: string;
+  campaignId?: string;
   impressions: number;
   clicks: number;
   costMicros: number;
