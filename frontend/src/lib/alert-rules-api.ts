@@ -54,3 +54,19 @@ export async function patchAlertRule(
 export async function deleteAlertRule(id: string): Promise<void> {
   await api.delete(`/marketing/alert-rules/${id}`);
 }
+
+export type AlertOccurrenceDto = {
+  id: string;
+  alertRuleId: string;
+  ruleName: string;
+  severity: string;
+  title: string;
+  message: string;
+  metricValue: number;
+  createdAt: string;
+};
+
+export async function fetchAlertOccurrences(limit = 30): Promise<{ items: AlertOccurrenceDto[] }> {
+  const q = new URLSearchParams({ limit: String(limit) });
+  return api.get<{ items: AlertOccurrenceDto[] }>(`/marketing/alert-occurrences?${q.toString()}`);
+}

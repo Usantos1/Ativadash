@@ -76,12 +76,16 @@ export async function evaluateMarketingInsights(
     totalSpendBrl: number;
     totalResults: number;
     totalAttributedValueBrl: number;
+    totalImpressions?: number;
+    totalClicks?: number;
   },
-  periodLabel?: string
+  periodLabel?: string,
+  opts?: { persistOccurrences?: boolean }
 ): Promise<EvaluateInsightsResponse> {
   return api.post<EvaluateInsightsResponse>("/marketing/insights/evaluate", {
     period,
     ...totals,
     ...(periodLabel?.trim() ? { periodLabel: periodLabel.trim() } : {}),
+    ...(opts?.persistOccurrences === false ? { persistOccurrences: false } : {}),
   });
 }

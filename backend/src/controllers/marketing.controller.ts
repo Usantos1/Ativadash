@@ -18,7 +18,12 @@ import {
   updateMetaCampaignStatus,
   updateMetaCampaignDailyBudget,
 } from "../services/meta-ads-metrics.service.js";
-import { userCanReadMarketing, assertCanMutateAds } from "../services/marketing-permissions.service.js";
+import {
+  userCanReadMarketing,
+  assertCanMutateAds,
+  assertCampaignWriteOnPlan,
+} from "../services/marketing-permissions.service.js";
+import { listAlertOccurrences } from "../services/alert-rules.service.js";
 import { upsertMetricsSnapshot, getLatestMetricsSnapshot } from "../services/metrics-snapshot.service.js";
 import { parseMetricsDateRangeQuery } from "../utils/marketing-date-range.js";
 import {
@@ -292,7 +297,15 @@ export async function postMarketingInsightsHandler(req: Request, res: Response) 
       issues: parsed.error.flatten(),
     });
   }
-  const { period, totalSpendBrl, totalResults, totalAttributedValueBrl } = parsed.data;
+  const {
+    period,
+    totalSpendBrl,
+    totalResults,
+    totalAttributedValueBrl,
+    totalImpressions,
+    totalClicks,
+    persistOccurrences,
+  } = parsed.data;
   try {
     const result = await evaluateInsightsForOrganization(user.organizationId, {
       period,
@@ -300,6 +313,9 @@ export async function postMarketingInsightsHandler(req: Request, res: Response) 
       totalSpendBrl,
       totalResults,
       totalAttributedValueBrl,
+      totalImpressions,
+      totalClicks,
+      persistOccurrences: persistOccurrences !== false,
     });
     await maybeSendAtivaCrmAlerts(user.organizationId, result).catch((err) =>
       console.error("[Ativa CRM] maybeSendAtivaCrmAlerts:", err)
@@ -396,6 +412,7 @@ async function applyMetaCampaignStatusChange(
 ) {
   try {
     await assertCanMutateAds(userId, organizationId);
+    await assertCampaignWriteOnPlan(organizationId);
     const out = await updateMetaCampaignStatus(organizationId, metaCampaignId, status);
     if (!out.ok) {
       return res.status(400).json(out);
@@ -447,6 +464,7 @@ export async function patchMetaCampaignBudgetContractHandler(req: Request, res: 
   }
   try {
     await assertCanMutateAds(userId, organizationId);
+    await assertCampaignWriteOnPlan(organizationId);
   } catch (e) {
     return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
   }
@@ -477,6 +495,7 @@ export async function patchGoogleCampaignStatusContractHandler(req: Request, res
   }
   try {
     await assertCanMutateAds(userId, organizationId);
+    await assertCampaignWriteOnPlan(organizationId);
   } catch (e) {
     return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
   }
@@ -536,6 +555,7 @@ export async function postGoogleCampaignMutateStubHandler(req: Request, res: Res
   const { userId, organizationId } = (req as AuthRequest).user;
   try {
     await assertCanMutateAds(userId, organizationId);
+    await assertCampaignWriteOnPlan(organizationId);
   } catch (e) {
     return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
   }
@@ -724,6 +744,21 @@ export async function getMarketingDetailCampaignsHandler(req: Request, res: Resp
   }
 }
 
+/** Histórico de disparos de regras customizadas (AlertOccurrence). */
+export async function getMarketingAlertOccurrencesHandler(req: Request, res: Response) {
+  const { userId, organizationId } = (req as AuthRequest).user;
+  if (!(await guardRead(userId, organizationId, res))) return;
+  const raw = parseInt(String(req.query.limit ?? "30"), 10);
+  const limit = Number.isFinite(raw) ? raw : 30;
+  try {
+    const items = await listAlertOccurrences(organizationId, { limit });
+    return res.json({ items });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao listar ocorrências de alerta." });
+  }
+}
+
 /** Contrato §11: GET /marketing/alerts/insight — alertas a partir do resumo do período (sem enviar WhatsApp) */
 export async function getMarketingAlertsInsightHandler(req: Request, res: Response) {
   const { userId, organizationId } = (req as AuthRequest).user;
@@ -754,6 +789,9 @@ export async function getMarketingAlertsInsightHandler(req: Request, res: Respon
       totalSpendBrl: s.spend,
       totalResults,
       totalAttributedValueBrl: s.purchaseValue,
+      totalImpressions: s.impressions,
+      totalClicks: s.clicks,
+      persistOccurrences: false,
     });
     return res.json({
       ok: true,

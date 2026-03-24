@@ -297,7 +297,26 @@ model AlertRule {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  occurrences AlertOccurrence[]
+
   @@index([organizationId])
+}
+
+/// Disparos registrados de regras customizadas (dedupe na gravação)
+model AlertOccurrence {
+  id             String    @id @default(cuid())
+  organizationId String
+  alertRuleId    String
+  alertRule      AlertRule @relation(fields: [alertRuleId], references: [id], onDelete: Cascade)
+
+  severity    String  @db.VarChar(16)
+  title       String  @db.VarChar(200)
+  message     String  @db.Text
+  metricValue Decimal @db.Decimal(14, 4)
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
 }
 
 model Plan {

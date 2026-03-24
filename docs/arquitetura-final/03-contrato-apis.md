@@ -157,10 +157,10 @@ Todas exigem `activeOrganizationId` e capabilities `marketing.*` + canal conform
 
 | Método | Rota | Finalidade | Payload | Retorno | Permissão | Modelos | Auditoria |
 |--------|------|------------|---------|---------|-----------|---------|-----------|
-| PATCH | `/marketing/meta/campaigns/:externalId/status` | Ativar/pausar | `{ status }` | `{ ok }` | `media.meta.campaign.status` + asset grant | API Meta | **Sim** |
-| PATCH | `/marketing/meta/campaigns/:externalId/budget` | Orçamento | `{ dailyBudget? }` | `{ ok }` | `media.meta.campaign.budget` | API Meta | **Sim** |
+| PATCH | `/marketing/meta/campaigns/:externalId/status` | Ativar/pausar | `{ status }` | `{ ok }` | `media.meta.campaign.status` + asset grant + **plano `campaignWrite`** | API Meta | **Sim** |
+| PATCH | `/marketing/meta/campaigns/:externalId/budget` | Orçamento | `{ dailyBudget? }` | `{ ok }` | `media.meta.campaign.budget` + **plano `campaignWrite`** | API Meta | **Sim** |
 
-Paralelo `/marketing/google/...`.
+Paralelo `/marketing/google/...` (mesma exigência de **`campaignWrite`** no plano efetivo).
 
 ---
 
@@ -171,6 +171,15 @@ Paralelo `/marketing/google/...`.
 | GET | `/organizations/:orgId/marketing-settings` | Ler metas | — | `{ settings }` | marketing.read | MarketingSettings | Não |
 | PATCH | `/organizations/:orgId/marketing-settings` | Atualizar | partial thresholds | `{ settings }` | workspace_admin | MarketingSettings | Sim |
 | GET | `/organizations/:orgId/alerts/insight` | Insight atual | query período | `{ alerts[] }` | marketing.read | compute | Não |
+
+**Implementação atual (JWT + tenant ativo):**
+
+| Método | Rota | Finalidade | Payload | Retorno | Permissão | Modelos | Auditoria |
+|--------|------|------------|---------|---------|-----------|---------|-----------|
+| GET | `/marketing/alerts/insight` | Insights do período (cache dashboard) | query datas/período | `{ ok, alerts[], kpis, periodLabel }` | marketing.read | compute | Não |
+| POST | `/marketing/insights/evaluate` | Avaliar metas + regras customizadas | `totalSpendBrl`, `totalResults`, `totalAttributedValueBrl`, opc. `totalImpressions`, `totalClicks`, `persistOccurrences` | `{ kpis, alerts, periodLabel }` | marketing.read | AlertRule / AlertOccurrence se persistir | Não |
+| GET | `/marketing/alert-occurrences` | Histórico disparos regras customizadas | query `limit` | `{ items[] }` | marketing.read | AlertOccurrence | Não |
+| CRUD | `/marketing/alert-rules` | Regras customizadas | ver validador | `{ items }` / `{ item }` | conforme capability | AlertRule | Sim (mutações) |
 
 ---
 

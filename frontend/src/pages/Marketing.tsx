@@ -58,6 +58,7 @@ import { useMarketingMetrics } from "@/hooks/useMarketingMetrics";
 import { PerformanceAlerts } from "@/components/marketing/PerformanceAlerts";
 import { fetchLaunches, fetchGoals, type LaunchRow } from "@/lib/workspace-api";
 import { fetchMarketingSettings, type MarketingSettingsDto } from "@/lib/marketing-settings-api";
+import { fetchOrganizationContext, type OrganizationContext } from "@/lib/organization-api";
 import { useAuthStore } from "@/stores/auth-store";
 import {
   patchMarketingGoogleCampaignStatus,
@@ -136,12 +137,29 @@ export function Marketing() {
   const [budgetTarget, setBudgetTarget] = useState<{ id: string; name: string } | null>(null);
   const [budgetInput, setBudgetInput] = useState("");
   const [budgetSaving, setBudgetSaving] = useState(false);
+  const [orgCtx, setOrgCtx] = useState<OrganizationContext | null>(null);
 
   const membershipRole = useMemo(() => {
     if (!user?.organizationId) return null;
     return memberships?.find((m) => m.organizationId === user.organizationId)?.role ?? null;
   }, [user?.organizationId, memberships]);
   const canMutateAds = canUserMutateMarketingAds(membershipRole);
+  const planAllowsCampaignWrite = orgCtx?.enabledFeatures?.campaignWrite !== false;
+  const canMutateCampaigns = canMutateAds && planAllowsCampaignWrite;
+
+  useEffect(() => {
+    let c = false;
+    fetchOrganizationContext()
+      .then((ctx) => {
+        if (!c) setOrgCtx(ctx);
+      })
+      .catch(() => {
+        if (!c) setOrgCtx(null);
+      });
+    return () => {
+      c = true;
+    };
+  }, []);
 
   useEffect(() => {
     let c = false;
@@ -310,7 +328,7 @@ export function Marketing() {
         },
       }),
     ];
-    if (canMutateAds) {
+    if (canMutateCampaigns) {
       cols.push(
         columnHelper.display({
           id: "acoes",
@@ -372,7 +390,7 @@ export function Marketing() {
       );
     }
     return cols;
-  }, [canMutateAds, mutatingAdsKey, openBudgetDialog, runMetaStatus]);
+  }, [canMutateCampaigns, mutatingAdsKey, openBudgetDialog, runMetaStatus]);
 
   const googleDaily = metrics?.ok ? metrics.daily ?? [] : [];
   const metaDaily = metaMetrics?.ok ? metaMetrics.daily ?? [] : [];
@@ -678,6 +696,16 @@ export function Marketing() {
           role="status"
         >
           {adsActionHint.text}
+        </div>
+      ) : null}
+
+      {canMutateAds && orgCtx != null && orgCtx.enabledFeatures.campaignWrite === false ? (
+        <div
+          className="rounded-xl border border-amber-500/35 bg-amber-500/[0.08] px-4 py-3 text-sm text-foreground"
+          role="status"
+        >
+          O plano desta empresa não inclui edição de campanhas nas redes (pausar, ativar ou orçamento). Peça ao
+          administrador da plataforma ou da matriz para habilitar o recurso no plano.
         </div>
       ) : null}
 
@@ -1086,7 +1114,7 @@ export function Marketing() {
                       <th className="text-right">Receita</th>
                       <th className="text-right">CPA</th>
                       <th className="text-right">ROAS</th>
-                      {canMutateAds ? <th className="text-right">Ações</th> : null}
+                      {canMutateCampaigns ? <th className="text-right">Ações</th> : null}
                     </tr>
                   </thead>
                   <tbody>
@@ -1132,7 +1160,7 @@ export function Marketing() {
                           <td className="text-right tabular-nums font-medium">
                             {roasRow != null ? `${roasRow.toFixed(2)}x` : "—"}
                           </td>
-                          {canMutateAds ? (
+                          {canMutateCampaigns ? (
                             <td className="text-right">
                               {row.channel === "Meta" && ext ? (
                                 <div className="inline-flex items-center justify-end gap-0.5">
@@ -1384,7 +1412,7 @@ export function Marketing() {
                                       <th className="pb-2 font-medium text-right">Custo</th>
                                       <th className="pb-2 font-medium text-right">Conversões</th>
                                       <th className="pb-2 font-medium text-right">Valor conv.</th>
-                                      {canMutateAds ? (
+                                      {canMutateCampaigns ? (
                                         <th className="pb-2 text-right font-medium">Ações</th>
                                       ) : null}
                                     </tr>
@@ -1410,7 +1438,7 @@ export function Marketing() {
                                             <td className="py-2 text-right">{formatCost(row.costMicros)}</td>
                                             <td className="py-2 text-right">{formatNumber(row.conversions)}</td>
                                             <td className="py-2 text-right">{formatSpend(row.conversionsValue ?? 0)}</td>
-                                            {canMutateAds ? (
+                                            {canMutateCampaigns ? (
                                               <td className="py-2 text-right">
                                                 {gid ? (
                                                   <div className="inline-flex justify-end gap-0.5">

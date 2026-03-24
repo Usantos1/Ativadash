@@ -1,8 +1,9 @@
 import type { AlertRule } from "@prisma/client";
 import { prisma } from "../utils/prisma.js";
-import { mergePlanFeaturesWithOverrides } from "../utils/plan-features.js";
-import { resolveBillingOrganizationId, resolveEffectivePlan } from "./plan-limits.service.js";
+import { getEffectivePlanFeatures } from "./effective-plan-features.service.js";
 import type { CreateAlertRuleInput, PatchAlertRuleInput } from "../validators/alert-rules.validator.js";
+
+const ALERT_OCCURRENCE_DEDUPE_MS = 4 * 60 * 60 * 1000;
 
 function decToNumber(v: unknown): number {
   if (v == null) return NaN;
@@ -41,14 +42,65 @@ function toDto(row: AlertRule): AlertRuleDto {
 }
 
 export async function orgPerformanceAlertsEnabled(organizationId: string): Promise<boolean> {
-  const billingId = await resolveBillingOrganizationId(organizationId);
-  const { plan } = await resolveEffectivePlan(organizationId);
-  const billingOrg = await prisma.organization.findFirst({
-    where: { id: billingId, deletedAt: null },
-    select: { featureOverrides: true },
-  });
-  const features = mergePlanFeaturesWithOverrides(plan, billingOrg?.featureOverrides);
+  const features = await getEffectivePlanFeatures(organizationId);
   return !!features.performanceAlerts;
+}
+
+export async function recordAlertOccurrenceDeduped(
+  organizationId: string,
+  alertRuleId: string,
+  payload: { severity: string; title: string; message: string; metricValue: number }
+): Promise<void> {
+  const since = new Date(Date.now() - ALERT_OCCURRENCE_DEDUPE_MS);
+  const recent = await prisma.alertOccurrence.findFirst({
+    where: { organizationId, alertRuleId, createdAt: { gte: since } },
+    select: { id: true },
+  });
+  if (recent) return;
+  await prisma.alertOccurrence.create({
+    data: {
+      organizationId,
+      alertRuleId,
+      severity: payload.severity,
+      title: payload.title.slice(0, 200),
+      message: payload.message,
+      metricValue: payload.metricValue,
+    },
+  });
+}
+
+export type AlertOccurrenceDto = {
+  id: string;
+  alertRuleId: string;
+  ruleName: string;
+  severity: string;
+  title: string;
+  message: string;
+  metricValue: number;
+  createdAt: string;
+};
+
+export async function listAlertOccurrences(
+  organizationId: string,
+  opts?: { limit?: number }
+): Promise<AlertOccurrenceDto[]> {
+  const limit = Math.min(100, Math.max(1, opts?.limit ?? 30));
+  const rows = await prisma.alertOccurrence.findMany({
+    where: { organizationId },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    include: { alertRule: { select: { name: true } } },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    alertRuleId: r.alertRuleId,
+    ruleName: r.alertRule.name,
+    severity: r.severity,
+    title: r.title,
+    message: r.message,
+    metricValue: decToNumber(r.metricValue),
+    createdAt: r.createdAt.toISOString(),
+  }));
 }
 
 export async function listAlertRules(organizationId: string): Promise<AlertRuleDto[]> {

@@ -7,7 +7,7 @@ import {
   type MetaAdsMetricsResponse,
   type MetricsDateRange,
 } from "@/lib/integrations-api";
-import { buildInsightTotals } from "@/lib/marketing-totals";
+import { buildInsightTotals, type InsightTotalsInput as InsightTotalsShape } from "@/lib/marketing-totals";
 import { usePerformanceInsights } from "@/hooks/usePerformanceInsights";
 import {
   defaultLast30ApiRange,
@@ -20,11 +20,7 @@ import type { DateFilterApplyPayload } from "@/components/marketing/MarketingDat
 import type { MarketingDashboardSummary } from "@/lib/marketing-dashboard-api";
 import { buildInsightTotalsFromDashboardSummary } from "@/lib/marketing-totals";
 
-export type InsightTotalsInput = {
-  totalSpendBrl: number;
-  totalResults: number;
-  totalAttributedValueBrl: number;
-} | null;
+export type InsightTotalsInput = InsightTotalsShape | null;
 
 export function useMarketingMetrics(opts?: {
   /** Se definido, substitui buildInsightTotals (ex.: totais vindos de GET /marketing/dashboard). */

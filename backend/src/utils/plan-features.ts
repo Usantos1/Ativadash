@@ -19,6 +19,8 @@ export type PlanFeatureFlags = {
   dashboards_premium: boolean;
   api: boolean;
   automacoes: boolean;
+  /** Edição de campanhas Meta/Google (PATCH status/orçamento). */
+  campaignWrite: boolean;
 };
 
 const DEFAULT_FEATURES: PlanFeatureFlags = {
@@ -39,6 +41,7 @@ const DEFAULT_FEATURES: PlanFeatureFlags = {
   dashboards_premium: false,
   api: false,
   automacoes: false,
+  campaignWrite: true,
 };
 
 function readBool(raw: Record<string, unknown>, key: string, fallback: boolean): boolean {
@@ -71,6 +74,7 @@ export function mergePlanFeatures(plan: Plan | null): PlanFeatureFlags {
     dashboards_premium: readBool(o, "dashboards_premium", DEFAULT_FEATURES.dashboards_premium),
     api: readBool(o, "api", DEFAULT_FEATURES.api),
     automacoes: readBool(o, "automacoes", DEFAULT_FEATURES.automacoes),
+    campaignWrite: readBool(o, "campaignWrite", DEFAULT_FEATURES.campaignWrite),
   };
 }
 

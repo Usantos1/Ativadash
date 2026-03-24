@@ -112,4 +112,21 @@ Se a tabela existir em `public` e o erro persistir, confira se algum cliente ext
 
 ---
 
+## 7. Alertas customizados e ocorrências (pós-integração motor de insights)
+
+| Objetivo | Método e rota | Esperado |
+|----------|----------------|----------|
+| Histórico de disparos | `GET /api/marketing/alert-occurrences?limit=30` | `200`, `{ items: [...] }` por tenant; cada item com `ruleName`, `createdAt`, `message` |
+| Plano sem edição de mídia | `PATCH` status/orçamento Meta ou Google com `campaignWrite: false` no plano efetivo | `403`, mensagem sobre plano |
+
+**SQL (tabelas):**
+
+```sql
+SELECT tablename FROM pg_tables
+WHERE schemaname = 'public'
+  AND tablename IN ('AlertRule', 'AlertOccurrence');
+```
+
+---
+
 *Última revisão: estabilização pós-Fase 1 (Google Ads readiness + integração + checklist).*

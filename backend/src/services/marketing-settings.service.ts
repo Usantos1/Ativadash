@@ -1,7 +1,12 @@
 import type { MarketingSettings } from "@prisma/client";
 import { prisma } from "../utils/prisma.js";
+import type { InsightAlert } from "../types/marketing-insight.types.js";
 import { normalizeAtivaCrmPhone, sendAtivaCrmTextMessage } from "./ativacrm.service.js";
 import type { UpdateMarketingSettingsInput } from "../validators/marketing-settings.validator.js";
+import { appendCustomRuleAlerts } from "./alert-rule-insights.service.js";
+import { formatMoney } from "./marketing-settings-format.js";
+
+export type { InsightAlert };
 
 export type MarketingSettingsDto = {
   targetCpaBrl: number | null;
@@ -16,13 +21,6 @@ export type MarketingSettingsDto = {
   ativaCrmTokenConfigured: boolean;
   ativaCrmNotifyPhone: string | null;
   ativaCrmAlertsEnabled: boolean;
-};
-
-export type InsightAlert = {
-  severity: "critical" | "warning" | "info" | "success";
-  code: string;
-  title: string;
-  message: string;
 };
 
 function decToNumber(v: unknown): number | null {
@@ -53,15 +51,6 @@ const periodLabels: Record<string, string> = {
   "30d": "últimos 30 dias",
   "90d": "últimos 90 dias",
 };
-
-function formatMoney(n: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(n);
-}
 
 export async function getOrCreateMarketingSettings(organizationId: string): Promise<MarketingSettingsDto> {
   const row = await prisma.marketingSettings.upsert({
@@ -256,10 +245,29 @@ export async function evaluateInsightsForOrganization(
     totalSpendBrl: number;
     totalResults: number;
     totalAttributedValueBrl: number;
+    totalImpressions?: number;
+    totalClicks?: number;
+    persistOccurrences?: boolean;
   }
 ) {
   const settings = await getOrCreateMarketingSettings(organizationId);
-  return evaluatePerformanceInsights(settings, input);
+  const { kpis, alerts, periodLabel } = evaluatePerformanceInsights(settings, input);
+  await appendCustomRuleAlerts(
+    organizationId,
+    {
+      periodLabel,
+      totalSpendBrl: input.totalSpendBrl,
+      totalResults: input.totalResults,
+      totalAttributedValueBrl: input.totalAttributedValueBrl,
+      totalImpressions: input.totalImpressions,
+      totalClicks: input.totalClicks,
+      cpa: kpis.cpa,
+      roas: kpis.roas,
+    },
+    alerts,
+    { persistOccurrences: input.persistOccurrences === true }
+  );
+  return { kpis, alerts, periodLabel };
 }
 
 const ATIVA_CRM_ALERT_COOLDOWN_MS = 15 * 60 * 1000;

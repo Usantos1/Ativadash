@@ -14,6 +14,7 @@ async function main() {
     multiOrganization: false,
     integrations: true,
     webhooks: false,
+    campaignWrite: true,
   };
 
   const starter = await prisma.plan.upsert({
@@ -50,6 +51,7 @@ async function main() {
     multiOrganization: true,
     integrations: true,
     webhooks: true,
+    campaignWrite: true,
   };
 
   const professional = await prisma.plan.upsert({
@@ -86,6 +88,7 @@ async function main() {
     multiOrganization: true,
     integrations: true,
     webhooks: true,
+    campaignWrite: true,
   };
 
   await prisma.plan.upsert({

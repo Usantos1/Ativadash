@@ -10,9 +10,12 @@ export function usePerformanceInsights(
     totalSpendBrl: number;
     totalResults: number;
     totalAttributedValueBrl: number;
+    totalImpressions?: number;
+    totalClicks?: number;
   } | null,
   /** Rótulo exibido nos insights quando o período é customizado ou um preset nomeado. */
-  periodLabel?: string
+  periodLabel?: string,
+  opts?: { persistOccurrences?: boolean }
 ): { data: EvaluateInsightsResponse | null; loading: boolean } {
   const [data, setData] = useState<EvaluateInsightsResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -32,7 +35,7 @@ export function usePerformanceInsights(
 
     let cancelled = false;
     setLoading(true);
-    evaluateMarketingInsights(period, totals, periodLabel)
+    evaluateMarketingInsights(period, totals, periodLabel, opts)
       .then((res) => {
         if (!cancelled) setData(res);
       })
@@ -49,9 +52,12 @@ export function usePerformanceInsights(
   }, [
     period,
     periodLabel,
+    opts?.persistOccurrences,
     totals?.totalSpendBrl,
     totals?.totalResults,
     totals?.totalAttributedValueBrl,
+    totals?.totalImpressions,
+    totals?.totalClicks,
   ]);
 
   return { data, loading };

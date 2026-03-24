@@ -38,6 +38,7 @@ const DEFAULT_FEATURES = {
   multiOrganization: true,
   integrations: true,
   webhooks: false,
+  campaignWrite: true,
 };
 
 const ORG_STATUS_PT: Record<WorkspaceStatusDto, string> = {
@@ -736,12 +737,13 @@ export function PlatformPage() {
                     ["multiOrganization", "Multiempresa"],
                     ["integrations", "Integrações"],
                     ["webhooks", "Webhooks"],
+                    ["campaignWrite", "Edição campanhas"],
                   ] as const
                 ).map(([k, lab]) => (
                   <label key={k} className="flex items-center gap-1.5">
                     <input
                       type="checkbox"
-                      checked={planEditForm.features[k]}
+                      checked={!!planEditForm.features[k]}
                       onChange={(e) =>
                         setPlanEditForm((s) => ({
                           ...s,
@@ -1124,12 +1126,13 @@ export function PlatformPage() {
                     ["multiOrganization", "Multiempresa"],
                     ["integrations", "Integrações"],
                     ["webhooks", "Webhooks"],
+                    ["campaignWrite", "Edição campanhas"],
                   ] as const
                 ).map(([k, lab]) => (
                   <label key={k} className="flex items-center gap-1.5">
                     <input
                       type="checkbox"
-                      checked={newPlan.features[k]}
+                      checked={!!newPlan.features[k]}
                       onChange={(e) =>
                         setNewPlan((s) => ({
                           ...s,

@@ -39,8 +39,10 @@ import {
 import {
   createAlertRule,
   deleteAlertRule,
+  fetchAlertOccurrences,
   fetchAlertRules,
   patchAlertRule,
+  type AlertOccurrenceDto,
   type AlertRuleDto,
   type AlertRuleMetric,
   type AlertRuleOperator,
@@ -237,14 +239,28 @@ function CustomAlertRulesPanel() {
   const [nMuteA, setNMuteA] = useState("");
   const [nMuteB, setNMuteB] = useState("");
   const [creating, setCreating] = useState(false);
+  const [occurrences, setOccurrences] = useState<AlertOccurrenceDto[]>([]);
 
   const load = useCallback(() => {
     setLoadErr(null);
     fetchAlertRules()
-      .then((r) => setPack({ items: r.items, performanceAlerts: r.performanceAlerts }))
+      .then(async (r) => {
+        setPack({ items: r.items, performanceAlerts: r.performanceAlerts });
+        if (r.performanceAlerts) {
+          try {
+            const o = await fetchAlertOccurrences(25);
+            setOccurrences(o.items);
+          } catch {
+            setOccurrences([]);
+          }
+        } else {
+          setOccurrences([]);
+        }
+      })
       .catch(() => {
         setLoadErr("Não foi possível carregar as regras.");
         setPack({ items: [], performanceAlerts: false });
+        setOccurrences([]);
       });
   }, []);
 
@@ -269,7 +285,7 @@ function CustomAlertRulesPanel() {
       <SectionShell
         icon={ListPlus}
         title="Regras de alerta customizadas"
-        description="Defina limites adicionais por métrica. A avaliação automática no painel será integrada em uma próxima versão."
+        description="Defina limites adicionais por métrica. A avaliação ocorre no painel de marketing e ao disparar a avaliação de insights (com persistência de ocorrências conforme o fluxo)."
       >
         <p className="text-sm text-muted-foreground">
           Este recurso exige o módulo <strong className="font-medium text-foreground">alertas de performance</strong> no
@@ -372,7 +388,7 @@ function CustomAlertRulesPanel() {
     <SectionShell
       icon={ListPlus}
       title="Regras de alerta customizadas"
-      description="Cadastro de limites por métrica (CPA, ROAS, gasto, CTR). A integração com o painel de insights e WhatsApp virá nas próximas iterações."
+      description="Limites por métrica (CPA, ROAS, gasto, CTR) avaliados no painel de marketing e em POST /insights/evaluate; ocorrências são registradas quando a avaliação persiste disparos (dedupe ~4h por regra)."
     >
       {loadErr ? <p className="mb-3 text-sm text-destructive">{loadErr}</p> : null}
       {panelErr ? (
@@ -387,6 +403,34 @@ function CustomAlertRulesPanel() {
       ) : null}
 
       <div className="space-y-3">
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Últimos disparos
+          </p>
+          {occurrences.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum disparo registrado ainda.</p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {occurrences.map((o) => (
+                <li
+                  key={o.id}
+                  className="rounded-lg border border-border/50 bg-background/80 px-3 py-2"
+                >
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="font-medium text-foreground">{o.ruleName}</span>
+                    <time className="text-xs text-muted-foreground" dateTime={o.createdAt}>
+                      {new Date(o.createdAt).toLocaleString("pt-BR")}
+                    </time>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{o.message}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <Separator className="my-4" />
+
         {pack.items.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nenhuma regra customizada ainda.</p>
         ) : (

@@ -34,6 +34,10 @@ export const evaluateInsightsSchema = z.object({
   totalSpendBrl: z.number().nonnegative(),
   totalResults: z.number().int().nonnegative(),
   totalAttributedValueBrl: z.number().nonnegative(),
+  totalImpressions: z.number().int().nonnegative().optional(),
+  totalClicks: z.number().int().nonnegative().optional(),
+  /** Quando true, registra ocorrências deduplicadas de regras customizadas (AlertRule). */
+  persistOccurrences: z.boolean().optional(),
 });
 
 export type EvaluateInsightsInput = z.infer<typeof evaluateInsightsSchema>;

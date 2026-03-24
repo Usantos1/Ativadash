@@ -11,6 +11,7 @@ const featuresSchema = z
     multiOrganization: z.boolean().optional(),
     integrations: z.boolean().optional(),
     webhooks: z.boolean().optional(),
+    campaignWrite: z.boolean().optional(),
   })
   .optional();
 

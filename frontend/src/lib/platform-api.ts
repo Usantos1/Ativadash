@@ -7,6 +7,7 @@ export type PlanFeaturesPayload = {
   multiOrganization?: boolean;
   integrations?: boolean;
   webhooks?: boolean;
+  campaignWrite?: boolean;
 };
 
 export type PlanRow = {

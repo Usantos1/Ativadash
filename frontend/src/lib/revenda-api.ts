@@ -305,6 +305,7 @@ export const REVENDA_PLAN_FEATURE_KEYS = [
   { key: "dashboards_premium", label: "Dashboards premium" },
   { key: "api", label: "API" },
   { key: "automacoes", label: "Automações" },
+  { key: "campaignWrite", label: "Edição de campanhas (Meta/Google)" },
 ] as const satisfies ReadonlyArray<{ key: keyof EnabledFeatures; label: string }>;
 
 export type PlanLimitFieldKey = keyof PlanLimits;

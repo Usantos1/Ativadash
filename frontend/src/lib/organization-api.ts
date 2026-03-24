@@ -38,6 +38,8 @@ export type EnabledFeatures = {
   dashboards_premium: boolean;
   api: boolean;
   automacoes: boolean;
+  /** PATCH status/orçamento em campanhas Meta/Google. */
+  campaignWrite: boolean;
 };
 
 export type WorkspaceStatus = "ACTIVE" | "PAUSED" | "ARCHIVED";
