@@ -35,9 +35,33 @@ import {
 import {
   metricsSnapshotBodySchema,
   metaCampaignStatusBodySchema,
+  googleCampaignStatusContractSchema,
+  metaCampaignBudgetContractSchema,
 } from "../validators/marketing-extended.validator.js";
+import type { MarketingDashboardPayload } from "../services/marketing-dashboard.service.js";
+import { appendAuditLog } from "../services/audit-log.service.js";
 
 type AuthRequest = Request & { user: JwtPayload };
+
+function buildContractFunnel(payload: Extract<MarketingDashboardPayload, { ok: true }>) {
+  const s = payload.summary;
+  const steps = [
+    { key: "impressions", label: "Impressões", value: s.impressions },
+    { key: "clicks", label: "Cliques", value: s.clicks },
+    { key: "landing_page_views", label: "Views de página de destino", value: s.landingPageViews },
+    { key: "leads", label: "Leads", value: s.leads },
+    { key: "purchases", label: "Compras", value: s.purchases },
+  ];
+  const transitions = steps.slice(0, -1).map((step, i) => {
+    const next = steps[i + 1];
+    return {
+      from: step.key,
+      to: next.key,
+      rate: step.value > 0 ? next.value / step.value : null,
+    };
+  });
+  return { steps, transitions };
+}
 
 async function guardRead(userId: string, organizationId: string, res: Response): Promise<boolean> {
   const ok = await userCanReadMarketing(userId, organizationId);
@@ -361,6 +385,36 @@ export async function getMetaDemographicsHandler(req: Request, res: Response) {
   }
 }
 
+async function applyMetaCampaignStatusChange(
+  req: Request,
+  res: Response,
+  userId: string,
+  organizationId: string,
+  metaCampaignId: string,
+  status: "PAUSED" | "ACTIVE"
+) {
+  try {
+    await assertCanMutateAds(userId, organizationId);
+    const out = await updateMetaCampaignStatus(organizationId, metaCampaignId, status);
+    if (!out.ok) {
+      return res.status(400).json(out);
+    }
+    await appendAuditLog({
+      actorUserId: userId,
+      organizationId,
+      action: "media.meta.campaign.status",
+      entityType: "MetaCampaign",
+      entityId: metaCampaignId,
+      metadata: { status },
+      ip: req.ip,
+      userAgent: req.get("user-agent") ?? undefined,
+    }).catch((err) => console.error("[audit] media.meta.campaign.status", err));
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
+  }
+}
+
 export async function postMetaCampaignStatusHandler(req: Request, res: Response) {
   const { userId, organizationId } = (req as AuthRequest).user;
   const { campaignId } = req.params;
@@ -368,16 +422,54 @@ export async function postMetaCampaignStatusHandler(req: Request, res: Response)
   if (!parsed.success) {
     return res.status(400).json({ message: "Dados inválidos" });
   }
+  return applyMetaCampaignStatusChange(req, res, userId, organizationId, campaignId, parsed.data.status);
+}
+
+/** Contrato: PATCH /marketing/meta/campaigns/:externalId/status */
+export async function patchMetaCampaignStatusContractHandler(req: Request, res: Response) {
+  const { userId, organizationId } = (req as AuthRequest).user;
+  const { externalId } = req.params;
+  const parsed = metaCampaignStatusBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Dados inválidos" });
+  }
+  return applyMetaCampaignStatusChange(req, res, userId, organizationId, externalId, parsed.data.status);
+}
+
+/** Contrato: PATCH /marketing/meta/campaigns/:externalId/budget — roadmap */
+export async function patchMetaCampaignBudgetContractHandler(req: Request, res: Response) {
+  const { userId, organizationId } = (req as AuthRequest).user;
+  const parsed = metaCampaignBudgetContractSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Dados inválidos" });
+  }
   try {
     await assertCanMutateAds(userId, organizationId);
-    const out = await updateMetaCampaignStatus(organizationId, campaignId, parsed.data.status);
-    if (!out.ok) {
-      return res.status(400).json(out);
-    }
-    return res.json({ ok: true });
   } catch (e) {
     return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
   }
+  return res.status(501).json({
+    ok: false,
+    message: "Ajuste de orçamento de campanha Meta via API ainda não está habilitado nesta versão.",
+  });
+}
+
+/** Contrato: PATCH /marketing/google/campaigns/:externalId/status */
+export async function patchGoogleCampaignStatusContractHandler(req: Request, res: Response) {
+  const { userId, organizationId } = (req as AuthRequest).user;
+  const { externalId } = req.params;
+  const parsed = googleCampaignStatusContractSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Dados inválidos" });
+  }
+  try {
+    await assertCanMutateAds(userId, organizationId);
+  } catch (e) {
+    return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
+  }
+  const enabled = parsed.data.status === "ENABLED";
+  const out = await mutateGoogleCampaignStatus(organizationId, externalId, enabled);
+  return res.status(501).json(out);
 }
 
 export async function getGoogleAdGroupsHandler(req: Request, res: Response) {
@@ -469,4 +561,186 @@ export async function getMetricsSnapshotLatestHandler(req: Request, res: Respons
     payload: JSON.parse(row.payload) as unknown,
     updatedAt: row.updatedAt.toISOString(),
   });
+}
+
+/** Contrato §9: GET /marketing/summary — mesmo cache que /marketing/dashboard/summary */
+export async function getMarketingSummaryContractHandler(req: Request, res: Response) {
+  const { userId, organizationId } = (req as AuthRequest).user;
+  if (!(await guardRead(userId, organizationId, res))) return;
+  try {
+    const range = parseMetricsDateRangeQuery({
+      startDate: req.query.startDate as string | undefined,
+      endDate: req.query.endDate as string | undefined,
+      period: req.query.period as string | undefined,
+    });
+    const result = await getMarketingDashboardCached(organizationId, range, {
+      bypassCache: parseDashboardBypassCache(req),
+    });
+    if (!result.ok) return res.json(result);
+    return res.json({
+      ok: true,
+      range: result.range,
+      summary: result.summary,
+      derived: result.summary.derived,
+      compare: null,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("Período") || msg.includes("Data") || msg.includes("formato")) {
+      return res.status(400).json({ ok: false, message: msg });
+    }
+    console.error(e);
+    return res.status(500).json({ ok: false, message: "Erro ao carregar resumo de marketing." });
+  }
+}
+
+/** Contrato §9: GET /marketing/timeseries — pontos = série diária do dashboard */
+export async function getMarketingTimeseriesContractHandler(req: Request, res: Response) {
+  const { userId, organizationId } = (req as AuthRequest).user;
+  if (!(await guardRead(userId, organizationId, res))) return;
+  try {
+    const range = parseMetricsDateRangeQuery({
+      startDate: req.query.startDate as string | undefined,
+      endDate: req.query.endDate as string | undefined,
+      period: req.query.period as string | undefined,
+    });
+    const result = await getMarketingDashboardCached(organizationId, range, {
+      bypassCache: parseDashboardBypassCache(req),
+    });
+    if (!result.ok) return res.json(result);
+    return res.json({
+      ok: true,
+      range: result.range,
+      points: result.timeseries,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("Período") || msg.includes("Data") || msg.includes("formato")) {
+      return res.status(400).json({ ok: false, message: msg });
+    }
+    console.error(e);
+    return res.status(500).json({ ok: false, message: "Erro ao carregar série temporal." });
+  }
+}
+
+/** Contrato §9: GET /marketing/funnel */
+export async function getMarketingFunnelContractHandler(req: Request, res: Response) {
+  const { userId, organizationId } = (req as AuthRequest).user;
+  if (!(await guardRead(userId, organizationId, res))) return;
+  try {
+    const range = parseMetricsDateRangeQuery({
+      startDate: req.query.startDate as string | undefined,
+      endDate: req.query.endDate as string | undefined,
+      period: req.query.period as string | undefined,
+    });
+    const result = await getMarketingDashboardCached(organizationId, range, {
+      bypassCache: parseDashboardBypassCache(req),
+    });
+    if (!result.ok) return res.json(result);
+    const { steps, transitions } = buildContractFunnel(result);
+    return res.json({
+      ok: true,
+      range: result.range,
+      steps,
+      transitions,
+      distribution: result.distribution,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("Período") || msg.includes("Data") || msg.includes("formato")) {
+      return res.status(400).json({ ok: false, message: msg });
+    }
+    console.error(e);
+    return res.status(500).json({ ok: false, message: "Erro ao montar funil." });
+  }
+}
+
+/** Contrato §9: GET /marketing/detail/campaigns — linhas = campanhas Meta do dashboard (paginação) */
+export async function getMarketingDetailCampaignsHandler(req: Request, res: Response) {
+  const { userId, organizationId } = (req as AuthRequest).user;
+  if (!(await guardRead(userId, organizationId, res))) return;
+  try {
+    const range = parseMetricsDateRangeQuery({
+      startDate: req.query.startDate as string | undefined,
+      endDate: req.query.endDate as string | undefined,
+      period: req.query.period as string | undefined,
+    });
+    const result = await getMarketingDashboardCached(organizationId, range, {
+      bypassCache: parseDashboardBypassCache(req),
+    });
+    if (!result.ok) return res.json(result);
+    const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(String(req.query.pageSize ?? "50"), 10) || 50));
+    const channel = typeof req.query.channel === "string" ? req.query.channel.toLowerCase() : "";
+    let rows = result.performanceByLevel.campaigns;
+    if (channel === "google") {
+      rows = [];
+    }
+    const total = rows.length;
+    const start = (page - 1) * pageSize;
+    const pageRows = rows.slice(start, start + pageSize);
+    return res.json({
+      ok: true,
+      range: result.range,
+      channel: channel || "all",
+      source: "meta",
+      rows: pageRows,
+      page: { index: page, size: pageSize, total },
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("Período") || msg.includes("Data") || msg.includes("formato")) {
+      return res.status(400).json({ ok: false, message: msg });
+    }
+    console.error(e);
+    return res.status(500).json({ ok: false, message: "Erro ao listar campanhas." });
+  }
+}
+
+/** Contrato §11: GET /marketing/alerts/insight — alertas a partir do resumo do período (sem enviar WhatsApp) */
+export async function getMarketingAlertsInsightHandler(req: Request, res: Response) {
+  const { userId, organizationId } = (req as AuthRequest).user;
+  if (!(await guardRead(userId, organizationId, res))) return;
+  try {
+    const range = parseMetricsDateRangeQuery({
+      startDate: req.query.startDate as string | undefined,
+      endDate: req.query.endDate as string | undefined,
+      period: req.query.period as string | undefined,
+    });
+    const result = await getMarketingDashboardCached(organizationId, range, {
+      bypassCache: parseDashboardBypassCache(req),
+    });
+    if (!result.ok) {
+      return res.json({
+        ok: false,
+        message: result.message,
+        alerts: [],
+        kpis: { cpa: null, roas: null },
+        periodLabel: "",
+      });
+    }
+    const s = result.summary;
+    const totalResults = s.leads + s.purchases;
+    const insight = await evaluateInsightsForOrganization(organizationId, {
+      period: `${range.start}_${range.end}`,
+      periodLabel: `${range.start} a ${range.end}`,
+      totalSpendBrl: s.spend,
+      totalResults,
+      totalAttributedValueBrl: s.purchaseValue,
+    });
+    return res.json({
+      ok: true,
+      range: result.range,
+      kpis: insight.kpis,
+      alerts: insight.alerts,
+      periodLabel: insight.periodLabel,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("Período") || msg.includes("Data") || msg.includes("formato")) {
+      return res.status(400).json({ ok: false, message: msg });
+    }
+    console.error(e);
+    return res.status(500).json({ ok: false, message: "Erro ao avaliar alertas." });
+  }
 }

@@ -9,6 +9,11 @@ import {
   getMarketingDashboardTimeseriesHandler,
   getMarketingDashboardPerformanceHandler,
   getMarketingDashboardIntegrationHandler,
+  getMarketingSummaryContractHandler,
+  getMarketingTimeseriesContractHandler,
+  getMarketingFunnelContractHandler,
+  getMarketingDetailCampaignsHandler,
+  getMarketingAlertsInsightHandler,
   getMarketingSettingsHandler,
   putMarketingSettingsHandler,
   postMarketingInsightsHandler,
@@ -17,6 +22,9 @@ import {
   getMetaAdsLevelHandler,
   getMetaDemographicsHandler,
   postMetaCampaignStatusHandler,
+  patchMetaCampaignStatusContractHandler,
+  patchMetaCampaignBudgetContractHandler,
+  patchGoogleCampaignStatusContractHandler,
   getGoogleAdGroupsHandler,
   getGoogleSearchTermsHandler,
   postGoogleCampaignMutateStubHandler,
@@ -27,6 +35,12 @@ import {
 const router = Router();
 
 const authCtx = [authMiddleware, requireJwtOrganizationAccess] as const;
+
+router.get("/summary", ...authCtx, getMarketingSummaryContractHandler);
+router.get("/timeseries", ...authCtx, getMarketingTimeseriesContractHandler);
+router.get("/funnel", ...authCtx, getMarketingFunnelContractHandler);
+router.get("/detail/campaigns", ...authCtx, getMarketingDetailCampaignsHandler);
+router.get("/alerts/insight", ...authCtx, getMarketingAlertsInsightHandler);
 
 router.get("/google-ads/metrics", ...authCtx, getGoogleAdsMetricsHandler);
 router.get("/google-ads/ad-groups", ...authCtx, getGoogleAdGroupsHandler);
@@ -43,6 +57,9 @@ router.get("/meta-ads/adsets", ...authCtx, getMetaAdsetsHandler);
 router.get("/meta-ads/ads", ...authCtx, getMetaAdsLevelHandler);
 router.get("/meta-ads/demographics", ...authCtx, getMetaDemographicsHandler);
 router.post("/meta-ads/campaigns/:campaignId/status", ...authCtx, postMetaCampaignStatusHandler);
+router.patch("/meta/campaigns/:externalId/status", ...authCtx, patchMetaCampaignStatusContractHandler);
+router.patch("/meta/campaigns/:externalId/budget", ...authCtx, patchMetaCampaignBudgetContractHandler);
+router.patch("/google/campaigns/:externalId/status", ...authCtx, patchGoogleCampaignStatusContractHandler);
 
 router.get("/settings", ...authCtx, getMarketingSettingsHandler);
 router.put("/settings", ...authCtx, putMarketingSettingsHandler);
