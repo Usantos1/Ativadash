@@ -513,3 +513,51 @@ export async function getLimitsOverride(organizationId: string) {
     where: { organizationId },
   });
 }
+
+export type PlatformAuditLogRow = {
+  id: string;
+  actorUserId: string;
+  organizationId: string | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  metadata: unknown;
+  ip: string | null;
+  userAgent: string | null;
+  createdAt: Date;
+};
+
+/** Lista global de AuditLog (admin plataforma). Cursor = `id` do último item da página anterior. */
+export async function listGlobalAuditLogs(query: {
+  limit?: number;
+  cursor?: string | null;
+  actionPrefix?: string | null;
+}): Promise<{ items: PlatformAuditLogRow[]; nextCursor: string | null }> {
+  const limit = Math.min(Math.max(query.limit ?? 50, 1), 100);
+  const where: Prisma.AuditLogWhereInput = {};
+  if (query.actionPrefix?.trim()) {
+    where.action = { startsWith: query.actionPrefix.trim() };
+  }
+  const rows = await prisma.auditLog.findMany({
+    where,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: limit + 1,
+    ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+    select: {
+      id: true,
+      actorUserId: true,
+      organizationId: true,
+      action: true,
+      entityType: true,
+      entityId: true,
+      metadata: true,
+      ip: true,
+      userAgent: true,
+      createdAt: true,
+    },
+  });
+  const hasMore = rows.length > limit;
+  const items = (hasMore ? rows.slice(0, limit) : rows) as PlatformAuditLogRow[];
+  const nextCursor = hasMore && items.length > 0 ? items[items.length - 1].id : null;
+  return { items, nextCursor };
+}

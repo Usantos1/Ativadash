@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Ban, Pencil, PlayCircle, Search, Trash2 } from "lucide-react";
+import { Ban, FileText, Pencil, PlayCircle, Search, Trash2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import {
   fetchPlatformOrganizations,
   fetchPlatformPlans,
   fetchPlatformSubscriptions,
+  fetchPlatformAuditLogs,
   fetchOrgLimitsOverride,
   patchOrgSubscription,
   patchPlatformOrganization,
@@ -26,6 +27,7 @@ import {
   type PlanRow,
   type PlatformOrgRow,
   type PlatformSubscriptionRow,
+  type PlatformAuditLogItem,
   type WorkspaceStatusDto,
 } from "@/lib/platform-api";
 
@@ -118,6 +120,12 @@ export function PlatformPage() {
   });
   const [newOrgSaving, setNewOrgSaving] = useState(false);
 
+  const [auditItems, setAuditItems] = useState<PlatformAuditLogItem[]>([]);
+  const [auditCursor, setAuditCursor] = useState<string | null>(null);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditPrefix, setAuditPrefix] = useState("");
+  const [auditAppliedPrefix, setAuditAppliedPrefix] = useState("");
+
   const filteredOrgs = useMemo(() => {
     const q = orgSearch.trim().toLowerCase();
     if (!q) return orgs;
@@ -161,6 +169,49 @@ export function PlatformPage() {
     if (platformAdmin) load();
     else setLoading(false);
   }, [platformAdmin, load]);
+
+  useEffect(() => {
+    if (platformTab !== "auditoria" || !platformAdmin) return;
+    let cancelled = false;
+    (async () => {
+      setAuditLoading(true);
+      try {
+        const res = await fetchPlatformAuditLogs({
+          limit: 50,
+          action: auditAppliedPrefix.trim() || undefined,
+        });
+        if (!cancelled) {
+          setAuditItems(res.items);
+          setAuditCursor(res.nextCursor);
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Erro ao carregar auditoria");
+      } finally {
+        if (!cancelled) setAuditLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [platformTab, auditAppliedPrefix, platformAdmin]);
+
+  const loadMoreAudit = useCallback(async () => {
+    if (!auditCursor || auditLoading) return;
+    setAuditLoading(true);
+    try {
+      const res = await fetchPlatformAuditLogs({
+        limit: 50,
+        cursor: auditCursor,
+        action: auditAppliedPrefix.trim() || undefined,
+      });
+      setAuditItems((p) => [...p, ...res.items]);
+      setAuditCursor(res.nextCursor);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao carregar mais registros");
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [auditCursor, auditLoading, auditAppliedPrefix]);
 
   function openOrgEditor(o: PlatformOrgRow) {
     setOrgEditName(o.name);
@@ -771,6 +822,10 @@ export function PlatformPage() {
           <TabsTrigger value="empresas">Empresas</TabsTrigger>
           <TabsTrigger value="planos">Planos</TabsTrigger>
           <TabsTrigger value="assinaturas">Assinaturas</TabsTrigger>
+          <TabsTrigger value="auditoria" className="gap-1.5">
+            <FileText className="h-3.5 w-3.5" aria-hidden />
+            Auditoria
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="empresas" className="mt-4 space-y-4 focus-visible:outline-none">
@@ -1308,6 +1363,85 @@ export function PlatformPage() {
           </ScrollRegion>
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="auditoria" className="mt-4 space-y-4 focus-visible:outline-none">
+          <Card className="overflow-hidden">
+            <CardHeader>
+              <CardTitle className="text-base">Auditoria global</CardTitle>
+              <CardDescription>
+                Eventos gravados em <code className="text-xs">AuditLog</code> (contexto, webhooks, campanhas Meta,
+                arquivamento de workspace, etc.). Filtro por prefixo da ação.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="min-w-[200px] flex-1 space-y-1.5">
+                  <Label htmlFor="audit-action-prefix">Prefixo da ação</Label>
+                  <Input
+                    id="audit-action-prefix"
+                    value={auditPrefix}
+                    onChange={(e) => setAuditPrefix(e.target.value)}
+                    placeholder="ex.: webhook. ou media.meta"
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <Button type="button" variant="secondary" onClick={() => setAuditAppliedPrefix(auditPrefix)}>
+                  Buscar
+                </Button>
+              </div>
+              <ScrollRegion className="scrollbar-thin max-h-[min(70vh,520px)] rounded-md border border-border/60">
+                <table className="w-full min-w-[720px] text-xs">
+                  <thead>
+                    <tr className="border-b text-left text-muted-foreground">
+                      <th className="px-3 py-2 font-medium">Quando</th>
+                      <th className="px-3 py-2 font-medium">Ação</th>
+                      <th className="px-3 py-2 font-medium">Entidade</th>
+                      <th className="px-3 py-2 font-medium">Org</th>
+                      <th className="px-3 py-2 font-medium">Ator</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditItems.length === 0 && !auditLoading ? (
+                      <tr>
+                        <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
+                          Nenhum registro.
+                        </td>
+                      </tr>
+                    ) : (
+                      auditItems.map((row) => (
+                        <tr key={row.id} className="border-b border-border/50 align-top">
+                          <td className="whitespace-nowrap px-3 py-2 tabular-nums text-muted-foreground">
+                            {new Date(row.createdAt).toLocaleString("pt-BR")}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-[11px]">{row.action}</td>
+                          <td className="px-3 py-2 text-muted-foreground">
+                            <span className="font-medium text-foreground">{row.entityType}</span>
+                            {row.entityId ? (
+                              <div className="mt-0.5 max-w-[200px] truncate font-mono text-[10px]" title={row.entityId}>
+                                {row.entityId}
+                              </div>
+                            ) : null}
+                          </td>
+                          <td className="max-w-[100px] truncate px-3 py-2 font-mono text-[10px] text-muted-foreground">
+                            {row.organizationId ?? "—"}
+                          </td>
+                          <td className="max-w-[100px] truncate px-3 py-2 font-mono text-[10px] text-muted-foreground">
+                            {row.actorUserId}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </ScrollRegion>
+              {auditCursor ? (
+                <Button type="button" variant="outline" disabled={auditLoading} onClick={() => void loadMoreAudit()}>
+                  {auditLoading ? "Carregando…" : "Carregar mais"}
+                </Button>
+              ) : null}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

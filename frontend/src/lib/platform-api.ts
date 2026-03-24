@@ -175,3 +175,29 @@ export async function putOrgLimitsOverride(
 export async function syncPlatformSubscriptions(): Promise<{ synced: number }> {
   return api.post("/platform/maintenance/sync-subscriptions", {} as Record<string, never>);
 }
+
+export type PlatformAuditLogItem = {
+  id: string;
+  actorUserId: string;
+  organizationId: string | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  metadata: unknown;
+  ip: string | null;
+  userAgent: string | null;
+  createdAt: string;
+};
+
+export async function fetchPlatformAuditLogs(params?: {
+  limit?: number;
+  cursor?: string;
+  action?: string;
+}): Promise<{ items: PlatformAuditLogItem[]; nextCursor: string | null }> {
+  const q = new URLSearchParams();
+  if (params?.limit != null) q.set("limit", String(params.limit));
+  if (params?.cursor) q.set("cursor", params.cursor);
+  if (params?.action?.trim()) q.set("action", params.action.trim());
+  const qs = q.toString();
+  return api.get(`/platform/audit${qs ? `?${qs}` : ""}`);
+}

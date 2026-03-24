@@ -24,5 +24,6 @@ router.delete("/organizations/:organizationId", platform.organizationDelete);
 
 router.get("/subscriptions", platform.subscriptionsList);
 router.post("/maintenance/sync-subscriptions", platform.maintenanceSyncSubscriptions);
+router.get("/audit", platform.auditLogsList);
 
 export default router;

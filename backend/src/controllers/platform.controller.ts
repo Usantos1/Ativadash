@@ -267,3 +267,39 @@ export async function maintenanceSyncSubscriptions(_req: Request, res: Response)
     return res.status(500).json({ message: e instanceof Error ? e.message : "Erro" });
   }
 }
+
+/** Contrato §2: GET /platform/audit — cursor + action (prefixo) */
+export async function auditLogsList(req: Request, res: Response) {
+  const limit = req.query.limit ? Number(req.query.limit) : undefined;
+  const cursor = typeof req.query.cursor === "string" && req.query.cursor.length > 0 ? req.query.cursor : undefined;
+  const actionPrefix = typeof req.query.action === "string" ? req.query.action : undefined;
+  try {
+    const out = await platform.listGlobalAuditLogs({
+      limit: Number.isFinite(limit) ? limit : undefined,
+      cursor,
+      actionPrefix,
+    });
+    return res.json({
+      items: out.items.map((r) => ({
+        id: r.id,
+        actorUserId: r.actorUserId,
+        organizationId: r.organizationId,
+        action: r.action,
+        entityType: r.entityType,
+        entityId: r.entityId,
+        metadata: r.metadata,
+        ip: r.ip,
+        userAgent: r.userAgent,
+        createdAt: r.createdAt.toISOString(),
+      })),
+      nextCursor: out.nextCursor,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Erro";
+    if (msg.includes("Record to connect does not exist") || msg.toLowerCase().includes("cursor")) {
+      return res.status(400).json({ message: "Cursor inválido" });
+    }
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao listar auditoria" });
+  }
+}
