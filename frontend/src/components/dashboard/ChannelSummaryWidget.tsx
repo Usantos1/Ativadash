@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
-import { AlertCircle, Award, AlertTriangle, Facebook, Globe, Loader2 } from "lucide-react";
+import { AlertCircle, AlertTriangle, Award, Facebook, Globe, Loader2, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ChannelPerformanceSignal } from "@/lib/channel-performance-compare";
+import type { ExecutiveChannelBadge } from "@/lib/channel-executive-badge";
 import { Button } from "@/components/ui/button";
 import {
   ChannelPerformanceBody,
@@ -12,15 +12,14 @@ import type { ChannelPerformanceLayout } from "./build-channel-performance-layou
 export type ChannelSummaryWidgetProps = {
   channel: "meta" | "google";
   accent: "purple" | "green";
-  /** Mantido na API por compatibilidade; o objetivo aparece no cabeçalho do painel. */
   businessGoalMode?: import("@/lib/business-goal-mode").BusinessGoalMode;
   title: string;
   syncAt: Date | null;
   integrationLabel: string;
   integrationTone: "success" | "warning" | "muted" | "danger";
   performanceChip?: string | null;
-  /** Comparativo Meta × Google no período */
-  performanceSignal?: ChannelPerformanceSignal;
+  /** Badge executivo (metas, volume, comparativo entre redes). */
+  executiveBadge?: ExecutiveChannelBadge;
   layout?: ChannelPerformanceLayout;
   loading?: boolean;
   errorMessage?: string | null;
@@ -55,8 +54,9 @@ function StatusBadge({
   );
 }
 
-function PerformanceHeaderBadge({ signal }: { signal: ChannelPerformanceSignal }) {
-  if (signal === "best") {
+function ExecutiveBadgePill({ badge }: { badge: ExecutiveChannelBadge }) {
+  if (!badge) return null;
+  if (badge === "best") {
     return (
       <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/35 bg-emerald-500/[0.1] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-900 dark:text-emerald-100">
         <Award className="h-3 w-3 shrink-0 opacity-90" aria-hidden />
@@ -64,7 +64,7 @@ function PerformanceHeaderBadge({ signal }: { signal: ChannelPerformanceSignal }
       </span>
     );
   }
-  if (signal === "attention") {
+  if (badge === "attention") {
     return (
       <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/[0.1] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-950 dark:text-amber-100">
         <AlertTriangle className="h-3 w-3 shrink-0 opacity-90" aria-hidden />
@@ -72,7 +72,20 @@ function PerformanceHeaderBadge({ signal }: { signal: ChannelPerformanceSignal }
       </span>
     );
   }
-  return null;
+  if (badge === "scale") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md border border-sky-500/35 bg-sky-500/[0.1] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sky-950 dark:text-sky-100">
+        <TrendingUp className="h-3 w-3 shrink-0 opacity-90" aria-hidden />
+        Escalar
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md border border-rose-500/35 bg-rose-500/[0.08] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-900 dark:text-rose-100">
+      <AlertTriangle className="h-3 w-3 shrink-0 opacity-90" aria-hidden />
+      Baixa eficiência
+    </span>
+  );
 }
 
 export function ChannelSummaryWidget({
@@ -83,7 +96,7 @@ export function ChannelSummaryWidget({
   integrationLabel,
   integrationTone,
   performanceChip,
-  performanceSignal,
+  executiveBadge,
   layout,
   loading,
   errorMessage,
@@ -124,7 +137,7 @@ export function ChannelSummaryWidget({
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <h3 className="text-sm font-bold tracking-tight text-foreground">{title}</h3>
               <StatusBadge label={integrationLabel} tone={integrationTone} accent={accent} />
-              <PerformanceHeaderBadge signal={performanceSignal ?? null} />
+              <ExecutiveBadgePill badge={executiveBadge ?? null} />
               {performanceChip ? (
                 <span className="rounded-md bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                   {performanceChip}

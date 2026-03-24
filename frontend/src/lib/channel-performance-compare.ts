@@ -18,6 +18,13 @@ function isValidRoas(n: number | null | undefined): n is number {
  * SALES: maior ROAS.
  * HYBRID: ROAS quando ambos > 0; senão custo por resultado.
  */
+export type ChannelCompareResult = {
+  meta: ChannelPerformanceSignal;
+  google: ChannelPerformanceSignal;
+  /** Quem ganhou no critério de eficiência (para badges); null se empate ou sem dados. */
+  efficiencyWinner: "meta" | "google" | null;
+};
+
 export function deriveChannelPerformanceSignals(
   mode: BusinessGoalMode,
   meta: {
@@ -26,8 +33,12 @@ export function deriveChannelPerformanceSignals(
     roas: number | null;
   },
   google: { costPerConv: number | null; roas: number | null }
-): { meta: ChannelPerformanceSignal; google: ChannelPerformanceSignal } {
-  const neutral = { meta: null as ChannelPerformanceSignal, google: null as ChannelPerformanceSignal };
+): ChannelCompareResult {
+  const neutral: ChannelCompareResult = {
+    meta: null,
+    google: null,
+    efficiencyWinner: null,
+  };
 
   if (mode === "SALES") {
     const m = meta.roas;
@@ -36,8 +47,8 @@ export function deriveChannelPerformanceSignals(
     const maxR = Math.max(m, g);
     if (maxR <= 0) return neutral;
     if (Math.abs(m - g) / maxR < REL_TIE) return neutral;
-    if (m > g) return { meta: "best", google: "attention" };
-    return { meta: "attention", google: "best" };
+    if (m > g) return { meta: "best", google: "attention", efficiencyWinner: "meta" };
+    return { meta: "attention", google: "best", efficiencyWinner: "google" };
   }
 
   if (mode === "LEADS") {
@@ -46,8 +57,8 @@ export function deriveChannelPerformanceSignals(
     if (!isValidCost(m) || !isValidCost(g)) return neutral;
     const maxC = Math.max(m, g);
     if (Math.abs(m - g) / maxC < REL_TIE) return neutral;
-    if (m < g) return { meta: "best", google: "attention" };
-    return { meta: "attention", google: "best" };
+    if (m < g) return { meta: "best", google: "attention", efficiencyWinner: "meta" };
+    return { meta: "attention", google: "best", efficiencyWinner: "google" };
   }
 
   // HYBRID
@@ -56,8 +67,8 @@ export function deriveChannelPerformanceSignals(
   if (isValidRoas(mR) && isValidRoas(gR)) {
     const maxR = Math.max(mR, gR);
     if (Math.abs(mR - gR) / maxR < REL_TIE) return neutral;
-    if (mR > gR) return { meta: "best", google: "attention" };
-    return { meta: "attention", google: "best" };
+    if (mR > gR) return { meta: "best", google: "attention", efficiencyWinner: "meta" };
+    return { meta: "attention", google: "best", efficiencyWinner: "google" };
   }
 
   const m = meta.cpl;
@@ -65,6 +76,6 @@ export function deriveChannelPerformanceSignals(
   if (!isValidCost(m) || !isValidCost(g)) return neutral;
   const maxC = Math.max(m, g);
   if (Math.abs(m - g) / maxC < REL_TIE) return neutral;
-  if (m < g) return { meta: "best", google: "attention" };
-  return { meta: "attention", google: "best" };
+  if (m < g) return { meta: "best", google: "attention", efficiencyWinner: "meta" };
+  return { meta: "attention", google: "best", efficiencyWinner: "google" };
 }

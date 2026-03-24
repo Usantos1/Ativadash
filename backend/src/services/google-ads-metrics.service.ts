@@ -592,6 +592,82 @@ export async function fetchGoogleAdsAdGroupMetrics(
   }
 }
 
+export type GoogleAdsAdRow = {
+  campaignName: string;
+  adGroupName: string;
+  adId: string;
+  impressions: number;
+  clicks: number;
+  costMicros: number;
+  conversions: number;
+  conversionsValue: number;
+};
+
+export async function fetchGoogleAdsAdMetrics(
+  organizationId: string,
+  range: { start: string; end: string }
+): Promise<GoogleAdsDeepResult<GoogleAdsAdRow>> {
+  const ctx = await resolveGoogleAdsCustomer(organizationId);
+  if (!ctx.ok) return { ok: false, code: ctx.code, message: ctx.message };
+  if (!ctx.customerId) return { ok: true, rows: [] };
+  const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN.trim();
+  const query = `
+    SELECT
+      campaign.name,
+      ad_group.name,
+      ad_group_ad.ad.id,
+      metrics.impressions,
+      metrics.clicks,
+      metrics.cost_micros,
+      metrics.conversions,
+      metrics.conversions_value
+    FROM ad_group_ad
+    WHERE segments.date BETWEEN '${range.start}' AND '${range.end}'
+  `.trim();
+  try {
+    const results = await googleSearchStreamResults(
+      ctx.accessToken,
+      developerToken,
+      ctx.customerId,
+      query
+    );
+    type Row = {
+      campaign?: { name?: string };
+      adGroup?: { name?: string };
+      adGroupAd?: { ad?: { id?: string | number } };
+      metrics?: Record<string, string | number | undefined>;
+    };
+    const rows: GoogleAdsAdRow[] = [];
+    for (const raw of results) {
+      const row = raw as Row;
+      const m = row.metrics ?? {};
+      const idRaw = row.adGroupAd?.ad?.id;
+      rows.push({
+        campaignName: row.campaign?.name ?? "",
+        adGroupName: row.adGroup?.name ?? "",
+        adId: idRaw != null ? String(idRaw) : "",
+        impressions: Number(m.impressions ?? 0),
+        clicks: Number(m.clicks ?? 0),
+        costMicros: Number(m.costMicros ?? (m as Record<string, unknown>).cost_micros ?? 0),
+        conversions: Number(m.conversions ?? 0),
+        conversionsValue: Number(
+          (m as Record<string, unknown>).conversionsValue ??
+            (m as Record<string, unknown>).conversions_value ??
+            0
+        ),
+      });
+    }
+    return { ok: true, rows };
+  } catch (e) {
+    const raw = e instanceof Error ? e.message : String(e);
+    const classified = classifyGoogleAdsError(raw);
+    if (!classified.ok) {
+      return { ok: false, code: classified.code, message: classified.message };
+    }
+    return { ok: false, code: "UNKNOWN", message: raw };
+  }
+}
+
 export async function fetchGoogleAdsSearchTerms(
   organizationId: string,
   range: { start: string; end: string }

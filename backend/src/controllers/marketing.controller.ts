@@ -3,6 +3,7 @@ import type { JwtPayload } from "../middlewares/auth.middleware.js";
 import { fetchGoogleAdsMetrics } from "../services/google-ads-metrics.service.js";
 import {
   fetchGoogleAdsAdGroupMetrics,
+  fetchGoogleAdsAdMetrics,
   fetchGoogleAdsSearchTerms,
   mutateGoogleCampaignStatus,
 } from "../services/google-ads-metrics.service.js";
@@ -546,6 +547,23 @@ export async function getGoogleAdGroupsHandler(req: Request, res: Response) {
       period: req.query.period as string | undefined,
     });
     const result = await fetchGoogleAdsAdGroupMetrics(organizationId, range);
+    return res.json(result);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return res.status(400).json({ ok: false, message: msg });
+  }
+}
+
+export async function getGoogleAdsAdsHandler(req: Request, res: Response) {
+  const { userId, organizationId } = (req as AuthRequest).user;
+  if (!(await guardRead(userId, organizationId, res))) return;
+  try {
+    const range = parseMetricsDateRangeQuery({
+      startDate: req.query.startDate as string | undefined,
+      endDate: req.query.endDate as string | undefined,
+      period: req.query.period as string | undefined,
+    });
+    const result = await fetchGoogleAdsAdMetrics(organizationId, range);
     return res.json(result);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

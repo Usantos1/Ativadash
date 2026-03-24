@@ -55,6 +55,27 @@ export interface GoogleAdsCampaignRow {
   conversionsValue: number;
 }
 
+export interface GoogleAdsAdGroupRow {
+  campaignName: string;
+  adGroupName: string;
+  impressions: number;
+  clicks: number;
+  costMicros: number;
+  conversions: number;
+  conversionsValue: number;
+}
+
+export interface GoogleAdsAdRow {
+  campaignName: string;
+  adGroupName: string;
+  adId: string;
+  impressions: number;
+  clicks: number;
+  costMicros: number;
+  conversions: number;
+  conversionsValue: number;
+}
+
 export interface GoogleAdsDailyRow {
   date: string;
   impressions: number;
@@ -103,6 +124,34 @@ export async function fetchGoogleAdsMetrics(
       `/marketing/google-ads/metrics?${metricsQuery(range)}`
     );
     return res;
+  } catch {
+    return null;
+  }
+}
+
+export type GoogleAdsDeepRowsResult<T> =
+  | { ok: true; rows: T[] }
+  | { ok: false; code: GoogleAdsMetricsErrorCode; message: string };
+
+export async function fetchGoogleAdsAdGroups(
+  range: MetricsDateRange
+): Promise<GoogleAdsDeepRowsResult<GoogleAdsAdGroupRow> | null> {
+  try {
+    return await api.get<GoogleAdsDeepRowsResult<GoogleAdsAdGroupRow>>(
+      `/marketing/google-ads/ad-groups?${metricsQuery(range)}`
+    );
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchGoogleAdsAds(
+  range: MetricsDateRange
+): Promise<GoogleAdsDeepRowsResult<GoogleAdsAdRow> | null> {
+  try {
+    return await api.get<GoogleAdsDeepRowsResult<GoogleAdsAdRow>>(
+      `/marketing/google-ads/ads?${metricsQuery(range)}`
+    );
   } catch {
     return null;
   }

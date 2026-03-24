@@ -14,10 +14,16 @@ import { useMarketingMetrics } from "@/hooks/useMarketingMetrics";
 import type { MarketingDashboardPerfRow, MarketingDashboardSummary } from "@/lib/marketing-dashboard-api";
 import type { MetaAdsMetricsSummary } from "@/lib/integrations-api";
 import { defaultMarketingGoalContext } from "@/lib/business-goal-mode";
+import { deriveChannelPerformanceSignals } from "@/lib/channel-performance-compare";
+import { resolveExecutiveChannelBadge } from "@/lib/channel-executive-badge";
+import { buildConsolidatedAccountKpis } from "@/lib/consolidated-account-kpis";
 import {
-  deriveChannelPerformanceSignals,
-  type ChannelPerformanceSignal,
-} from "@/lib/channel-performance-compare";
+  fetchGoogleAdsAdGroups,
+  fetchGoogleAdsAds,
+  type GoogleAdsAdGroupRow,
+  type GoogleAdsAdRow,
+} from "@/lib/integrations-api";
+import { fetchMarketingSettings, type MarketingSettingsDto } from "@/lib/marketing-settings-api";
 import { ExecutiveFunnel } from "@/components/dashboard/ExecutiveFunnel";
 import {
   buildAdaptiveFunnelModelFromSteps,
@@ -38,7 +44,9 @@ import { DashboardDailyChartSection } from "@/components/dashboard/DashboardDail
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DashboardPlatformDiagnostics } from "@/components/dashboard/DashboardPlatformDiagnostics";
 import { DashboardPerformanceTable } from "@/components/dashboard/dashboard-performance-table";
-import { ExecutiveKPIGrid } from "@/components/dashboard/ExecutiveKPIGrid";
+import { ConsolidatedSummaryGrid } from "@/components/dashboard/ConsolidatedSummaryGrid";
+import { GoogleAdGroupsTable } from "@/components/dashboard/GoogleAdGroupsTable";
+import { GoogleAdsLevelTable } from "@/components/dashboard/GoogleAdsLevelTable";
 import { GoogleCampaignsTable } from "@/components/dashboard/GoogleCampaignsTable";
 
 const GOOGLE_ADS_API_NOT_READY_COPY =
@@ -65,6 +73,7 @@ function relDelta(
 }
 
 type MetaLevel = "campaign" | "adset" | "ad";
+type GoogleTableLevel = "campaign" | "adgroup" | "ad";
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -164,8 +173,73 @@ export function Dashboard() {
   const hasAnyChannel = hasGoogle || hasMeta;
 
   const [metaLevel, setMetaLevel] = useState<MetaLevel>("campaign");
+  const [googleTableLevel, setGoogleTableLevel] = useState<GoogleTableLevel>("campaign");
   const [perfPlatform, setPerfPlatform] = useState<"meta" | "google">("meta");
   const [chartSeries, setChartSeries] = useState<"spend" | "leads" | "ctr" | "cpl">("spend");
+  const [marketingSettings, setMarketingSettings] = useState<MarketingSettingsDto | null>(null);
+  const [googleAdGroupRows, setGoogleAdGroupRows] = useState<GoogleAdsAdGroupRow[]>([]);
+  const [googleAdRows, setGoogleAdRows] = useState<GoogleAdsAdRow[]>([]);
+  const [googleDeepLoading, setGoogleDeepLoading] = useState(false);
+  const [googleDeepError, setGoogleDeepError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchMarketingSettings()
+      .then((s) => {
+        if (!cancelled) setMarketingSettings(s);
+      })
+      .catch(() => {
+        if (!cancelled) setMarketingSettings(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasGoogle || metrics?.ok !== true) {
+      setGoogleAdGroupRows([]);
+      setGoogleAdRows([]);
+      setGoogleDeepError(null);
+      setGoogleDeepLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setGoogleDeepLoading(true);
+    setGoogleDeepError(null);
+    Promise.all([fetchGoogleAdsAdGroups(dateRange), fetchGoogleAdsAds(dateRange)])
+      .then(([ag, ads]) => {
+        if (cancelled) return;
+        const errs: string[] = [];
+        if (ag && !ag.ok) errs.push(ag.message);
+        if (ads && !ads.ok) errs.push(ads.message);
+        setGoogleDeepError(errs.length ? errs.join(" · ") : null);
+        setGoogleAdGroupRows(ag && ag.ok ? ag.rows : []);
+        setGoogleAdRows(ads && ads.ok ? ads.rows : []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setGoogleDeepError("Não foi possível carregar grupos/anúncios do Google.");
+          setGoogleAdGroupRows([]);
+          setGoogleAdRows([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setGoogleDeepLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hasGoogle, metrics, dateRange.startDate, dateRange.endDate]);
+
+  const channelTargets = useMemo(
+    () => ({
+      targetCpaBrl: marketingSettings?.targetCpaBrl ?? null,
+      maxCpaBrl: marketingSettings?.maxCpaBrl ?? null,
+      targetRoas: marketingSettings?.targetRoas ?? null,
+    }),
+    [marketingSettings]
+  );
 
   const chartData = useMemo(() => {
     if (!metaOk || !dash.timeseries.length) return [];
@@ -228,6 +302,7 @@ export function Dashboard() {
       relDelta,
       leadLabel: goalCtx.primaryConversionLabel?.trim() || "Leads",
       cmpMeta: cmpMetaSummary,
+      targets: channelTargets,
     });
   }, [
     summary,
@@ -237,6 +312,7 @@ export function Dashboard() {
     compareEnabled,
     goalCtx.primaryConversionLabel,
     cmpMetaSummary,
+    channelTargets,
   ]);
 
   const googleChannelLayout = useMemo(() => {
@@ -248,6 +324,7 @@ export function Dashboard() {
       compareEnabled,
       relDelta,
       leadLabel: goalCtx.primaryConversionLabel?.trim() || "Leads",
+      targets: channelTargets,
     });
   }, [
     googleOk,
@@ -257,6 +334,7 @@ export function Dashboard() {
     goalCtx.primaryConversionLabel,
     cmpGoogleSummary,
     compareEnabled,
+    channelTargets,
   ]);
 
   const metaWidgetLoading = blocks.summary.refreshing || metaMetricsLoading;
@@ -273,14 +351,8 @@ export function Dashboard() {
     metrics!.summary.impressions <= 0 &&
     metrics!.summary.clicks <= 0;
 
-  const channelPerformanceSignals = useMemo((): {
-    meta: ChannelPerformanceSignal;
-    google: ChannelPerformanceSignal;
-  } => {
-    const empty = { meta: null, google: null } satisfies {
-      meta: ChannelPerformanceSignal;
-      google: ChannelPerformanceSignal;
-    };
+  const channelCompare = useMemo(() => {
+    const empty = { meta: null, google: null, efficiencyWinner: null } as const;
     if (!metaOk || !summary || !hasGoogle || !googleOk || !metrics?.ok || !googleDerived) {
       return empty;
     }
@@ -316,6 +388,102 @@ export function Dashboard() {
     goalCtx.businessGoalMode,
     metaEmptyPeriod,
     googleEmptyPeriod,
+  ]);
+
+  const metaExecutiveBadge = useMemo(() => {
+    if (!summary) return null;
+    const mode = goalCtx.businessGoalMode;
+    const cplOrCpa =
+      mode === "SALES" ? summary.derived.costPerPurchase : summary.derived.cplLeads;
+    const results =
+      mode === "SALES" ? summary.purchases : mode === "HYBRID" ? summary.leads : summary.leads;
+    const prevResults =
+      mode === "SALES"
+        ? (cmpMetaSummary?.purchases ?? 0)
+        : (cmpMetaSummary?.leads ?? 0);
+    return resolveExecutiveChannelBadge({
+      mode,
+      crossSignal: channelCompare.meta,
+      channel: "meta",
+      efficiencyWinner: channelCompare.efficiencyWinner,
+      cplOrCpa,
+      ctrPct: summary.derived.ctrPct,
+      impressions: summary.impressions,
+      spend: metaSpend,
+      results,
+      targetCpaBrl: channelTargets.targetCpaBrl,
+      maxCpaBrl: channelTargets.maxCpaBrl,
+      compareEnabled,
+      resultsDeltaPct: relDelta(results, prevResults, compareEnabled && !!cmpMetaSummary)?.pct,
+      spendDeltaPct: relDelta(metaSpend, cmpMetaSpend, compareEnabled && !!cmpMetaSummary)?.pct,
+    });
+  }, [
+    summary,
+    goalCtx.businessGoalMode,
+    channelCompare,
+    metaSpend,
+    compareEnabled,
+    cmpMetaSummary,
+    cmpMetaSpend,
+    channelTargets,
+  ]);
+
+  const googleExecutiveBadge = useMemo(() => {
+    if (!googleOk || !metrics?.ok || !googleDerived) return null;
+    const mode = goalCtx.businessGoalMode;
+    const spend = googleDerived.spend;
+    const conv = metrics.summary.conversions;
+    const prevConv = cmpGoogleSummary?.conversions ?? 0;
+    const cmpSpend = (cmpGoogleSummary?.costMicros ?? 0) / 1_000_000;
+    return resolveExecutiveChannelBadge({
+      mode,
+      crossSignal: channelCompare.google,
+      channel: "google",
+      efficiencyWinner: channelCompare.efficiencyWinner,
+      cplOrCpa: googleDerived.costPerConv,
+      ctrPct: googleDerived.ctrPct,
+      impressions: metrics.summary.impressions,
+      spend,
+      results: conv,
+      targetCpaBrl: channelTargets.targetCpaBrl,
+      maxCpaBrl: channelTargets.maxCpaBrl,
+      compareEnabled,
+      resultsDeltaPct: relDelta(conv, prevConv, compareEnabled && !!cmpGoogleSummary)?.pct,
+      spendDeltaPct: relDelta(spend, cmpSpend, compareEnabled && !!cmpGoogleSummary)?.pct,
+    });
+  }, [
+    googleOk,
+    metrics,
+    googleDerived,
+    goalCtx.businessGoalMode,
+    channelCompare,
+    compareEnabled,
+    cmpGoogleSummary,
+    channelTargets,
+  ]);
+
+  const consolidatedSummaryItems = useMemo(() => {
+    if (!summary) return [];
+    return buildConsolidatedAccountKpis(
+      goalCtx.businessGoalMode,
+      summary,
+      metrics,
+      cmpMetaSummary,
+      cmpGoogleSummary,
+      compareEnabled,
+      relDelta,
+      goalCtx.primaryConversionLabel?.trim() || "Leads",
+      channelTargets
+    );
+  }, [
+    summary,
+    goalCtx.businessGoalMode,
+    goalCtx.primaryConversionLabel,
+    metrics,
+    cmpMetaSummary,
+    cmpGoogleSummary,
+    compareEnabled,
+    channelTargets,
   ]);
 
   const metaPerfChip =
@@ -410,15 +578,6 @@ export function Dashboard() {
               </p>
             ) : null}
 
-            <ExecutiveKPIGrid
-              summary={summary}
-              businessGoalMode={goalCtx.businessGoalMode}
-              primaryConversionLabel={goalCtx.primaryConversionLabel}
-              compareEnabled={compareEnabled}
-              cmpMeta={cmpMetaSummary}
-              relDelta={relDelta}
-            />
-
             <section className="space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -458,12 +617,12 @@ export function Dashboard() {
                       : "muted"
                   }
                   performanceChip={metaPerfChip}
-                  performanceSignal={
+                  executiveBadge={
                     !metaWidgetLoading &&
                     !metaEmptyPeriod &&
                     metaChannelLayout &&
                     dash.integrationStatus.metaAds.connected
-                      ? channelPerformanceSignals.meta
+                      ? metaExecutiveBadge
                       : null
                   }
                   layout={
@@ -501,12 +660,12 @@ export function Dashboard() {
                           : "warning"
                     }
                     performanceChip={googlePerfChip}
-                    performanceSignal={
+                    executiveBadge={
                       !googleWidgetLoading &&
                       !googleEmptyPeriod &&
                       googleChannelLayout &&
                       !googleNotConnected
-                        ? channelPerformanceSignals.google
+                        ? googleExecutiveBadge
                         : null
                     }
                     layout={
@@ -534,6 +693,10 @@ export function Dashboard() {
                 ) : null}
               </div>
             </section>
+
+            {consolidatedSummaryItems.length > 0 ? (
+              <ConsolidatedSummaryGrid title="Resumo geral" items={consolidatedSummaryItems} />
+            ) : null}
 
             <section className="space-y-3">
               <div className="flex items-center justify-between gap-2">
@@ -866,25 +1029,74 @@ export function Dashboard() {
                     </Tabs>
                   </TabsContent>
                   <TabsContent value="google" className="mt-4 outline-none">
-                    <GoogleCampaignsTable
-                      rows={googleOk && metrics?.ok ? metrics.campaigns : []}
-                      businessGoalMode={goalCtx.businessGoalMode}
-                      loading={hasGoogle && metricsLoading && !googleOk}
-                      emptyLabel={
-                        !hasGoogle
-                          ? "Google Ads não configurado para este workspace."
-                          : googleNotConnected
-                            ? "Conecte o Google Ads em Integrações."
-                            : googleEmptyPeriod
-                              ? "Sem campanhas com dados no período."
-                              : "Nenhuma campanha no período."
-                      }
-                      errorMessage={
-                        !googleWidgetLoading && metricsError && hasGoogle && !googleNotConnected
-                          ? metricsError
-                          : null
-                      }
-                    />
+                    <Tabs
+                      value={googleTableLevel}
+                      onValueChange={(v) => setGoogleTableLevel(v as GoogleTableLevel)}
+                      className="w-full"
+                    >
+                      <TabsList className="mb-4 h-10 w-full flex-wrap justify-start gap-1 rounded-xl bg-muted/30 p-1 sm:w-auto">
+                        <TabsTrigger value="campaign" className="rounded-lg text-xs sm:text-sm">
+                          Campanhas
+                        </TabsTrigger>
+                        <TabsTrigger value="adgroup" className="rounded-lg text-xs sm:text-sm">
+                          Grupos de anúncios
+                        </TabsTrigger>
+                        <TabsTrigger value="ad" className="rounded-lg text-xs sm:text-sm">
+                          Anúncios
+                        </TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="campaign" className="outline-none">
+                        <GoogleCampaignsTable
+                          rows={googleOk && metrics?.ok ? metrics.campaigns : []}
+                          businessGoalMode={goalCtx.businessGoalMode}
+                          loading={hasGoogle && metricsLoading && !googleOk}
+                          emptyLabel={
+                            !hasGoogle
+                              ? "Google Ads não configurado para este workspace."
+                              : googleNotConnected
+                                ? "Conecte o Google Ads em Integrações."
+                                : googleEmptyPeriod
+                                  ? "Sem campanhas com dados no período."
+                                  : "Nenhuma campanha no período."
+                          }
+                          errorMessage={
+                            !googleWidgetLoading && metricsError && hasGoogle && !googleNotConnected
+                              ? metricsError
+                              : null
+                          }
+                        />
+                      </TabsContent>
+                      <TabsContent value="adgroup" className="outline-none">
+                        <GoogleAdGroupsTable
+                          rows={googleAdGroupRows}
+                          businessGoalMode={goalCtx.businessGoalMode}
+                          loading={googleDeepLoading && !googleAdGroupRows.length}
+                          emptyLabel="Nenhum grupo com métricas no período."
+                          errorMessage={
+                            !googleWidgetLoading && metricsError && hasGoogle && !googleNotConnected
+                              ? metricsError
+                              : googleAdGroupRows.length === 0 && googleDeepError
+                                ? googleDeepError
+                                : null
+                          }
+                        />
+                      </TabsContent>
+                      <TabsContent value="ad" className="outline-none">
+                        <GoogleAdsLevelTable
+                          rows={googleAdRows}
+                          businessGoalMode={goalCtx.businessGoalMode}
+                          loading={googleDeepLoading && !googleAdRows.length}
+                          emptyLabel="Nenhum anúncio com métricas no período."
+                          errorMessage={
+                            !googleWidgetLoading && metricsError && hasGoogle && !googleNotConnected
+                              ? metricsError
+                              : googleAdRows.length === 0 && googleDeepError
+                                ? googleDeepError
+                                : null
+                          }
+                        />
+                      </TabsContent>
+                    </Tabs>
                   </TabsContent>
                 </Tabs>
               )}

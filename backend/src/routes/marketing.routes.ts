@@ -33,6 +33,7 @@ import {
   patchMetaCampaignBudgetContractHandler,
   patchGoogleCampaignStatusContractHandler,
   getGoogleAdGroupsHandler,
+  getGoogleAdsAdsHandler,
   getGoogleSearchTermsHandler,
   postGoogleCampaignMutateStubHandler,
   postMetricsSnapshotHandler,
@@ -57,6 +58,7 @@ router.delete("/alert-rules/:id", ...authCtx, deleteAlertRuleHandler);
 
 router.get("/google-ads/metrics", ...authCtx, getGoogleAdsMetricsHandler);
 router.get("/google-ads/ad-groups", ...authCtx, getGoogleAdGroupsHandler);
+router.get("/google-ads/ads", ...authCtx, getGoogleAdsAdsHandler);
 router.get("/google-ads/search-terms", ...authCtx, getGoogleSearchTermsHandler);
 router.post("/google-ads/campaign-mutate-stub", ...authCtx, postGoogleCampaignMutateStubHandler);
 
