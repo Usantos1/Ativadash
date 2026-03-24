@@ -1,7 +1,6 @@
 import { Link } from "react-router-dom";
 import { AlertCircle, Award, AlertTriangle, Facebook, Globe, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { BusinessGoalMode } from "@/lib/business-goal-mode";
 import type { ChannelPerformanceSignal } from "@/lib/channel-performance-compare";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,16 +9,11 @@ import {
 } from "./ChannelPerformanceBody";
 import type { ChannelPerformanceLayout } from "./build-channel-performance-layout";
 
-const MODE_CHIP: Record<BusinessGoalMode, string> = {
-  LEADS: "Leads",
-  SALES: "Vendas",
-  HYBRID: "Híbrido",
-};
-
 export type ChannelSummaryWidgetProps = {
   channel: "meta" | "google";
   accent: "purple" | "green";
-  businessGoalMode: BusinessGoalMode;
+  /** Mantido na API por compatibilidade; o objetivo aparece no cabeçalho do painel. */
+  businessGoalMode?: import("@/lib/business-goal-mode").BusinessGoalMode;
   title: string;
   syncAt: Date | null;
   integrationLabel: string;
@@ -61,21 +55,6 @@ function StatusBadge({
   );
 }
 
-function ModeBadge({ mode, accent }: { mode: BusinessGoalMode; accent: "purple" | "green" }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
-        accent === "purple"
-          ? "border border-violet-500/25 bg-violet-500/[0.06] text-violet-900 dark:text-violet-100"
-          : "border border-emerald-600/25 bg-emerald-500/[0.08] text-emerald-950 dark:text-emerald-100"
-      )}
-    >
-      {MODE_CHIP[mode]}
-    </span>
-  );
-}
-
 function PerformanceHeaderBadge({ signal }: { signal: ChannelPerformanceSignal }) {
   if (signal === "best") {
     return (
@@ -99,7 +78,6 @@ function PerformanceHeaderBadge({ signal }: { signal: ChannelPerformanceSignal }
 export function ChannelSummaryWidget({
   channel,
   accent,
-  businessGoalMode,
   title,
   syncAt,
   integrationLabel,
@@ -132,12 +110,12 @@ export function ChannelSummaryWidget({
   return (
     <div
       className={cn(
-        "flex h-full min-h-0 flex-col rounded-xl border p-2.5 sm:p-3",
+        "flex h-full min-h-0 flex-col rounded-xl border p-2 sm:p-2.5",
         shell,
         "shadow-[var(--shadow-surface-sm)]"
       )}
     >
-      <div className="flex flex-wrap items-start justify-between gap-2 border-b border-border/25 pb-2">
+      <div className="flex flex-wrap items-start justify-between gap-2 border-b border-border/25 pb-1.5">
         <div className="flex min-w-0 flex-1 items-start gap-2">
           <div className={cn("mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", iconWrap)}>
             <Icon className="h-4 w-4" aria-hidden />
@@ -146,7 +124,6 @@ export function ChannelSummaryWidget({
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <h3 className="text-sm font-bold tracking-tight text-foreground">{title}</h3>
               <StatusBadge label={integrationLabel} tone={integrationTone} accent={accent} />
-              <ModeBadge mode={businessGoalMode} accent={accent} />
               <PerformanceHeaderBadge signal={performanceSignal ?? null} />
               {performanceChip ? (
                 <span className="rounded-md bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">

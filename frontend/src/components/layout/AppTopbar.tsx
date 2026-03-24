@@ -6,8 +6,6 @@ import { SidebarHeaderControl } from "@/components/layout/Sidebar";
 import { WorkspaceSwitcher } from "@/components/layout/WorkspaceSwitcher";
 import { TopbarActions } from "@/components/layout/TopbarActions";
 import { resolveTopbarCrumbs } from "@/components/layout/topbar-crumbs";
-import { useAuthStore } from "@/stores/auth-store";
-import { executiveGreetingLine } from "@/lib/display-name";
 
 export function AppTopbar({
   sidebarCollapsed,
@@ -20,24 +18,13 @@ export function AppTopbar({
 }) {
   const { pathname } = useLocation();
   const crumbs = useMemo(() => resolveTopbarCrumbs(pathname), [pathname]);
-  const user = useAuthStore((s) => s.user);
-  const greeting = executiveGreetingLine(user);
-  const contextLabel = useMemo(() => {
-    if (crumbs.length === 0) return "Área de trabalho";
-    const last = crumbs[crumbs.length - 1];
-    return last?.label ?? "Área de trabalho";
-  }, [crumbs]);
 
-  const isMarketingHome = pathname === "/marketing";
-  const orgName = user?.organization?.name ?? "Empresa";
-  const marketingSwitcherFace =
-    isMarketingHome && user ? { primary: orgName, secondary: greeting } : undefined;
-  const showCenterCrumbs = crumbs.length > 0 && !isMarketingHome;
+  const showCenterCrumbs = crumbs.length > 0;
 
   return (
     <header
       className={cn(
-        "fixed right-0 top-0 z-30 flex h-[calc(3rem+env(safe-area-inset-top,0px))] min-h-12 w-full min-w-0 items-stretch border-b border-border/60 bg-card/90 shadow-[0_1px_0_0_hsl(var(--border)/0.35)] backdrop-blur-xl supports-[backdrop-filter]:bg-card/80",
+        "fixed right-0 top-0 z-30 flex h-[calc(3rem+env(safe-area-inset-top,0px))] min-h-12 w-full min-w-0 items-stretch border-b border-border/40 bg-card/85 shadow-[0_1px_0_0_hsl(var(--border)/0.22)] backdrop-blur-xl supports-[backdrop-filter]:bg-card/75",
         "supports-[padding:max(0px)]:pt-[env(safe-area-inset-top)]",
         "left-0",
         sidebarCollapsed ? "md:left-14 md:w-[calc(100%-3.5rem)]" : "md:left-[228px] md:w-[calc(100%-228px)]"
@@ -48,21 +35,12 @@ export function AppTopbar({
         <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
           <SidebarHeaderControl onMobileOpen={onMobileOpen} />
           <span className="hidden h-6 w-px shrink-0 bg-border/70 md:block" aria-hidden />
-          <div className="min-w-0 max-w-[min(100vw-12rem,320px)] sm:max-w-[min(100vw-14rem,340px)]">
-            <WorkspaceSwitcher contextFace={marketingSwitcherFace} />
+          <div className="min-w-0 max-w-[min(100vw-10rem,360px)] sm:max-w-[min(100vw-12rem,380px)]">
+            <WorkspaceSwitcher />
           </div>
         </div>
 
-        {!isMarketingHome ? (
-          <div className="hidden min-w-0 max-w-[200px] flex-col px-1 lg:flex xl:max-w-[240px]">
-            <span className="truncate text-xs font-semibold leading-tight text-foreground">{greeting}</span>
-            <span className="truncate text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/90">
-              {contextLabel}
-            </span>
-          </div>
-        ) : null}
-
-        {/* Centro: breadcrumb */}
+        {/* Centro: breadcrumb (sem duplicar saudação — ela fica só no seletor de workspace) */}
         <div className="flex min-w-0 flex-1 justify-center px-1 sm:px-2">
           {showCenterCrumbs ? (
             <nav
@@ -82,11 +60,6 @@ export function AppTopbar({
                 </span>
               ))}
             </nav>
-          ) : !isMarketingHome ? (
-            <div
-              className="h-px w-full max-w-[min(12rem,36vw)] rounded-full bg-gradient-to-r from-transparent via-border/80 to-transparent"
-              aria-hidden
-            />
           ) : null}
         </div>
 

@@ -4,6 +4,9 @@
 
 export type BusinessGoalMode = "LEADS" | "SALES" | "HYBRID";
 
+/** Alias de domínio — espelha o objetivo da conta (ex.: settings / goalContext no painel). */
+export type AccountObjective = BusinessGoalMode;
+
 export type DashboardModeConfig = {
   mode: BusinessGoalMode;
   metaKpiOrder: string[];

@@ -237,7 +237,7 @@ export function buildDashboardQuickInsightsByGoal(params: {
       secondary.push({
         id: "bottleneck-lead",
         icon: AlertTriangle,
-        text: `Maior perda até ${leadWord.toLowerCase()}: ${w.from} → ${w.to} (${formatPercent(w.pct, 2)}).`,
+        text: `Maior perda até ${leadWord.toLowerCase()}: ${w.from} → ${w.to} (${formatPercent(w.pct, 2)}). Ajuste criativo, landing ou formulário conforme a etapa.`,
         tone: "warning",
       });
     }
@@ -292,7 +292,7 @@ export function buildDashboardQuickInsightsByGoal(params: {
       secondary.push({
         id: "bottleneck-sales",
         icon: AlertTriangle,
-        text: `Gargalo no fundo do funil: ${w.from} → ${w.to} (${formatPercent(w.pct, 2)}).`,
+        text: `Maior perda entre etapas de venda (${w.from} → ${w.to}, ${formatPercent(w.pct, 2)}). Revise oferta, página e remarketing.`,
         tone: "warning",
       });
     }

@@ -45,7 +45,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Mídia paga",
     items: [
-      { to: "/marketing", label: "Visão geral", icon: Megaphone, end: true },
+      { to: "/marketing", label: "Painel de mídia", icon: Megaphone, end: true },
       { to: "/marketing/captacao", label: "Captação", icon: Target },
       { to: "/marketing/conversao", label: "Conversão", icon: TrendingUp },
       { to: "/marketing/receita", label: "Receita", icon: DollarSign },

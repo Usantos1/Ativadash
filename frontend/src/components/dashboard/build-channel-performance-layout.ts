@@ -130,6 +130,12 @@ export function buildMetaChannelPerformanceLayout(
         value: derived?.ctrPct != null ? formatPercent(derived.ctrPct) : "—",
       },
     ];
+    if (summary.landingPageViews > 0) {
+      rowEfficiency.push({
+        label: "LPV",
+        value: formatNumber(summary.landingPageViews),
+      });
+    }
   } else if (mode === "SALES") {
     rowEfficiency = [
       {
@@ -172,14 +178,17 @@ export type GoogleLayoutCtx = {
   cmpGoogleSummary: GoogleAdsMetricsSummary | null;
   compareEnabled: boolean;
   relDelta: RelDeltaFn;
+  /** Rótulo do resultado em contas de leads (ex.: “Leads”, “Inscrições”). */
+  leadLabel?: string;
 };
 
 export function buildGoogleChannelPerformanceLayout(
   mode: BusinessGoalMode,
   ctx: GoogleLayoutCtx
 ): ChannelPerformanceLayout {
-  const { googleDerived, metrics, cmpGoogleSummary, compareEnabled, relDelta } = ctx;
+  const { googleDerived, metrics, cmpGoogleSummary, compareEnabled, relDelta, leadLabel } = ctx;
   const cmp = cmpGoogleSummary;
+  const leadWord = leadLabel?.trim() || "Leads";
 
   const spend = googleDerived.spend;
   const rowSpend: PerfStat = {
@@ -189,7 +198,7 @@ export function buildGoogleChannelPerformanceLayout(
   };
 
   const primaryHero: PerfStat = {
-    label: "Conversões",
+    label: mode === "LEADS" ? leadWord : "Conversões",
     value: formatNumber(metrics.conversions),
     deltaPct: dPct(relDelta, metrics.conversions, cmp?.conversions ?? 0, compareEnabled && !!cmp),
   };

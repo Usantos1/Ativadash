@@ -1,18 +1,8 @@
 import { useAuthStore } from "@/stores/auth-store";
+import { tryRefreshAccessToken } from "@/lib/auth-refresh";
+import { API_BASE } from "@/lib/api-config";
 
-// Sem VITE_API_URL em dev: proxy /api → backend local. Com VITE_API_URL: tudo pela API remota (sem banco no PC).
-function getApiBase(): string {
-  let base: string;
-  if (import.meta.env.VITE_API_URL) {
-    base = import.meta.env.VITE_API_URL;
-  } else if (typeof window !== "undefined" && window.location.hostname === "app.ativadash.com") {
-    base = "https://api.ativadash.com";
-  } else {
-    return "/api";
-  }
-  return base.endsWith("/api") ? base : `${base.replace(/\/$/, "")}/api`;
-}
-export const API_BASE = getApiBase();
+export { API_BASE } from "@/lib/api-config";
 
 /** Erro HTTP da API JSON (`message` + opcional `code`, ex.: FORBIDDEN_PLAN). */
 export class ApiClientError extends Error {
@@ -47,15 +37,13 @@ export function formatMutationBlockedMessage(e: unknown, fallback: string): stri
   return fallback;
 }
 
-function getAccessToken(): string | null {
-  return useAuthStore.getState().accessToken;
-}
-
 export async function apiRequest<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  /** Evita loop: no máximo uma tentativa de refresh + replay por requisição. */
+  didAttemptRefresh = false
 ): Promise<T> {
-  const token = await getAccessToken();
+  const token = useAuthStore.getState().accessToken;
   const headers: HeadersInit = {
     "Content-Type": "application/json",
     ...options.headers,
@@ -65,8 +53,14 @@ export async function apiRequest<T>(
   }
   const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
   if (res.status === 401) {
+    if (!didAttemptRefresh) {
+      const refreshed = await tryRefreshAccessToken();
+      if (refreshed) {
+        return apiRequest<T>(endpoint, options, true);
+      }
+    }
     useAuthStore.getState().logout();
-    window.location.href = "/login";
+    if (typeof window !== "undefined") window.location.href = "/login";
     throw new Error("Não autorizado");
   }
   if (!res.ok) {

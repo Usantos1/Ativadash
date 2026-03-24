@@ -33,7 +33,7 @@ function collectOptions(
 }
 
 const shellBase = cn(
-  "flex h-9 max-w-full min-w-0 items-center gap-2 rounded-lg border border-border/70 bg-gradient-to-b from-background to-muted/[0.22] px-1.5 py-1 pr-2 shadow-sm ring-1 ring-black/[0.04] dark:ring-white/[0.05]"
+  "flex h-9 max-w-full min-w-0 items-center gap-2 rounded-lg border border-border/50 bg-background/80 px-1.5 py-1 pr-2 shadow-sm"
 );
 
 const shellInteractive = cn(
@@ -54,18 +54,16 @@ function OrgFace({
 }) {
   return (
     <>
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/[0.12] text-primary shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] dark:bg-primary/15">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/[0.08] text-primary dark:bg-primary/12">
         {loading ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
         ) : (
           <Building2 className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
         )}
       </span>
-      <span className="min-w-0 flex-1 text-left leading-none">
+      <span className="min-w-0 flex-1 text-left leading-tight">
         <span className="block truncate text-[13px] font-semibold tracking-tight text-foreground">{name}</span>
-        <span className="mt-0.5 block truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/75">
-          {subtitleLine}
-        </span>
+        <span className="mt-0.5 block truncate text-[11px] font-normal text-muted-foreground">{subtitleLine}</span>
       </span>
       {showChevron ? (
         <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" aria-hidden />

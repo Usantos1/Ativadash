@@ -58,7 +58,86 @@ function formatBrl(n: number): string {
   }).format(n);
 }
 
-/** Resumo automático Meta vs Google + recomendação. */
+function pushHybridMetaOnlyCaptacaoMonetizacao(bullets: string[], ch: ChannelComparison): void {
+  if (ch.metaCpl != null) {
+    bullets.push(
+      `Captação (Meta): CPL ${formatBrl(ch.metaCpl)} · ${fmtInt(ch.metaLeads)} leads (inclui conversas, se houver).`
+    );
+  } else if (ch.metaSpend > 20) {
+    bullets.push("Captação (Meta): há gasto, mas sem leads rastreados — pixel, formulário e eventos.");
+  }
+  if (ch.metaRoas != null) {
+    bullets.push(`Monetização (Meta): ROAS ${ch.metaRoas.toFixed(2)}x.`);
+  } else if (ch.metaSpend > 20) {
+    bullets.push(
+      "Monetização (Meta): receita/ROAS não calculável no período — confira atribuição e valor de compra."
+    );
+  }
+}
+
+function pushHybridGoogleOnlyCaptacaoMonetizacao(bullets: string[], ch: ChannelComparison): void {
+  if (ch.googleCpl != null) {
+    bullets.push(`Captação (Google): CPA ${formatBrl(ch.googleCpl)} · ${fmtInt(ch.googleLeads)} conversões.`);
+  } else if (ch.googleSpend > 20) {
+    bullets.push("Captação (Google): gasto sem conversões rastreadas — tag, conversões e palavras.");
+  }
+  if (ch.googleRoas != null) {
+    bullets.push(`Monetização (Google): ROAS ${ch.googleRoas.toFixed(2)}x.`);
+  } else if (ch.googleSpend > 20) {
+    bullets.push(
+      "Monetização (Google): receita/ROAS não calculável — confira valor de conversão e lances."
+    );
+  }
+}
+
+function pushRoasComparisonBullets(bullets: string[], ch: ChannelComparison, prefix: string): void {
+  const mr = ch.metaRoas;
+  const gr = ch.googleRoas;
+  if (mr != null && gr != null) {
+    if (mr > gr * 1.08) {
+      bullets.push(
+        `${prefix}Meta com ROAS mais alto (${mr.toFixed(2)}x vs ${gr.toFixed(2)}x no Google).`
+      );
+    } else if (gr > mr * 1.08) {
+      bullets.push(
+        `${prefix}Google com ROAS mais alto (${gr.toFixed(2)}x vs ${mr.toFixed(2)}x na Meta).`
+      );
+    } else {
+      bullets.push(`${prefix}ROAS pareado: Meta ${mr.toFixed(2)}x · Google ${gr.toFixed(2)}x.`);
+    }
+  } else if (mr != null) {
+    bullets.push(`${prefix}Só Meta com ROAS calculável (${mr.toFixed(2)}x).`);
+  } else if (gr != null) {
+    bullets.push(`${prefix}Só Google com ROAS calculável (${gr.toFixed(2)}x).`);
+  }
+}
+
+function pushCaptacaoComparisonBullets(bullets: string[], ch: ChannelComparison, prefix: string): void {
+  if (ch.metaCpl != null && ch.googleCpl != null) {
+    if (ch.metaCpl < ch.googleCpl * 0.92) {
+      bullets.push(
+        `${prefix}Meta com CPL de captação menor (${formatBrl(ch.metaCpl)} vs CPA Google ${formatBrl(ch.googleCpl)}).`
+      );
+    } else if (ch.googleCpl < ch.metaCpl * 0.92) {
+      bullets.push(
+        `${prefix}Google com CPA de captação menor (${formatBrl(ch.googleCpl)} vs CPL Meta ${formatBrl(ch.metaCpl)}).`
+      );
+    } else {
+      bullets.push(
+        `${prefix}Captação equilibrada: CPL Meta ${formatBrl(ch.metaCpl)} · CPA Google ${formatBrl(ch.googleCpl)}.`
+      );
+    }
+  } else {
+    if (ch.metaCpl == null && ch.metaSpend > 20) {
+      bullets.push(`${prefix}Meta com gasto e sem leads rastreados — confira pixel e formulário.`);
+    }
+    if (ch.googleCpl == null && ch.googleSpend > 20) {
+      bullets.push(`${prefix}Google com gasto e sem conversões rastreadas — confira tag e palavras.`);
+    }
+  }
+}
+
+/** Resumo automático Meta vs Google + recomendação (vocabulário alinhado ao objetivo: LEADS / SALES / HYBRID). */
 export function buildSmartChannelSummary(
   mode: BusinessGoalMode,
   ch: ChannelComparison,
@@ -70,79 +149,135 @@ export function buildSmartChannelSummary(
   if (!hasMeta && !hasGoogle) {
     return {
       bullets: ["Conecte Meta ou Google para comparar canais."],
-      recommendation: "Configure integrações.",
+      recommendation: "Configure integrações e volte ao painel para ver o resumo por rede.",
     };
   }
+
   if (hasMeta && !hasGoogle) {
-    if (mode === "SALES" && ch.metaRoas != null) {
-      bullets.push(`Meta Ads: ROAS ${ch.metaRoas.toFixed(2)}x.`);
-    } else if (ch.metaCpl != null) {
-      bullets.push(`Meta Ads: CPL médio ${formatBrl(ch.metaCpl)} · ${fmtInt(ch.metaLeads)} leads.`);
-    } else {
-      bullets.push("Meta Ads: sem leads no período com gasto — revisar campanhas.");
+    if (mode === "LEADS") {
+      if (ch.metaCpl != null) {
+        bullets.push(`Meta Ads: CPL ${formatBrl(ch.metaCpl)} · ${fmtInt(ch.metaLeads)} leads.`);
+      } else {
+        bullets.push("Meta Ads: há gasto, mas sem leads no período — revisar criativos, público e rastreamento.");
+      }
+      return {
+        bullets,
+        recommendation: "Escale primeiro o que entregar CPL estável; corrija rastreamento antes de aumentar verba.",
+      };
     }
+    if (mode === "SALES") {
+      if (ch.metaRoas != null) {
+        bullets.push(`Meta Ads: ROAS ${ch.metaRoas.toFixed(2)}x (foco em receita atribuída).`);
+      } else {
+        bullets.push(
+          "Meta Ads: ROAS não calculável no período — confira pixel, evento de compra e valor atribuído."
+        );
+      }
+      return {
+        bullets,
+        recommendation:
+          "Priorize escala onde ROAS supera a meta; evite misturar análise de lead com análise de venda neste objetivo.",
+      };
+    }
+    pushHybridMetaOnlyCaptacaoMonetizacao(bullets, ch);
     return {
-      bullets,
-      recommendation: "Otimize campanhas com melhor custo por resultado antes de aumentar verba.",
+      bullets: bullets.length ? bullets : ["Meta Ads: dados insuficientes no recorte."],
+      recommendation:
+        "Decida verba em dois eixos: captação (CPL/leads) e monetização (ROAS) — não trate um como substituto do outro.",
     };
   }
+
   if (!hasMeta && hasGoogle) {
-    if (mode === "SALES" && ch.googleRoas != null) {
-      bullets.push(`Google Ads: ROAS ${ch.googleRoas.toFixed(2)}x.`);
-    } else if (ch.googleCpl != null) {
-      bullets.push(`Google Ads: CPA ${formatBrl(ch.googleCpl)} · ${fmtInt(ch.googleLeads)} conversões.`);
-    } else {
-      bullets.push("Google Ads: gasto sem conversões no período.");
+    if (mode === "LEADS") {
+      if (ch.googleCpl != null) {
+        bullets.push(`Google Ads: CPA ${formatBrl(ch.googleCpl)} · ${fmtInt(ch.googleLeads)} conversões de captação.`);
+      } else {
+        bullets.push("Google Ads: gasto sem conversões no período — revisar palavras, anúncios e conversões.");
+      }
+      return {
+        bullets,
+        recommendation: "Escale buscas e PMax com menor CPA de conversão; alinhe landing ao anúncio.",
+      };
     }
-    return { bullets, recommendation: "Priorize palavras e anúncios com menor CPA." };
+    if (mode === "SALES") {
+      if (ch.googleRoas != null) {
+        bullets.push(`Google Ads: ROAS ${ch.googleRoas.toFixed(2)}x.`);
+      } else {
+        bullets.push(
+          "Google Ads: ROAS não calculável — confira valores de conversão e escopo das campanhas de venda."
+        );
+      }
+      return {
+        bullets,
+        recommendation: "Alocar verba pelo retorno (ROAS), não só pelo volume de cliques ou conversões genéricas.",
+      };
+    }
+    pushHybridGoogleOnlyCaptacaoMonetizacao(bullets, ch);
+    return {
+      bullets: bullets.length ? bullets : ["Google Ads: dados insuficientes no recorte."],
+      recommendation:
+        "Separe decisões: captação (CPA por conversão configurada) vs monetização (ROAS/receita).",
+    };
   }
 
   if (mode === "SALES") {
-    const mr = ch.metaRoas;
-    const gr = ch.googleRoas;
-    if (mr != null && gr != null) {
-      if (mr > gr * 1.08) bullets.push(`Meta com ROAS mais alto (${mr.toFixed(2)}x vs ${gr.toFixed(2)}x Google).`);
-      else if (gr > mr * 1.08) bullets.push(`Google com ROAS mais alto (${gr.toFixed(2)}x vs ${mr.toFixed(2)}x Meta).`);
-      else bullets.push(`ROAS pareado: Meta ${mr.toFixed(2)}x · Google ${gr.toFixed(2)}x.`);
-    }
-    if (ch.metaCpl != null && ch.googleCpl != null) {
+    pushRoasComparisonBullets(bullets, ch, "");
+    if (!bullets.length) {
       bullets.push(
-        ch.metaCpl <= ch.googleCpl
-          ? `Custo por resultado: Meta ${formatBrl(ch.metaCpl)} (melhor) vs Google ${formatBrl(ch.googleCpl)}.`
-          : `Custo por resultado: Google ${formatBrl(ch.googleCpl)} (melhor) vs Meta ${formatBrl(ch.metaCpl)}.`
+        "Meta e Google sem ROAS comparável no período — confira atribuição e valores de conversão em ambas as redes."
       );
     }
+    const mr = ch.metaRoas;
+    const gr = ch.googleRoas;
     const rec =
       mr != null && gr != null && mr > gr * 1.12
-        ? "Foque em escalar Meta enquanto ROAS se mantém; use Google como complemento."
+        ? "Escale Meta enquanto ROAS se mantiver; use Google como complemento com teto de eficiência."
         : gr != null && mr != null && gr > mr * 1.12
-          ? "Foque em escalar Google; Meta para testes ou remarketing."
-          : "Realoque verba lentamente para a rede com ROAS mais estável.";
+          ? "Escale Google com ROAS líder; Meta para teste, remarketing ou topo de funil controlado."
+          : "Realoque verba com cautela para a rede com ROAS mais estável e previsível.";
     return { bullets, recommendation: rec };
   }
 
-  if (ch.metaCpl != null && ch.googleCpl != null) {
-    if (ch.metaCpl < ch.googleCpl * 0.92) {
-      bullets.push(`Meta com CPL mais baixo (${formatBrl(ch.metaCpl)} vs ${formatBrl(ch.googleCpl)} Google).`);
-    } else if (ch.googleCpl < ch.metaCpl * 0.92) {
-      bullets.push(`Google com CPA mais baixo (${formatBrl(ch.googleCpl)} vs ${formatBrl(ch.metaCpl)} Meta).`);
-    } else {
-      bullets.push(`CPL equilibrado: Meta ${formatBrl(ch.metaCpl)} · Google ${formatBrl(ch.googleCpl)}.`);
+  if (mode === "LEADS") {
+    pushCaptacaoComparisonBullets(bullets, ch, "");
+    if (!bullets.length) {
+      bullets.push("Pouco gasto ou métricas de captação incompletas — amplie o período ou confira integrações.");
     }
-  } else {
-    if (ch.metaCpl == null && ch.metaSpend > 20) bullets.push("Meta gastando sem leads rastreados — confira pixel/formulário.");
-    if (ch.googleCpl == null && ch.googleSpend > 20) bullets.push("Google gastando sem conversões — confira tag e palavras.");
+    const recommendation =
+      ch.metaCpl != null && ch.googleCpl != null
+        ? ch.metaCpl < ch.googleCpl * 0.92
+          ? "Priorize escala na Meta neste recorte; refine Google até aproximar o CPA ao CPL da Meta."
+          : ch.googleCpl < ch.metaCpl * 0.92
+            ? "Priorize escala no Google; use Meta para testes de mensagem e público."
+            : "Mantenha o mix e teste incremento na rede com CPL/CPA mais estável."
+        : "Corrija rastreamento em ambas as redes antes de escalar — sem conversões/leads confiáveis não há decisão segura.";
+    return { bullets, recommendation };
   }
 
-  const recommendation =
-    ch.metaCpl != null && ch.googleCpl != null
-      ? ch.metaCpl < ch.googleCpl * 0.92
-        ? "Foque em escalar Meta neste momento; refine Google para aproximar o CPL."
-        : ch.googleCpl < ch.metaCpl * 0.92
-          ? "Foque em escalar Google; use Meta para testes de audiência."
-          : "Mantenha mix e teste incremento na rede com menor variância de CPL."
-      : "Corrija rastreamento e só então escale o canal que mostrar CPL consistente.";
-
+  pushCaptacaoComparisonBullets(bullets, ch, "Captação — ");
+  pushRoasComparisonBullets(bullets, ch, "Monetização — ");
+  if (!bullets.length) {
+    bullets.push(
+      "Captação e monetização sem sinais claros neste recorte — confira tags, pixel e valores de conversão."
+    );
+  }
+  const mr = ch.metaRoas;
+  const gr = ch.googleRoas;
+  const mc = ch.metaCpl;
+  const gc = ch.googleCpl;
+  const capOk = mc != null && gc != null;
+  const roasOk = mr != null && gr != null;
+  let recommendation =
+    "Use dois critérios: captação (CPL Meta vs CPA Google) e monetização (ROAS) — não confunda um com o outro.";
+  if (capOk && roasOk && mc != null && gc != null && mr != null && gr != null) {
+    if (mc < gc * 0.92 && mr > gr * 1.08) {
+      recommendation =
+        "Meta lidera em captação e ROAS neste recorte: candidata a receber mais verba, com monitoramento diário.";
+    } else if (gc < mc * 0.92 && gr > mr * 1.08) {
+      recommendation =
+        "Google lidera em captação e ROAS: fortaleça esse lado e use Meta para diversificação ou remarketing.";
+    }
+  }
   return { bullets, recommendation };
 }
 

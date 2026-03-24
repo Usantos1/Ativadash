@@ -56,14 +56,17 @@ function StatCompact({ stat, dense }: { stat: PerfStat; dense?: boolean }) {
 }
 
 export function ChannelPerformanceBody({ layout }: { layout: ChannelPerformanceLayout }) {
+  const spendRow = [layout.rowSpend, ...layout.rowEfficiency];
+  const spendGrid =
+    spendRow.length <= 3 ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2 sm:grid-cols-4";
+
   return (
     <div className="space-y-2 pt-0.5">
       <StatPrimaryHero stat={layout.primaryHero} />
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
-        <StatCompact stat={layout.rowSpend} />
-        {layout.rowEfficiency.map((s, i) => (
-          <StatCompact key={`eff-${s.label}-${i}`} stat={s} />
+      <div className={cn("grid gap-2 sm:gap-3", spendGrid)}>
+        {spendRow.map((s, i) => (
+          <StatCompact key={`spendrow-${s.label}-${i}`} stat={s} />
         ))}
       </div>
 

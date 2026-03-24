@@ -282,17 +282,19 @@ export function ExecutiveFunnel({
             >
               Fluxo de conversão · {platform === "meta" ? "Meta Ads" : "Google Ads"}
             </p>
-            <h2 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">
-              {funnelHeadline ?? "Funil de conversão"}
+            <h2 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+              {funnelHeadline ?? "Funil"}
             </h2>
-            <p className="max-w-xl text-xs leading-snug text-muted-foreground sm:text-[13px]">
-              {funnelSubline ??
-                (companionRatesPanel
-                  ? platform === "google"
-                    ? "Impressões, cliques e conversões reportadas pela API no período."
-                    : "Valores absolutos por etapa; silhueta afunilada."
-                  : "Silhueta afunilada por etapa; valores absolutos dentro de cada faixa. Taxas entre as camadas.")}
-            </p>
+            {!companionRatesPanel ? (
+              <p className="max-w-xl text-xs leading-snug text-muted-foreground sm:text-[13px]">
+                {funnelSubline ??
+                  (platform === "google"
+                    ? "Impressões, cliques e conversões no período."
+                    : "Volumes por etapa e taxas entre elas.")}
+              </p>
+            ) : funnelSubline ? (
+              <p className="max-w-xl text-[11px] text-muted-foreground">{funnelSubline}</p>
+            ) : null}
           </div>
           {!companionRatesPanel ? (
             <div className="flex flex-wrap items-center justify-end gap-1.5">
@@ -315,6 +317,10 @@ export function ExecutiveFunnel({
         </div>
         {!companionRatesPanel ? (
           <p className="mt-2 text-xs leading-snug text-muted-foreground sm:text-[13px]">{model.bottleneckLine}</p>
+        ) : model.bottleneckBadge ? (
+          <p className="mt-2 text-[11px] font-medium text-amber-800 dark:text-amber-200">
+            Queda: {model.bottleneckBadge}
+          </p>
         ) : null}
       </header>
 
@@ -377,17 +383,11 @@ export function ExecutiveFunnel({
 
       {!companionRatesPanel ? (
         <footer className="mt-3 border-t border-border/30 pt-3 text-center sm:mt-4">
-          {model.mode === "hybrid" ? (
-            <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
-              Modo híbrido: taxas podem superar 100% entre etapas; a forma do funil é apenas visual e segue a ordem das
-              etapas.
-            </p>
-          ) : (
-            <p className="text-[11px] text-muted-foreground sm:text-xs">
-              Largura das faixas usa escala visual (não linear no volume bruto), com afunilamento mínimo entre etapas.
-              {platform === "google" ? " No Google Ads o funil resume três etapas com dados agregados da API." : null}
-            </p>
-          )}
+          <p className="text-[10px] text-muted-foreground/80 sm:text-[11px]">
+            {model.mode === "hybrid"
+              ? "Taxas podem exceder 100% — silhueta apenas visual."
+              : "Larguras em escala visual (não linear)."}
+          </p>
         </footer>
       ) : null}
     </section>

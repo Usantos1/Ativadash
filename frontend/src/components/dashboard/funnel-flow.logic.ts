@@ -157,6 +157,10 @@ export function buildStepsFromSummaryForBusinessGoal(
   let steps = buildStepsFromSummary(summary);
   if (funnelVariant === "lead") {
     steps = steps.filter((s) => !["chk", "pur", "link"].includes(s.id));
+    /** Sem LPV reportado: funil coerente impressões → cliques → leads. */
+    if (summary.landingPageViews <= 0) {
+      steps = steps.filter((s) => s.id !== "lpv");
+    }
   }
   const lab = primaryConversionLabel?.trim();
   if (lab) {

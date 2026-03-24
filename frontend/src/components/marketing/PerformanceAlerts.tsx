@@ -2,6 +2,14 @@ import { AlertTriangle, CheckCircle2, Info, Sparkles } from "lucide-react";
 import type { InsightAlert } from "@/lib/marketing-settings-api";
 import { cn } from "@/lib/utils";
 
+export type StructuredPerformanceAlert = {
+  problema: string;
+  causa: string;
+  acao: string;
+  severity: InsightAlert["severity"];
+  code: string;
+};
+
 function AlertIcon({ severity }: { severity: InsightAlert["severity"] }) {
   switch (severity) {
     case "critical":
@@ -28,15 +36,33 @@ function alertStyles(severity: InsightAlert["severity"]) {
   }
 }
 
+/** Converte alertas da API (título + mensagem) no formato problema / causa / ação. */
+export function insightAlertToStructured(a: InsightAlert): StructuredPerformanceAlert {
+  return {
+    code: a.code,
+    severity: a.severity,
+    problema: a.title,
+    causa: a.message.trim() ? a.message : "Sem detalhe adicional retornado pela análise de metas.",
+    acao: "Ajustar campanhas conforme a causa acima e revisar metas em Metas e alertas.",
+  };
+}
+
 export function PerformanceAlerts({
   alerts,
+  structuredAlerts,
   loading,
   className,
 }: {
-  alerts: InsightAlert[] | null | undefined;
+  /** @deprecated Preferir `structuredAlerts`; mantido para compatibilidade. */
+  alerts?: InsightAlert[] | null | undefined;
+  structuredAlerts?: StructuredPerformanceAlert[] | null | undefined;
   loading?: boolean;
   className?: string;
 }) {
+  const items: StructuredPerformanceAlert[] = structuredAlerts?.length
+    ? structuredAlerts
+    : (alerts ?? []).map(insightAlertToStructured);
+
   if (loading) {
     return (
       <div
@@ -51,13 +77,13 @@ export function PerformanceAlerts({
     );
   }
 
-  if (!alerts?.length) return null;
+  if (!items.length) return null;
 
   return (
     <div className={cn("space-y-2", className)}>
-      {alerts.map((a) => (
+      {items.map((a) => (
         <div
-          key={`${a.code}-${a.title}`}
+          key={`${a.code}-${a.problema}`}
           role="status"
           className={cn(
             "flex gap-3 rounded-xl border px-4 py-3 text-sm shadow-sm",
@@ -65,9 +91,16 @@ export function PerformanceAlerts({
           )}
         >
           <AlertIcon severity={a.severity} />
-          <div className="min-w-0 flex-1">
-            <p className="font-semibold text-foreground">{a.title}</p>
-            <p className="mt-0.5 leading-snug text-muted-foreground">{a.message}</p>
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <p className="font-semibold leading-snug text-foreground">{a.problema}</p>
+            <p className="text-[13px] leading-snug text-muted-foreground">
+              <span className="font-medium text-foreground/90">Causa: </span>
+              {a.causa}
+            </p>
+            <p className="text-[13px] leading-snug text-foreground">
+              <span className="font-medium text-primary">Ação: </span>
+              {a.acao}
+            </p>
           </div>
         </div>
       ))}
