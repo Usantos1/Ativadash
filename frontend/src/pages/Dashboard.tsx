@@ -33,14 +33,12 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { formatNumber, formatPercent, formatSpend } from "@/lib/metrics-format";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
-import { useAuthStore } from "@/stores/auth-store";
 import { useMarketingMetrics } from "@/hooks/useMarketingMetrics";
 import { PerformanceAlerts } from "@/components/marketing/PerformanceAlerts";
 import { MarketingDateRangeDialog } from "@/components/marketing/MarketingDateRangeDialog";
 import { ChartPanelPremium, DataTablePremium } from "@/components/premium";
 import { KpiCardPremium } from "@/components/premium/kpi-card-premium";
 import type { MarketingDashboardPerfRow, MarketingDashboardSummary } from "@/lib/marketing-dashboard-api";
-import { executiveGreetingLine } from "@/lib/display-name";
 import { ExecutiveFunnel } from "@/components/dashboard/ExecutiveFunnel";
 import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
 import { useMarketingDashboardBlocks } from "@/hooks/useMarketingDashboardBlocks";
@@ -77,7 +75,6 @@ type MetaLevel = "campaign" | "adset" | "ad";
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const user = useAuthStore((s) => s.user);
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
 
   const [dashboardSummaryForInsights, setDashboardSummaryForInsights] = useState<
@@ -219,9 +216,11 @@ export function Dashboard() {
             <div className="min-w-0 space-y-1">
               <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-primary/75">Visão geral</p>
               <h1 className="text-balance text-2xl font-bold tracking-tight text-foreground sm:text-[1.75rem]">
-                {executiveGreetingLine(user)}
+                Painel executivo
               </h1>
-              <p className="text-sm text-muted-foreground">{dateRangeLabel}</p>
+              <p className="text-sm text-muted-foreground">
+                Período: <span className="font-medium text-foreground/90">{dateRangeLabel}</span>
+              </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button
