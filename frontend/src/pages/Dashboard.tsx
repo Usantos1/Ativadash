@@ -2,18 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { eachDayOfInterval, format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import {
-  ArrowRight,
-  BarChart3,
-  CalendarRange,
-  DollarSign,
-  Eye,
-  Megaphone,
-  MousePointer,
-  RefreshCw,
-  Target,
-  UserPlus,
-} from "lucide-react";
+import { ArrowRight, BarChart3, CalendarRange, Megaphone, RefreshCw } from "lucide-react";
 import {
   Bar,
   CartesianGrid,
@@ -37,15 +26,32 @@ import { useMarketingMetrics } from "@/hooks/useMarketingMetrics";
 import { PerformanceAlerts } from "@/components/marketing/PerformanceAlerts";
 import { MarketingDateRangeDialog } from "@/components/marketing/MarketingDateRangeDialog";
 import { ChartPanelPremium, DataTablePremium } from "@/components/premium";
-import { KpiCardPremium } from "@/components/premium/kpi-card-premium";
 import type { MarketingDashboardPerfRow, MarketingDashboardSummary } from "@/lib/marketing-dashboard-api";
-import { ExecutiveFunnel } from "@/components/dashboard/ExecutiveFunnel";
+import type { MetaAdsMetricsSummary } from "@/lib/integrations-api";
+import { defaultMarketingGoalContext } from "@/lib/business-goal-mode";
+import {
+  deriveChannelPerformanceSignals,
+  type ChannelPerformanceSignal,
+} from "@/lib/channel-performance-compare";
+import { ExecutiveFunnel, type FunnelSegmentBreak } from "@/components/dashboard/ExecutiveFunnel";
+import {
+  buildAdaptiveFunnelModelFromSteps,
+  buildGoogleAdsFunnelModel,
+  buildStepsFromSummaryForBusinessGoal,
+} from "@/components/dashboard/funnel-flow.logic";
+import {
+  buildGoogleChannelPerformanceLayout,
+  buildMetaChannelPerformanceLayout,
+} from "@/components/dashboard/build-channel-performance-layout";
+import { ChannelSummaryWidget } from "@/components/dashboard/ChannelSummaryWidget";
 import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
 import { useMarketingDashboardBlocks } from "@/hooks/useMarketingDashboardBlocks";
+import { DashboardAlertOccurrences } from "@/components/dashboard/dashboard-alert-occurrences";
 import { DashboardFunnelRatesWidget } from "@/components/dashboard/dashboard-funnel-rates-widget";
 import {
-  buildDashboardQuickInsights,
+  buildDashboardQuickInsightsByGoal,
   DashboardQuickInsightsStrip,
+  type QuickInsight,
 } from "@/components/dashboard/dashboard-quick-insights";
 
 const GOOGLE_ADS_API_NOT_READY_COPY =
@@ -112,6 +118,7 @@ export function Dashboard() {
     showFullSkeleton,
     anyRefreshing,
     dashboardMetaSummary,
+    dashboardGoalContext,
   } = useMarketingDashboardBlocks(hasMeta, dateRange);
 
   useEffect(() => {
@@ -122,17 +129,54 @@ export function Dashboard() {
   const metaOk = dash?.ok === true;
   const summary = metaOk ? dash.summary : null;
 
+  const goalCtx = useMemo(() => {
+    if (metaOk && dash?.ok && dash.goalContext) return dash.goalContext;
+    if (dashboardGoalContext) return dashboardGoalContext;
+    return defaultMarketingGoalContext();
+  }, [metaOk, dash, dashboardGoalContext]);
+
+  const metaFunnelSegmentBreaks = useMemo((): FunnelSegmentBreak[] | undefined => {
+    if (goalCtx.dashboardModeConfig.funnelVariant !== "hybrid") return undefined;
+    return [
+      { afterStepId: "link", label: "LPV e resultado" },
+      { afterStepId: "lead", label: "Monetização" },
+    ];
+  }, [goalCtx.dashboardModeConfig.funnelVariant]);
+
   const metaSpend = summary?.spend ?? 0;
   const googleSpendBrl = googleOk ? metrics.summary.costMicros / 1_000_000 : 0;
-  const blendedInvestBrl = metaSpend + googleSpendBrl;
   const cmpMetaSpend = cmpMetaMetrics?.ok ? cmpMetaMetrics.summary.spend : 0;
   const cmpGoogleSpendBrl = cmpMetrics?.ok ? cmpMetrics.summary.costMicros / 1_000_000 : 0;
-  const cmpBlendedInvestBrl = cmpMetaSpend + cmpGoogleSpendBrl;
+
+  const googleDerived = useMemo(() => {
+    if (!googleOk || !metrics?.ok) return null;
+    const s = metrics.summary;
+    const spend = s.costMicros / 1_000_000;
+    const ctrPct = s.impressions > 0 ? (s.clicks / s.impressions) * 100 : null;
+    const cpc = s.clicks > 0 ? spend / s.clicks : null;
+    const costPerConv = s.conversions > 0 ? spend / s.conversions : null;
+    return { spend, ctrPct, cpc, costPerConv };
+  }, [googleOk, metrics]);
+
+  const cmpGoogleSummary = cmpMetrics?.ok === true ? cmpMetrics.summary : null;
+
+  const metaFunnelModel = useMemo(() => {
+    if (!metaOk || !summary) return null;
+    const fv = goalCtx.dashboardModeConfig.funnelVariant;
+    const steps = buildStepsFromSummaryForBusinessGoal(summary, fv, goalCtx.primaryConversionLabel);
+    return buildAdaptiveFunnelModelFromSteps(steps, "meta");
+  }, [metaOk, summary, goalCtx.dashboardModeConfig.funnelVariant, goalCtx.primaryConversionLabel]);
+
+  const googleFunnelModel = useMemo(() => {
+    if (!googleOk || !metrics?.ok) return null;
+    return buildGoogleAdsFunnelModel(metrics.summary);
+  }, [googleOk, metrics]);
 
   const hasAnyChannel = hasGoogle || hasMeta;
 
   const [metaLevel, setMetaLevel] = useState<MetaLevel>("campaign");
   const [chartExtra, setChartExtra] = useState<"none" | "ctr">("none");
+  const [alertHistoryTick, setAlertHistoryTick] = useState(0);
 
   const chartData = useMemo(() => {
     if (!metaOk || !dash.timeseries.length) return [];
@@ -168,6 +212,7 @@ export function Dashboard() {
   const refresh = useCallback(async () => {
     await refreshAll();
     await loadDashboard(true);
+    setAlertHistoryTick((t) => t + 1);
   }, [refreshAll, loadDashboard]);
 
   const displayUpdatedAt = dashUpdatedAt ?? null;
@@ -177,30 +222,136 @@ export function Dashboard() {
     (dash.integrationStatus.googleAds.status === "api_not_ready" ||
       dash.integrationStatus.googleAds.status === "pending_configuration");
 
-  const quickInsights = useMemo(() => {
-    if (!metaOk || !dash || dash.ok !== true) return [];
-    return buildDashboardQuickInsights({
+  const quickInsightPack = useMemo((): {
+    primary: QuickInsight[];
+    secondary?: QuickInsight[];
+  } => {
+    if (!metaOk || !dash || dash.ok !== true) {
+      return { primary: [] };
+    }
+    return buildDashboardQuickInsightsByGoal({
       dash,
       campaigns: dash.performanceByLevel.campaigns,
       googleOk,
       googlePending,
+      businessGoalMode: goalCtx.businessGoalMode,
+      primaryConversionLabel: goalCtx.primaryConversionLabel,
+      showRevenueInLeadMode: goalCtx.showRevenueBlocksInLeadMode,
     });
-  }, [metaOk, dash, googleOk, googlePending]);
+  }, [metaOk, dash, googleOk, googlePending, goalCtx]);
 
-  const reachDisplay = (s: MarketingDashboardSummary) => {
-    if (s.reach != null && s.reach > 0) return formatNumber(s.reach);
-    return "—";
-  };
-  const reachHint = (s: MarketingDashboardSummary) => {
-    if (s.reach != null && s.reach > 0) {
-      return s.reachNote === "sum_daily_per_account"
-        ? "Soma aproximada dos alcances diários."
-        : "Alcance agregado no período.";
+  const cmpMetaSummary: MetaAdsMetricsSummary | null =
+    cmpMetaMetrics?.ok === true ? cmpMetaMetrics.summary : null;
+
+  const revenueMuted =
+    goalCtx.flags.isLeadWorkspace && !goalCtx.showRevenueBlocksInLeadMode;
+
+  const metaChannelLayout = useMemo(() => {
+    if (!summary) return undefined;
+    return buildMetaChannelPerformanceLayout(goalCtx.businessGoalMode, {
+      summary,
+      derived: summary.derived,
+      metaSpend,
+      cmpMetaSpend,
+      compareEnabled,
+      relDelta,
+      leadLabel: goalCtx.primaryConversionLabel?.trim() || "Leads",
+      cmpMeta: cmpMetaSummary,
+    });
+  }, [
+    summary,
+    goalCtx.businessGoalMode,
+    metaSpend,
+    cmpMetaSpend,
+    compareEnabled,
+    goalCtx.primaryConversionLabel,
+    cmpMetaSummary,
+  ]);
+
+  const googleChannelLayout = useMemo(() => {
+    if (!googleOk || !metrics?.ok || !googleDerived) return undefined;
+    return buildGoogleChannelPerformanceLayout(goalCtx.businessGoalMode, {
+      googleDerived,
+      metrics: metrics.summary,
+      cmpGoogleSummary,
+      compareEnabled,
+      relDelta,
+    });
+  }, [googleOk, metrics, googleDerived, goalCtx.businessGoalMode, cmpGoogleSummary, compareEnabled]);
+
+  const metaWidgetLoading = blocks.summary.refreshing || metaMetricsLoading;
+  const metaEmptyPeriod =
+    metaSpend <= 0 && summary !== null && summary.impressions <= 0 && summary.clicks <= 0;
+
+  const googleWidgetLoading = hasGoogle && metricsLoading && !googleOk;
+  const googleStatus = metaOk && dash.ok ? dash.integrationStatus.googleAds.status : "not_connected";
+  const googleNotConnected = hasGoogle && googleStatus === "not_connected";
+  const googleEmptyPeriod =
+    googleOk &&
+    googleDerived &&
+    googleDerived.spend <= 0 &&
+    metrics!.summary.impressions <= 0 &&
+    metrics!.summary.clicks <= 0;
+
+  const channelPerformanceSignals = useMemo((): {
+    meta: ChannelPerformanceSignal;
+    google: ChannelPerformanceSignal;
+  } => {
+    const empty = { meta: null, google: null } satisfies {
+      meta: ChannelPerformanceSignal;
+      google: ChannelPerformanceSignal;
+    };
+    if (!metaOk || !summary || !hasGoogle || !googleOk || !metrics?.ok || !googleDerived) {
+      return empty;
     }
-    return s.reachNote === "unavailable"
-      ? "A Meta não retornou alcance para este período."
-      : "Sem alcance reportado.";
-  };
+    if (metaEmptyPeriod && googleEmptyPeriod) {
+      return empty;
+    }
+    const metaActive =
+      metaSpend > 0 || summary.leads > 0 || summary.purchases > 0 || summary.clicks > 0;
+    const googleActive =
+      googleDerived.spend > 0 || metrics.summary.conversions > 0 || metrics.summary.clicks > 0;
+    if (!metaActive || !googleActive) {
+      return empty;
+    }
+    const gRoas =
+      googleDerived.spend > 0 && metrics.summary.conversionsValue > 0
+        ? metrics.summary.conversionsValue / googleDerived.spend
+        : null;
+    return deriveChannelPerformanceSignals(goalCtx.businessGoalMode, {
+      cpl: summary.derived.cplLeads,
+      costPerPurchase: summary.derived.costPerPurchase,
+      roas: summary.derived.roas,
+    }, {
+      costPerConv: googleDerived.costPerConv,
+      roas: gRoas,
+    });
+  }, [
+    metaOk,
+    summary,
+    hasGoogle,
+    googleOk,
+    metrics,
+    googleDerived,
+    goalCtx.businessGoalMode,
+    metaEmptyPeriod,
+    googleEmptyPeriod,
+  ]);
+
+  const metaPerfChip =
+    goalCtx.businessGoalMode === "SALES" &&
+    summary &&
+    summary.purchaseValue <= 0 &&
+    summary.purchases <= 0
+      ? "Sem receita"
+      : null;
+  const googlePerfChip =
+    goalCtx.businessGoalMode === "SALES" &&
+    googleOk &&
+    metrics &&
+    metrics.summary.conversionsValue <= 0
+      ? "Sem receita"
+      : null;
 
   return (
     <TooltipProvider delayDuration={180}>
@@ -327,136 +478,200 @@ export function Dashboard() {
               </p>
             ) : null}
 
-            {/* FAIXA 2 — KPIs */}
-            <section className="relative space-y-3">
+            {/* Visão por canal — performance por plataforma */}
+            <section className="relative space-y-2.5">
               {blocks.summary.refreshing ? (
                 <span className="absolute right-0 top-0 z-10 flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
                   <RefreshCw className="h-3 w-3 animate-spin" />
                   Atualizando
                 </span>
               ) : null}
-              <h2 className="px-0.5 text-lg font-bold tracking-tight text-foreground">Indicadores principais</h2>
-              {googleOk ? (
-                <p className="px-0.5 text-xs leading-relaxed text-muted-foreground">
-                  Investimento total = Meta (painel) + Google Ads, alinhado ao gráfico "Plataforma · investimento". Demais KPIs
-                  desta faixa continuam da Meta.
+              <div className="space-y-0.5 px-0.5">
+                <h2 className="text-lg font-bold tracking-tight text-foreground">Visão por canal</h2>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Investimento e resultado em destaque; eficiência em linhas compactas. Indicadores «Melhor desempenho» e
+                  «Atenção» comparam Meta e Google no período (CPL/CPA ou ROAS conforme o modo da conta).
                 </p>
-              ) : null}
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-                <KpiCardPremium
-                  variant="primary"
-                  label="Investimento"
-                  value={formatSpend(googleOk ? blendedInvestBrl : metaSpend)}
-                  icon={DollarSign}
-                  hideSource
-                  hint={
-                    googleOk
-                      ? "Soma Meta (painel) + Google Ads no período — mesma base do card «Plataforma · investimento»."
-                      : "Gasto Meta no período. Conecte o Google Ads para ver investimento unificado."
+              </div>
+
+              <div
+                className={cn(
+                  "grid items-stretch gap-3",
+                  hasGoogle ? "lg:grid-cols-2" : "grid-cols-1"
+                )}
+              >
+                <ChannelSummaryWidget
+                  channel="meta"
+                  accent="purple"
+                  businessGoalMode={goalCtx.businessGoalMode}
+                  title="Meta Ads"
+                  syncAt={displayUpdatedAt}
+                  integrationLabel={
+                    dash.integrationStatus.metaAds.connected
+                      ? dash.integrationStatus.metaAds.healthy
+                        ? "Conectado"
+                        : "Integração instável"
+                      : "Não conectado"
                   }
-                  hintAsTooltip
-                  delta={relDelta(
-                    googleOk ? blendedInvestBrl : metaSpend,
-                    googleOk ? cmpBlendedInvestBrl : cmpMetaSpend,
-                    compareEnabled
-                  )}
+                  integrationTone={
+                    dash.integrationStatus.metaAds.connected
+                      ? dash.integrationStatus.metaAds.healthy
+                        ? "success"
+                        : "warning"
+                      : "muted"
+                  }
+                  performanceChip={metaPerfChip}
+                  performanceSignal={
+                    !metaWidgetLoading &&
+                    !metaEmptyPeriod &&
+                    metaChannelLayout &&
+                    dash.integrationStatus.metaAds.connected
+                      ? channelPerformanceSignals.meta
+                      : null
+                  }
+                  layout={
+                    metaWidgetLoading || metaEmptyPeriod || !metaChannelLayout ? undefined : metaChannelLayout
+                  }
+                  loading={metaWidgetLoading}
+                  errorMessage={null}
+                  notConnected={!dash.integrationStatus.metaAds.connected}
+                  emptyMessage={
+                    !metaWidgetLoading && metaEmptyPeriod ? "Sem dados no período para a Meta neste recorte." : null
+                  }
                 />
-                <KpiCardPremium
-                  variant="primary"
-                  label="Impressões"
-                  value={formatNumber(summary.impressions)}
-                  icon={Eye}
-                  hideSource
-                />
-                <KpiCardPremium
-                  variant="primary"
-                  label="Alcance"
-                  value={reachDisplay(summary)}
-                  hint={reachHint(summary)}
-                  hintAsTooltip
-                  icon={Target}
-                  hideSource
-                />
-                <KpiCardPremium
-                  variant="primary"
-                  label="Cliques"
-                  value={formatNumber(summary.clicks)}
-                  icon={MousePointer}
-                  hideSource
-                />
-                <KpiCardPremium
-                  variant="primary"
-                  label="Leads"
-                  value={formatNumber(summary.leads)}
-                  hint="Eventos de lead mapeados nas actions da Meta."
-                  hintAsTooltip
-                  icon={UserPlus}
-                  hideSource
-                />
-                <KpiCardPremium
-                  variant="primary"
-                  label="CPL"
-                  value={derived?.cplLeads != null ? formatSpend(derived.cplLeads) : "—"}
-                  hint={derived?.cplLeads == null ? "Sem leads ou sem gasto." : "Custo por lead."}
-                  hintAsTooltip
-                  icon={DollarSign}
-                  hideSource
-                  deltaInvert
-                />
-                <KpiCardPremium
-                  variant="primary"
-                  label="CTR"
-                  value={derived?.ctrPct != null ? formatPercent(derived.ctrPct) : "—"}
-                  hint={derived?.ctrPct == null ? "Sem impressões no período." : "Cliques ÷ impressões."}
-                  hintAsTooltip
-                  icon={BarChart3}
-                  hideSource
-                />
-                <KpiCardPremium
-                  variant="primary"
-                  label="CPC"
-                  value={derived?.cpc != null ? formatSpend(derived.cpc) : "—"}
-                  hint={derived?.cpc == null ? "Sem cliques ou gasto." : "Gasto ÷ cliques."}
-                  hintAsTooltip
-                  icon={Target}
-                  hideSource
-                  deltaInvert
-                />
+
+                {hasGoogle ? (
+                  <ChannelSummaryWidget
+                    channel="google"
+                    accent="green"
+                    businessGoalMode={goalCtx.businessGoalMode}
+                    title="Google Ads"
+                    syncAt={displayUpdatedAt}
+                    integrationLabel={
+                      googleStatus === "connected"
+                        ? "Conectado"
+                        : googleStatus === "pending_configuration"
+                          ? "Pendente config."
+                          : googleStatus === "api_not_ready"
+                            ? "API indisponível"
+                            : "Não conectado"
+                    }
+                    integrationTone={
+                      googleStatus === "connected"
+                        ? "success"
+                        : googleStatus === "not_connected"
+                          ? "muted"
+                          : "warning"
+                    }
+                    performanceChip={googlePerfChip}
+                    performanceSignal={
+                      !googleWidgetLoading &&
+                      !googleEmptyPeriod &&
+                      googleChannelLayout &&
+                      !googleNotConnected
+                        ? channelPerformanceSignals.google
+                        : null
+                    }
+                    layout={
+                      googleWidgetLoading || googleEmptyPeriod || !googleChannelLayout
+                        ? undefined
+                        : googleChannelLayout
+                    }
+                    loading={googleWidgetLoading}
+                    errorMessage={!googleWidgetLoading && metricsError ? metricsError : null}
+                    notConnected={googleNotConnected}
+                    emptyMessage={
+                      !googleWidgetLoading && metricsError
+                        ? null
+                        : googleNotConnected
+                          ? null
+                          : !googleWidgetLoading && googleOk && googleEmptyPeriod
+                            ? "Sem dados no período para o Google neste recorte."
+                            : !googleWidgetLoading && !googleOk
+                              ? googlePending
+                                ? googleAdsPendingHint(dash.integrationStatus.googleAds.status)
+                                : "Aguardando métricas do Google Ads."
+                              : null
+                    }
+                  />
+                ) : null}
               </div>
             </section>
 
-            <DashboardQuickInsightsStrip items={quickInsights} />
+            <div
+              className={cn(
+                "grid gap-4",
+                quickInsightPack.secondary?.length ? "lg:grid-cols-2" : ""
+              )}
+            >
+              <DashboardQuickInsightsStrip
+                title={
+                  goalCtx.dashboardModeConfig.hybridInsightSplit
+                    ? "Insights rápidos · topo do funil"
+                    : "Insights rápidos"
+                }
+                items={quickInsightPack.primary}
+              />
+              {quickInsightPack.secondary?.length ? (
+                <DashboardQuickInsightsStrip
+                  title="Insights rápidos · fundo do funil"
+                  items={quickInsightPack.secondary}
+                />
+              ) : null}
+            </div>
 
             <div className="rounded-2xl border border-border/50 bg-card/80 p-4 shadow-sm">
               <p className="text-xs font-semibold text-foreground">Metas e alertas</p>
               <div className="mt-2">
                 <PerformanceAlerts alerts={insightData?.alerts} loading={insightLoading} />
               </div>
+              <DashboardAlertOccurrences refreshKey={alertHistoryTick} />
               {compareEnabled ? (
                 <div className="mt-3 rounded-lg border border-border/40 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                   {cmpLoading ? (
                     "Carregando período anterior…"
                   ) : googleOk ? (
-                    cmpBlendedInvestBrl <= 0 && blendedInvestBrl <= 0 ? (
-                      "Comparação ativa — sem gasto Meta+Google nos dois períodos."
-                    ) : (
-                      <>
-                        <span className="font-medium text-foreground">Investimento total período anterior:</span>{" "}
-                        <span className="tabular-nums text-foreground">{formatSpend(cmpBlendedInvestBrl)}</span>
-                        {blendedInvestBrl > 0 && cmpBlendedInvestBrl > 0 ? (
+                    <div className="space-y-2">
+                      <p>
+                        <span className="font-medium text-foreground">Meta Ads — gasto período anterior:</span>{" "}
+                        {cmpMetaSpend <= 0 && metaSpend <= 0 ? (
+                          <span>sem gasto nos dois períodos.</span>
+                        ) : (
                           <>
-                            {" "}
-                            ({blendedInvestBrl >= cmpBlendedInvestBrl ? "+" : ""}
-                            {(((blendedInvestBrl - cmpBlendedInvestBrl) / cmpBlendedInvestBrl) * 100).toFixed(1)}%)
+                            <span className="tabular-nums text-foreground">{formatSpend(cmpMetaSpend)}</span>
+                            {metaSpend > 0 && cmpMetaSpend > 0 ? (
+                              <>
+                                {" "}
+                                ({metaSpend >= cmpMetaSpend ? "+" : ""}
+                                {(((metaSpend - cmpMetaSpend) / cmpMetaSpend) * 100).toFixed(1)}%)
+                              </>
+                            ) : null}
                           </>
-                        ) : null}
-                      </>
-                    )
+                        )}
+                      </p>
+                      <p>
+                        <span className="font-medium text-foreground">Google Ads — gasto período anterior:</span>{" "}
+                        {cmpGoogleSpendBrl <= 0 && googleSpendBrl <= 0 ? (
+                          <span>sem gasto nos dois períodos.</span>
+                        ) : (
+                          <>
+                            <span className="tabular-nums text-foreground">{formatSpend(cmpGoogleSpendBrl)}</span>
+                            {googleSpendBrl > 0 && cmpGoogleSpendBrl > 0 ? (
+                              <>
+                                {" "}
+                                ({googleSpendBrl >= cmpGoogleSpendBrl ? "+" : ""}
+                                {(((googleSpendBrl - cmpGoogleSpendBrl) / cmpGoogleSpendBrl) * 100).toFixed(1)}%)
+                              </>
+                            ) : null}
+                          </>
+                        )}
+                      </p>
+                    </div>
                   ) : cmpMetaSpend <= 0 && metaSpend <= 0 ? (
                     "Comparação ativa — sem gasto Meta nos dois períodos."
                   ) : (
                     <>
-                      <span className="font-medium text-foreground">Gasto período anterior:</span>{" "}
+                      <span className="font-medium text-foreground">Gasto período anterior (Meta):</span>{" "}
                       <span className="tabular-nums text-foreground">{formatSpend(cmpMetaSpend)}</span>
                       {metaSpend > 0 && cmpMetaSpend > 0 ? (
                         <>
@@ -471,25 +686,154 @@ export function Dashboard() {
               ) : null}
             </div>
 
-            {/* Funil + gargalos / taxas */}
-            <div className="relative grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-stretch lg:gap-6">
+            {/* Funis Meta + Google (50%) e taxas Meta */}
+            <div className="relative space-y-5">
               {blocks.summary.refreshing ? (
-                <span className="absolute right-2 top-0 z-10 flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary lg:right-4">
+                <span className="absolute right-2 top-0 z-10 flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
                   <RefreshCw className="h-3 w-3 animate-spin" />
                   Atualizando
                 </span>
               ) : null}
-              <ExecutiveFunnel summary={summary} spend={metaSpend} companionRatesPanel className="h-full min-h-0" />
-              <DashboardFunnelRatesWidget summary={summary} className="min-h-0" />
+              <div className="grid gap-5 lg:grid-cols-2 lg:items-stretch">
+                {metaFunnelModel ? (
+                  <ExecutiveFunnel
+                    model={metaFunnelModel}
+                    summary={summary}
+                    spend={metaSpend}
+                    platform="meta"
+                    companionRatesPanel
+                    segmentBreaks={metaFunnelSegmentBreaks}
+                    className="h-full min-h-0"
+                  />
+                ) : (
+                  <div className="flex min-h-[280px] items-center justify-center rounded-xl border border-border/50 bg-card/80 p-6 text-center text-sm text-muted-foreground shadow-[var(--shadow-surface)]">
+                    Funil Meta indisponível no momento.
+                  </div>
+                )}
+                <div className="min-h-0">
+                  {hasGoogle ? (
+                    googleFunnelModel ? (
+                      <ExecutiveFunnel
+                        model={googleFunnelModel}
+                        summary={null}
+                        spend={googleSpendBrl}
+                        platform="google"
+                        companionRatesPanel
+                        className="h-full min-h-0"
+                      />
+                    ) : metricsLoading ? (
+                      <div className="flex h-full min-h-[280px] flex-col gap-3 rounded-xl border border-border/50 bg-card/80 p-5 shadow-[var(--shadow-surface)]">
+                        <div className="flex items-center gap-2 border-b border-border/35 pb-3">
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-[#34A853]" aria-hidden />
+                          <Skeleton className="h-4 w-40" />
+                        </div>
+                        <div className="flex flex-1 flex-col justify-center gap-2">
+                          <Skeleton className="h-14 w-full rounded-lg" />
+                          <Skeleton className="h-10 w-3/4 self-center rounded-lg" />
+                          <Skeleton className="h-14 w-full rounded-lg" />
+                          <Skeleton className="h-10 w-3/4 self-center rounded-lg" />
+                          <Skeleton className="h-14 w-full rounded-lg" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex h-full min-h-[280px] flex-col justify-center rounded-xl border border-border/50 bg-card/80 p-5 text-center shadow-[var(--shadow-surface)]">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#34A853]">
+                          Fluxo de conversão · Google Ads
+                        </p>
+                        <p className="mt-3 text-sm font-semibold text-foreground">Funil de conversão</p>
+                        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                          {metricsError
+                            ? `Google Ads: ${metricsError}`
+                            : googlePending
+                              ? googleAdsPendingHint(dash.integrationStatus.googleAds.status)
+                              : "Conecte o Google Ads em Integrações ou aguarde a API para ver o funil desta rede."}
+                        </p>
+                      </div>
+                    )
+                  ) : (
+                    <div className="flex h-full min-h-[280px] flex-col justify-center rounded-xl border border-border/50 bg-card/80 p-5 text-center shadow-[var(--shadow-surface)]">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#34A853]">
+                        Fluxo de conversão · Google Ads
+                      </p>
+                      <p className="mt-3 text-sm font-semibold text-foreground">Funil de conversão</p>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Conecte o Google Ads em Integrações para ver o funil desta rede ao lado do funil Meta.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className={cn("grid gap-5", hasGoogle ? "lg:grid-cols-2 lg:items-stretch" : "")}>
+                {metaFunnelModel ? (
+                  <DashboardFunnelRatesWidget
+                    model={metaFunnelModel}
+                    platform="meta"
+                    className="min-h-0"
+                  />
+                ) : (
+                  <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-border/50 bg-card/80 p-5 text-sm text-muted-foreground shadow-[var(--shadow-surface)]">
+                    Gargalos Meta indisponíveis no momento.
+                  </div>
+                )}
+                {hasGoogle ? (
+                  googleFunnelModel ? (
+                    <DashboardFunnelRatesWidget
+                      model={googleFunnelModel}
+                      platform="google"
+                      className="min-h-0"
+                    />
+                  ) : metricsLoading ? (
+                    <div className="flex min-h-[200px] flex-col gap-3 rounded-xl border border-border/50 bg-card/80 p-5 shadow-[var(--shadow-surface)]">
+                      <div className="flex items-center gap-2 border-b border-border/35 pb-3">
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-[#34A853]" aria-hidden />
+                        <Skeleton className="h-4 w-44" />
+                      </div>
+                      <Skeleton className="h-16 w-full rounded-lg" />
+                      <Skeleton className="h-24 w-full rounded-lg" />
+                    </div>
+                  ) : (
+                    <div className="flex min-h-[200px] flex-col justify-center rounded-xl border border-border/50 bg-card/80 p-5 text-center shadow-[var(--shadow-surface)]">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#34A853]">
+                        Conversão · Google Ads
+                      </p>
+                      <p className="mt-2 text-sm font-semibold text-foreground">Gargalos e taxas-chave</p>
+                      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                        {metricsError
+                          ? `Google Ads: ${metricsError}`
+                          : googlePending
+                            ? googleAdsPendingHint(dash.integrationStatus.googleAds.status)
+                            : "Conecte o Google Ads ou aguarde a API para ver taxas desta rede."}
+                      </p>
+                    </div>
+                  )
+                ) : null}
+              </div>
             </div>
 
             {/* Receita / atribuição — bloco único */}
-            <section className="rounded-2xl border border-border/50 bg-muted/[0.2] p-5">
+            <section
+              className={cn(
+                "rounded-2xl border bg-muted/[0.2] p-5",
+                revenueMuted
+                  ? "border-dashed border-muted-foreground/25 opacity-[0.92]"
+                  : "border-border/50"
+              )}
+            >
               <h2 className="text-sm font-bold text-foreground">Receita e atribuição</h2>
+              {revenueMuted ? (
+                <p className="mt-2 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+                  Conta configurada para priorizar captação. Este bloco fica em segundo plano até você ativar
+                  &quot;Mostrar monetização mesmo em contas focadas em lead&quot; em{" "}
+                  <Link to="/marketing/configuracoes" className="font-medium text-primary underline-offset-4 hover:underline">
+                    Metas e alertas
+                  </Link>
+                  .
+                </p>
+              ) : null}
               {summary.purchases === 0 && summary.purchaseValue <= 0 ? (
                 <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
                   ROAS, valor de compra e custo por compra aparecem quando a Meta retornar eventos de compra no período.
-                  Conversas e views de LP seguem no funil acima.
+                  Conversas e views de LP seguem no funil Meta acima.
                 </p>
               ) : (
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

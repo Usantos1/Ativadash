@@ -4,6 +4,7 @@ import { Building2, Check, ChevronsUpDown, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore, type OrganizationSummary } from "@/stores/auth-store";
 import { switchWorkspaceOrganization } from "@/lib/organization-api";
+import { executiveGreetingLine } from "@/lib/display-name";
 import { cn } from "@/lib/utils";
 
 function collectOptions(
@@ -73,7 +74,11 @@ function OrgFace({
   );
 }
 
-export function OrganizationSwitcher() {
+export function OrganizationSwitcher(props?: {
+  /** Quando definido (ex.: rota Marketing), substitui nome+subtítulo padrão e evita redundância com o AppBar. */
+  contextFace?: { primary: string; secondary: string };
+}) {
+  const { contextFace } = props ?? {};
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const memberships = useAuthStore((s) => s.memberships);
@@ -87,8 +92,8 @@ export function OrganizationSwitcher() {
   const options = collectOptions(currentOrgId, memberships, managed);
   const displayName = user.organization?.name ?? "Empresa";
   const canSwitch = options.length > 1;
-  const membership = memberships?.find((m) => m.organizationId === currentOrgId);
-  const workspaceSubtitle = membership ? `Ativo · ${membership.role}` : "Workspace";
+  const facePrimary = contextFace?.primary ?? displayName;
+  const faceSecondary = contextFace?.secondary ?? executiveGreetingLine(user);
 
   async function onSelect(organizationId: string) {
     if (organizationId === currentOrgId || loading) return;
@@ -123,7 +128,7 @@ export function OrganizationSwitcher() {
         role="status"
         aria-label={`Organização ativa: ${displayName}`}
       >
-        <OrgFace name={displayName} subtitleLine={workspaceSubtitle} loading={false} showChevron={false} />
+        <OrgFace name={facePrimary} subtitleLine={faceSecondary} loading={false} showChevron={false} />
       </div>
     );
   }
@@ -140,7 +145,7 @@ export function OrganizationSwitcher() {
           disabled={loading}
           aria-label="Trocar organização"
         >
-          <OrgFace name={displayName} subtitleLine={workspaceSubtitle} loading={loading} showChevron={!loading} />
+          <OrgFace name={facePrimary} subtitleLine={faceSecondary} loading={loading} showChevron={!loading} />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

@@ -28,6 +28,12 @@ export function AppTopbar({
     return last?.label ?? "Área de trabalho";
   }, [crumbs]);
 
+  const isMarketingHome = pathname === "/marketing";
+  const orgName = user?.organization?.name ?? "Empresa";
+  const marketingSwitcherFace =
+    isMarketingHome && user ? { primary: orgName, secondary: greeting } : undefined;
+  const showCenterCrumbs = crumbs.length > 0 && !isMarketingHome;
+
   return (
     <header
       className={cn(
@@ -42,21 +48,23 @@ export function AppTopbar({
         <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
           <SidebarHeaderControl onMobileOpen={onMobileOpen} />
           <span className="hidden h-6 w-px shrink-0 bg-border/70 md:block" aria-hidden />
-          <div className="min-w-0 max-w-[min(100vw-12rem,280px)] sm:max-w-[min(100vw-14rem,300px)]">
-            <WorkspaceSwitcher />
+          <div className="min-w-0 max-w-[min(100vw-12rem,320px)] sm:max-w-[min(100vw-14rem,340px)]">
+            <WorkspaceSwitcher contextFace={marketingSwitcherFace} />
           </div>
         </div>
 
-        <div className="hidden min-w-0 max-w-[200px] flex-col px-1 lg:flex xl:max-w-[240px]">
-          <span className="truncate text-xs font-semibold leading-tight text-foreground">{greeting}</span>
-          <span className="truncate text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/90">
-            {contextLabel}
-          </span>
-        </div>
+        {!isMarketingHome ? (
+          <div className="hidden min-w-0 max-w-[200px] flex-col px-1 lg:flex xl:max-w-[240px]">
+            <span className="truncate text-xs font-semibold leading-tight text-foreground">{greeting}</span>
+            <span className="truncate text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/90">
+              {contextLabel}
+            </span>
+          </div>
+        ) : null}
 
         {/* Centro: breadcrumb */}
         <div className="flex min-w-0 flex-1 justify-center px-1 sm:px-2">
-          {crumbs.length > 0 ? (
+          {showCenterCrumbs ? (
             <nav
               className="flex max-w-full items-center justify-center gap-1 overflow-hidden text-[11px] font-medium text-muted-foreground/90"
               aria-label="Navegação contextual"
@@ -74,12 +82,12 @@ export function AppTopbar({
                 </span>
               ))}
             </nav>
-          ) : (
+          ) : !isMarketingHome ? (
             <div
               className="h-px w-full max-w-[min(12rem,36vw)] rounded-full bg-gradient-to-r from-transparent via-border/80 to-transparent"
               aria-hidden
             />
-          )}
+          ) : null}
         </div>
 
         {/* Direita: tema, notificações, perfil */}

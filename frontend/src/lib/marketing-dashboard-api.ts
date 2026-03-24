@@ -1,6 +1,9 @@
 import { useAuthStore } from "@/stores/auth-store";
 import { API_BASE } from "./api";
 import type { MetricsDateRange } from "./integrations-api";
+import type { MarketingDashboardGoalContext } from "./business-goal-mode";
+
+export type { MarketingDashboardGoalContext } from "./business-goal-mode";
 
 export type MarketingDashboardDerived = {
   ctrPct: number | null;
@@ -106,6 +109,7 @@ export type MarketingDashboardPayload =
           status: "connected" | "not_connected" | "pending_configuration" | "api_not_ready";
         };
       };
+      goalContext?: MarketingDashboardGoalContext;
     }
   | { ok: false; message: string };
 

@@ -4,6 +4,7 @@
  */
 
 import { prisma } from "../utils/prisma.js";
+import type { MarketingDashboardGoalContext } from "./business-goal-mode.js";
 import { computeGoogleAdsIntegrationUiStatus } from "../utils/google-ads-readiness.js";
 import { fetchGoogleAdsMetrics } from "./google-ads-metrics.service.js";
 import { metaGraphGet, metaGraphGetAllPages, getMetaAppSecret } from "./meta/meta-graph.js";
@@ -342,6 +343,8 @@ export type MarketingDashboardPayload =
           status: import("../utils/google-ads-readiness.js").GoogleAdsIntegrationUiStatus;
         };
       };
+      /** Objetivo da conta (MarketingSettings) — anexado no controller após o payload base. */
+      goalContext?: MarketingDashboardGoalContext;
     }
   | { ok: false; message: string };
 
@@ -502,7 +505,7 @@ export async function fetchMarketingDashboardPayload(
         },
         timeseries: [],
         distribution: {
-          byPlatform: distributionByPlatform(0, googleSpendBrl),
+          byPlatform: distributionByPlatform(0, 0),
           byTemperature: [],
           byScore: { A: 0, B: 0, C: 0, D: 0 },
         },

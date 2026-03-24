@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import {
   Bar,
   CartesianGrid,
+  Cell,
   ComposedChart,
   Legend,
   Line,
@@ -51,6 +52,10 @@ function PremiumTooltip({
   );
 }
 
+const BAR_DEFAULT = "hsl(var(--primary) / 0.45)";
+const BAR_BEST = "hsl(142 71% 38% / 0.62)";
+const BAR_WORST = "hsl(0 72% 51% / 0.48)";
+
 export function CaptureTrendComposedChart({
   data,
   className,
@@ -58,6 +63,7 @@ export function CaptureTrendComposedChart({
   embedded = false,
   description,
   footer,
+  barHighlight,
 }: {
   data: ChartDayPoint[];
   className?: string;
@@ -66,6 +72,8 @@ export function CaptureTrendComposedChart({
   embedded?: boolean;
   description?: string;
   footer?: ReactNode;
+  /** Destaca barras do melhor / pior dia (por índice em `data`) */
+  barHighlight?: { bestIndex: number | null; worstIndex: number | null };
 }) {
   const hasData = data.some((d) => d.gasto > 0 || d.leads > 0);
 
@@ -112,10 +120,17 @@ export function CaptureTrendComposedChart({
             yAxisId="money"
             dataKey="gasto"
             name="Valor gasto"
-            fill="hsl(var(--primary) / 0.45)"
+            fill={BAR_DEFAULT}
             radius={[4, 4, 0, 0]}
             maxBarSize={32}
-          />
+          >
+            {data.map((_, index) => {
+              const isBest = barHighlight?.bestIndex === index;
+              const isWorst = barHighlight?.worstIndex === index && !isBest;
+              const fill = isBest ? BAR_BEST : isWorst ? BAR_WORST : BAR_DEFAULT;
+              return <Cell key={`gasto-${index}`} fill={fill} />;
+            })}
+          </Bar>
           <Line
             yAxisId="money"
             type="monotone"

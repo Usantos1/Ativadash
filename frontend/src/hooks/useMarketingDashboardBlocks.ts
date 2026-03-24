@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuthStore } from "@/stores/auth-store";
 import type { MetricsDateRange } from "@/lib/integrations-api";
+import type { MarketingDashboardGoalContext } from "@/lib/business-goal-mode";
 import type { MarketingDashboardPayload, MarketingDashboardSummary } from "@/lib/marketing-dashboard-api";
 import {
   fetchMarketingSummaryContract,
@@ -43,6 +44,7 @@ type Slice = {
   timeseries?: Extract<MarketingDashboardPayload, { ok: true }>["timeseries"];
   performanceByLevel?: Extract<MarketingDashboardPayload, { ok: true }>["performanceByLevel"];
   integrationStatus?: Extract<MarketingDashboardPayload, { ok: true }>["integrationStatus"];
+  goalContext?: MarketingDashboardGoalContext;
 };
 
 function storageKey(organizationId: string, range: MetricsDateRange): string {
@@ -98,6 +100,7 @@ export function useMarketingDashboardBlocks(hasMeta: boolean, dateRange: Metrics
           timeseries: p.timeseries,
           performanceByLevel: p.performanceByLevel,
           integrationStatus: p.integrationStatus,
+          goalContext: p.goalContext,
         });
       } else {
         setSlice({});
@@ -178,6 +181,7 @@ export function useMarketingDashboardBlocks(hasMeta: boolean, dateRange: Metrics
         range: sumRes.range,
         summary: sumRes.summary,
         distribution: sumRes.distribution,
+        goalContext: sumRes.goalContext,
       }));
 
       if (tsRes.ok) {
@@ -231,6 +235,7 @@ export function useMarketingDashboardBlocks(hasMeta: boolean, dateRange: Metrics
           distribution: sumRes.distribution,
           performanceByLevel: perfRes.performanceByLevel,
           integrationStatus: integRes.integrationStatus,
+          goalContext: sumRes.goalContext,
         };
         persistFull(full);
         setDashUpdatedAt(new Date());
@@ -256,6 +261,7 @@ export function useMarketingDashboardBlocks(hasMeta: boolean, dateRange: Metrics
       distribution: slice.distribution ?? EMPTY_DISTRIBUTION,
       performanceByLevel: slice.performanceByLevel ?? EMPTY_PERF,
       integrationStatus: slice.integrationStatus ?? DEFAULT_INTEGRATION,
+      goalContext: slice.goalContext,
     };
   }, [slice, fatalError]);
 
@@ -281,5 +287,6 @@ export function useMarketingDashboardBlocks(hasMeta: boolean, dateRange: Metrics
     showFullSkeleton,
     anyRefreshing,
     dashboardMetaSummary: slice.summary,
+    dashboardGoalContext: slice.goalContext,
   };
 }

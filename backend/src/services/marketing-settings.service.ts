@@ -9,6 +9,9 @@ import { formatMoney } from "./marketing-settings-format.js";
 export type { InsightAlert };
 
 export type MarketingSettingsDto = {
+  businessGoalMode: "LEADS" | "SALES" | "HYBRID";
+  primaryConversionLabel: string | null;
+  showRevenueBlocksInLeadMode: boolean;
   targetCpaBrl: number | null;
   maxCpaBrl: number | null;
   targetRoas: number | null;
@@ -31,6 +34,9 @@ function decToNumber(v: unknown): number | null {
 
 function toDto(row: MarketingSettings): MarketingSettingsDto {
   return {
+    businessGoalMode: row.businessGoalMode,
+    primaryConversionLabel: row.primaryConversionLabel?.trim() || null,
+    showRevenueBlocksInLeadMode: row.showRevenueBlocksInLeadMode,
     targetCpaBrl: decToNumber(row.targetCpaBrl),
     maxCpaBrl: decToNumber(row.maxCpaBrl),
     targetRoas: decToNumber(row.targetRoas),
@@ -66,6 +72,14 @@ export async function updateMarketingSettings(
   input: UpdateMarketingSettingsInput
 ): Promise<MarketingSettingsDto> {
   const data: Record<string, unknown> = {};
+  if (input.businessGoalMode !== undefined) data.businessGoalMode = input.businessGoalMode;
+  if (input.primaryConversionLabel !== undefined) {
+    const t = input.primaryConversionLabel;
+    data.primaryConversionLabel = t === null || t.trim() === "" ? null : t.trim();
+  }
+  if (input.showRevenueBlocksInLeadMode !== undefined) {
+    data.showRevenueBlocksInLeadMode = input.showRevenueBlocksInLeadMode;
+  }
   if (input.targetCpaBrl !== undefined) data.targetCpaBrl = input.targetCpaBrl;
   if (input.maxCpaBrl !== undefined) data.maxCpaBrl = input.maxCpaBrl;
   if (input.targetRoas !== undefined) data.targetRoas = input.targetRoas;

@@ -4,6 +4,7 @@
  */
 import { api } from "./api";
 import type { MetricsDateRange } from "./integrations-api";
+import type { MarketingDashboardGoalContext } from "./business-goal-mode";
 import type {
   MarketingDashboardDerived,
   MarketingDashboardPayload,
@@ -34,6 +35,7 @@ export type MarketingSummaryContractResponse =
       derived: MarketingDashboardDerived;
       compare: null;
       distribution: Extract<MarketingDashboardPayload, { ok: true }>["distribution"];
+      goalContext?: MarketingDashboardGoalContext;
     }
   | { ok: false; message: string };
 

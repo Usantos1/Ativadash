@@ -102,7 +102,10 @@ export function aggregateMeta(rows: MetaAdsCampaignRow[]) {
 }
 
 export type ChartDayPoint = {
+  /** Label curto para eixo (ex.: 15/mar) */
   date: string;
+  /** yyyy-MM-dd — para insights e destaque */
+  isoDate: string;
   gasto: number;
   leads: number;
   cpa: number;
@@ -158,6 +161,7 @@ export function buildMergedDailyChart(
     const cpa = leads > 0 ? gasto / leads : 0;
     return {
       date: format(day, "d/MMM", { locale: ptBR }),
+      isoDate: key,
       gasto,
       leads: Math.round(leads * 100) / 100,
       cpa: Math.round(cpa * 100) / 100,
@@ -183,6 +187,7 @@ export function buildGoogleOnlyDailyChart(
     const cpa = leads > 0 ? gasto / leads : 0;
     return {
       date: format(day, "d/MMM", { locale: ptBR }),
+      isoDate: key,
       gasto,
       leads: Math.round(leads * 100) / 100,
       cpa: Math.round(cpa * 100) / 100,
@@ -208,6 +213,7 @@ export function buildMetaOnlyDailyChart(
     const cpa = leads > 0 ? gasto / leads : 0;
     return {
       date: format(day, "d/MMM", { locale: ptBR }),
+      isoDate: key,
       gasto,
       leads: Math.round(leads * 100) / 100,
       cpa: Math.round(cpa * 100) / 100,

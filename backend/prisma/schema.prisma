@@ -238,11 +238,25 @@ model MetricsSnapshot {
   @@index([organizationId])
 }
 
+/// Objetivo principal de leitura do workspace (dashboard, funil, KPIs, insights)
+enum BusinessGoalMode {
+  LEADS
+  SALES
+  HYBRID
+}
+
 /// Metas e alertas de performance de marketing por organização
 model MarketingSettings {
   id             String   @id @default(cuid())
   organizationId String   @unique
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// Prioridade de métricas no painel (padrão HYBRID = comportamento legado)
+  businessGoalMode BusinessGoalMode @default(HYBRID)
+  /// Rótulo da conversão principal em contas de lead (ex.: Oportunidade, Agendamento)
+  primaryConversionLabel String? @db.VarChar(120)
+  /// Em modo LEADS, exibir blocos de receita/compras com destaque (senão ficam secundários na UI)
+  showRevenueBlocksInLeadMode Boolean @default(false)
 
   /// CPA alvo (BRL) — alerta quando o CPA real ultrapassar
   targetCpaBrl   Decimal? @db.Decimal(14, 2)

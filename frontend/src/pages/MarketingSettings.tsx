@@ -11,6 +11,7 @@ import {
   MessageCircle,
   Plus,
   Save,
+  Signpost,
   SlidersHorizontal,
   Target,
   Trash2,
@@ -34,6 +35,7 @@ import { StatusBadge } from "@/components/premium/status-badge";
 import {
   fetchMarketingSettings,
   saveMarketingSettings,
+  type BusinessGoalMode,
   type MarketingSettingsDto,
 } from "@/lib/marketing-settings-api";
 import {
@@ -54,6 +56,9 @@ import { cn } from "@/lib/utils";
 
 function dtoToForm(s: MarketingSettingsDto) {
   return {
+    businessGoalMode: s.businessGoalMode,
+    primaryConversionLabel: s.primaryConversionLabel?.trim() ?? "",
+    showRevenueBlocksInLeadMode: s.showRevenueBlocksInLeadMode,
     targetCpaBrl: s.targetCpaBrl != null ? String(s.targetCpaBrl) : "",
     maxCpaBrl: s.maxCpaBrl != null ? String(s.maxCpaBrl) : "",
     targetRoas: s.targetRoas != null ? String(s.targetRoas) : "",
@@ -602,6 +607,10 @@ export function MarketingSettings() {
   const [error, setError] = useState<string | null>(null);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
 
+  const [businessGoalMode, setBusinessGoalMode] = useState<BusinessGoalMode>("HYBRID");
+  const [primaryConversionLabel, setPrimaryConversionLabel] = useState("");
+  const [showRevenueBlocksInLeadMode, setShowRevenueBlocksInLeadMode] = useState(false);
+
   const [targetCpaBrl, setTargetCpaBrl] = useState("");
   const [maxCpaBrl, setMaxCpaBrl] = useState("");
   const [targetRoas, setTargetRoas] = useState("");
@@ -624,6 +633,9 @@ export function MarketingSettings() {
       .then((s) => {
         if (cancelled) return;
         const f = dtoToForm(s);
+        setBusinessGoalMode(f.businessGoalMode);
+        setPrimaryConversionLabel(f.primaryConversionLabel);
+        setShowRevenueBlocksInLeadMode(f.showRevenueBlocksInLeadMode);
         setTargetCpaBrl(f.targetCpaBrl);
         setMaxCpaBrl(f.maxCpaBrl);
         setTargetRoas(f.targetRoas);
@@ -710,6 +722,9 @@ export function MarketingSettings() {
     setSaving(true);
     try {
       await saveMarketingSettings({
+        businessGoalMode,
+        primaryConversionLabel: primaryConversionLabel.trim() ? primaryConversionLabel.trim() : null,
+        showRevenueBlocksInLeadMode,
         targetCpaBrl: target,
         maxCpaBrl: max,
         targetRoas: roas,
@@ -830,6 +845,70 @@ export function MarketingSettings() {
               </Button>
             </CardContent>
           </Card>
+
+          <SectionShell
+            icon={Signpost}
+            title="Objetivo principal da conta"
+            description="Define a leitura executiva do dashboard, a ordem dos KPIs, o funil Meta e os insights rápidos. Contas antigas permanecem em Híbrido até você alterar."
+          >
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <Label htmlFor="business-goal-mode" className="text-sm font-medium">
+                  Modo de operação
+                </Label>
+                <Select
+                  value={businessGoalMode}
+                  onValueChange={(v) => setBusinessGoalMode(v as BusinessGoalMode)}
+                >
+                  <SelectTrigger id="business-goal-mode" className="h-11 max-w-md rounded-xl border-border/70 shadow-sm">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="LEADS">Leads — captação e CPL</SelectItem>
+                    <SelectItem value="SALES">Vendas — receita e ROAS</SelectItem>
+                    <SelectItem value="HYBRID">Híbrido — topo e fundo do funil</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Afeta o painel <span className="font-medium text-foreground">Visão geral</span>, funil e peso de receita
+                  nas telas de marketing.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="primary-conv-label" className="text-sm font-medium">
+                  Nome do resultado principal (opcional)
+                </Label>
+                <Input
+                  id="primary-conv-label"
+                  value={primaryConversionLabel}
+                  onChange={(e) => setPrimaryConversionLabel(e.target.value)}
+                  placeholder="Ex.: Oportunidade, Agendamento, Lead"
+                  maxLength={80}
+                  className="h-11 max-w-lg rounded-xl border-border/70 shadow-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Substitui o rótulo &quot;Leads&quot; nos KPIs e na etapa final do funil quando preenchido.
+                </p>
+              </div>
+              <div className="rounded-xl border border-border/50 bg-muted/25 px-4 py-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground">
+                      Mostrar monetização mesmo em contas focadas em lead
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Quando o modo é Leads, o bloco de receita no dashboard volta a ter destaque normal.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={showRevenueBlocksInLeadMode}
+                    onCheckedChange={setShowRevenueBlocksInLeadMode}
+                    id="show-revenue-lead-mode"
+                  />
+                </div>
+              </div>
+            </div>
+          </SectionShell>
 
           <SectionShell
             icon={Target}

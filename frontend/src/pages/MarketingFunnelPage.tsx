@@ -187,6 +187,38 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
 
   const [shareHint, setShareHint] = useState<string | null>(null);
 
+  const leadResultLabel = settings?.primaryConversionLabel?.trim() || "Leads";
+
+  const focusBullets = useMemo(() => {
+    const mode = settings?.businessGoalMode ?? "HYBRID";
+    const base = VARIANT_FOCUS[variant];
+    if (variant === "conversao") {
+      const low = leadResultLabel.toLowerCase();
+      if (mode === "LEADS") {
+        return [
+          `Prioridade: taxas até o resultado principal (clique → ${low})`,
+          ...base.bullets.slice(1),
+        ];
+      }
+      if (mode === "SALES") {
+        return [
+          "Prioridade: fundo do funil (checkout e compras) e custo por venda",
+          ...base.bullets.slice(1),
+        ];
+      }
+      return [
+        `Topo: aquisição e ${low} · Fundo: vendas e receita`,
+        ...base.bullets.slice(1),
+      ];
+    }
+    return base.bullets;
+  }, [variant, settings?.businessGoalMode, leadResultLabel]);
+
+  const revenueLeadSecondary =
+    variant === "receita" &&
+    settings?.businessGoalMode === "LEADS" &&
+    !settings?.showRevenueBlocksInLeadMode;
+
   const funnelCurrentSpend =
     (metrics?.ok ? metrics.summary.costMicros / 1_000_000 : 0) +
     (metaMetrics?.ok ? metaMetrics.summary.spend : 0);
@@ -408,13 +440,26 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
           {VARIANT_FOCUS[variant].title}
         </p>
         <ul className="mt-2.5 grid gap-2 text-sm leading-snug text-muted-foreground sm:grid-cols-3">
-          {VARIANT_FOCUS[variant].bullets.map((b) => (
+          {focusBullets.map((b) => (
             <li key={b} className="flex gap-2">
               <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/80" aria-hidden />
               <span>{b}</span>
             </li>
           ))}
         </ul>
+        {variant === "captacao" && settings?.businessGoalMode === "SALES" ? (
+          <p className="mt-3 border-t border-primary/15 pt-3 text-xs leading-relaxed text-muted-foreground">
+            Modo <span className="font-medium text-foreground">vendas</span>: esta rota continua focada em aquisição. Cruze com{" "}
+            <Link to="/marketing/conversao" className="font-medium text-primary underline-offset-4 hover:underline">
+              Conversão
+            </Link>{" "}
+            e{" "}
+            <Link to="/marketing/receita" className="font-medium text-primary underline-offset-4 hover:underline">
+              Receita
+            </Link>{" "}
+            para o fundo do funil.
+          </p>
+        ) : null}
       </div>
 
       <FilterBarPremium
@@ -833,7 +878,7 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
               <KpiCardPremium
                 variant="primary"
-                label="Leads"
+                label={leadResultLabel}
                 value={formatNumber(leadsReais)}
                 icon={UserPlus}
                 source={dataSourceLabel}
@@ -1031,7 +1076,32 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
           </AnalyticsSection>
         </div>
       ) : (
-        <div className="space-y-6">
+        <div
+          className={cn(
+            "space-y-6",
+            revenueLeadSecondary &&
+              "rounded-2xl border border-dashed border-muted-foreground/20 bg-muted/[0.08] p-4 sm:p-5"
+          )}
+        >
+          {revenueLeadSecondary ? (
+            <div
+              className="rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-4 py-3 text-sm leading-relaxed text-muted-foreground dark:bg-amber-950/20"
+              role="status"
+            >
+              <p className="font-semibold text-foreground">Receita em segundo plano</p>
+              <p className="mt-1 text-xs">
+                Objetivo da conta configurado para leads — os KPIs abaixo permanecem acessíveis, com menos destaque visual.
+                Ajuste em{" "}
+                <Link
+                  to="/marketing/configuracoes"
+                  className="font-medium text-primary underline-offset-4 hover:underline"
+                >
+                  Metas e alertas
+                </Link>{" "}
+                ou ative a opção de mostrar monetização em modo lead.
+              </p>
+            </div>
+          ) : null}
           <AnalyticsSection
             eyebrow="Monetização"
             title="KPIs de receita atribuída"

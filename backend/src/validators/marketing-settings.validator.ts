@@ -2,8 +2,13 @@ import { z } from "zod";
 
 const periodEnum = z.enum(["7d", "30d", "90d"]);
 
+const businessGoalModeEnum = z.enum(["LEADS", "SALES", "HYBRID"]);
+
 export const updateMarketingSettingsSchema = z
   .object({
+    businessGoalMode: businessGoalModeEnum.optional(),
+    primaryConversionLabel: z.union([z.string().max(120), z.null()]).optional(),
+    showRevenueBlocksInLeadMode: z.boolean().optional(),
     targetCpaBrl: z.number().positive().nullable().optional(),
     maxCpaBrl: z.number().positive().nullable().optional(),
     targetRoas: z.number().positive().nullable().optional(),

@@ -70,6 +70,13 @@ function integrationStatusLabel(list: IntegrationFromApi[]) {
 function marketingSummary(m: MarketingSettingsDto | null): string[] {
   if (!m) return ["Não foi possível carregar (tente abrir a tela de marketing)."];
   const bits: string[] = [];
+  const goalLabel =
+    m.businessGoalMode === "LEADS"
+      ? "Objetivo: leads"
+      : m.businessGoalMode === "SALES"
+        ? "Objetivo: vendas"
+        : "Objetivo: híbrido";
+  bits.push(goalLabel);
   bits.push(m.alertsEnabled ? "Alertas ligados" : "Alertas desligados");
   if (m.targetCpaBrl != null) bits.push(`Meta CPA ${formatBrl(m.targetCpaBrl)}`);
   if (m.maxCpaBrl != null) bits.push(`Teto CPA ${formatBrl(m.maxCpaBrl)}`);

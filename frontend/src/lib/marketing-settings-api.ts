@@ -1,6 +1,11 @@
 import { api } from "./api";
 
+export type BusinessGoalMode = "LEADS" | "SALES" | "HYBRID";
+
 export type MarketingSettingsDto = {
+  businessGoalMode: BusinessGoalMode;
+  primaryConversionLabel: string | null;
+  showRevenueBlocksInLeadMode: boolean;
   targetCpaBrl: number | null;
   maxCpaBrl: number | null;
   targetRoas: number | null;
@@ -34,6 +39,10 @@ export async function fetchMarketingSettings(): Promise<MarketingSettingsDto> {
 }
 
 export type UpdateMarketingSettingsPayload = Partial<{
+  businessGoalMode: BusinessGoalMode;
+  /** string vazio ou null limpa o rótulo customizado */
+  primaryConversionLabel: string | null;
+  showRevenueBlocksInLeadMode: boolean;
   targetCpaBrl: number | null;
   maxCpaBrl: number | null;
   targetRoas: number | null;

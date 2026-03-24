@@ -46,8 +46,21 @@ import {
 } from "../validators/marketing-extended.validator.js";
 import type { MarketingDashboardPayload } from "../services/marketing-dashboard.service.js";
 import { appendAuditLog } from "../services/audit-log.service.js";
+import { mergeMarketingGoalIntoDashboardPayload } from "../services/marketing-dashboard-goal-merge.service.js";
 
 type AuthRequest = Request & { user: JwtPayload };
+
+/** Corpo JSON para 403 em mutações de mídia (doc contrato: FORBIDDEN_PLAN | FORBIDDEN_ROLE). */
+function jsonMutateForbidden(e: unknown): { code: string; message: string } {
+  const message = e instanceof Error ? e.message : "Sem permissão";
+  if (message.includes("plano") && message.includes("edição de campanhas")) {
+    return { code: "FORBIDDEN_PLAN", message };
+  }
+  if (message.includes("Sem permissão para alterar campanhas")) {
+    return { code: "FORBIDDEN_ROLE", message };
+  }
+  return { code: "FORBIDDEN", message };
+}
 
 function buildContractFunnel(payload: Extract<MarketingDashboardPayload, { ok: true }>) {
   const s = payload.summary;
@@ -72,7 +85,10 @@ function buildContractFunnel(payload: Extract<MarketingDashboardPayload, { ok: t
 async function guardRead(userId: string, organizationId: string, res: Response): Promise<boolean> {
   const ok = await userCanReadMarketing(userId, organizationId);
   if (!ok) {
-    res.status(403).json({ message: "Sem acesso aos dados de marketing desta empresa." });
+    res.status(403).json({
+      code: "FORBIDDEN_SCOPE",
+      message: "Sem acesso aos dados de marketing desta empresa.",
+    });
     return false;
   }
   return true;
@@ -162,11 +178,14 @@ export async function getMarketingDashboardSummaryHandler(req: Request, res: Res
       bypassCache: parseDashboardBypassCache(req),
     });
     if (!result.ok) return res.json(result);
+    const merged = await mergeMarketingGoalIntoDashboardPayload(organizationId, result);
+    if (!merged.ok) return res.json(merged);
     return res.json({
       ok: true,
-      range: result.range,
-      summary: result.summary,
-      distribution: result.distribution,
+      range: merged.range,
+      summary: merged.summary,
+      distribution: merged.distribution,
+      goalContext: merged.goalContext,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -429,7 +448,7 @@ async function applyMetaCampaignStatusChange(
     }).catch((err) => console.error("[audit] media.meta.campaign.status", err));
     return res.json({ ok: true });
   } catch (e) {
-    return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
+    return res.status(403).json(jsonMutateForbidden(e));
   }
 }
 
@@ -466,7 +485,7 @@ export async function patchMetaCampaignBudgetContractHandler(req: Request, res: 
     await assertCanMutateAds(userId, organizationId);
     await assertCampaignWriteOnPlan(organizationId);
   } catch (e) {
-    return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
+    return res.status(403).json(jsonMutateForbidden(e));
   }
   const out = await updateMetaCampaignDailyBudget(organizationId, externalId, parsed.data.dailyBudget);
   if (!out.ok) {
@@ -497,7 +516,7 @@ export async function patchGoogleCampaignStatusContractHandler(req: Request, res
     await assertCanMutateAds(userId, organizationId);
     await assertCampaignWriteOnPlan(organizationId);
   } catch (e) {
-    return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
+    return res.status(403).json(jsonMutateForbidden(e));
   }
   const enabled = parsed.data.status === "ENABLED";
   const out = await mutateGoogleCampaignStatus(organizationId, externalId, enabled);
@@ -557,7 +576,7 @@ export async function postGoogleCampaignMutateStubHandler(req: Request, res: Res
     await assertCanMutateAds(userId, organizationId);
     await assertCampaignWriteOnPlan(organizationId);
   } catch (e) {
-    return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
+    return res.status(403).json(jsonMutateForbidden(e));
   }
   const out = await mutateGoogleCampaignStatus(organizationId, "", true);
   return res.status(501).json(out);
@@ -623,13 +642,16 @@ export async function getMarketingSummaryContractHandler(req: Request, res: Resp
       bypassCache: parseDashboardBypassCache(req),
     });
     if (!result.ok) return res.json(result);
+    const merged = await mergeMarketingGoalIntoDashboardPayload(organizationId, result);
+    if (!merged.ok) return res.json(merged);
     return res.json({
       ok: true,
-      range: result.range,
-      summary: result.summary,
-      derived: result.summary.derived,
+      range: merged.range,
+      summary: merged.summary,
+      derived: merged.summary.derived,
       compare: null,
-      distribution: result.distribution,
+      distribution: merged.distribution,
+      goalContext: merged.goalContext,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

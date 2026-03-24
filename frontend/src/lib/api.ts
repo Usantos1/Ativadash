@@ -14,6 +14,39 @@ function getApiBase(): string {
 }
 export const API_BASE = getApiBase();
 
+/** Erro HTTP da API JSON (`message` + opcional `code`, ex.: FORBIDDEN_PLAN). */
+export class ApiClientError extends Error {
+  readonly status: number;
+  readonly code?: string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "ApiClientError";
+    this.status = status;
+    this.code = code;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+/** Texto de erro de API para toasts e banners (`ApiClientError` ou `Error` genérico). */
+export function getApiErrorMessage(e: unknown, fallback: string): string {
+  if (e instanceof ApiClientError) return e.message;
+  if (e instanceof Error) return e.message;
+  return fallback;
+}
+
+/** Quando o backend envia `FORBIDDEN_PLAN` (campanhas, webhooks no plano, etc.). */
+export function formatMutationBlockedMessage(e: unknown, fallback: string): string {
+  if (e instanceof ApiClientError) {
+    if (e.code === "FORBIDDEN_PLAN") {
+      return `${e.message} Peça ao administrador da empresa ou da matriz para liberar o recurso no plano.`;
+    }
+    return e.message;
+  }
+  if (e instanceof Error) return e.message;
+  return fallback;
+}
+
 function getAccessToken(): string | null {
   return useAuthStore.getState().accessToken;
 }
@@ -37,8 +70,11 @@ export async function apiRequest<T>(
     throw new Error("Não autorizado");
   }
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(err.message || "Erro na requisição");
+    const err = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
+    const message =
+      typeof err?.message === "string" && err.message.length > 0 ? err.message : res.statusText || "Erro na requisição";
+    const code = typeof err?.code === "string" ? err.code : undefined;
+    throw new ApiClientError(message, res.status, code);
   }
   if (res.status === 204) {
     return undefined as T;

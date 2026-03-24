@@ -43,9 +43,9 @@ const navGroups: NavGroup[] = [
     items: [{ to: "/dashboard", label: "Dashboard", icon: LayoutDashboard }],
   },
   {
-    label: "Marketing",
+    label: "Mídia paga",
     items: [
-      { to: "/marketing", label: "Marketing", icon: Megaphone, end: true },
+      { to: "/marketing", label: "Visão geral", icon: Megaphone, end: true },
       { to: "/marketing/captacao", label: "Captação", icon: Target },
       { to: "/marketing/conversao", label: "Conversão", icon: TrendingUp },
       { to: "/marketing/receita", label: "Receita", icon: DollarSign },
@@ -144,26 +144,6 @@ function NavBlock({
   );
 }
 
-function SidebarWorkspaceFooter({ collapsed }: { collapsed: boolean }) {
-  const orgName = useAuthStore((s) => s.user?.organization?.name);
-  if (!orgName) return null;
-  if (collapsed) {
-    return (
-      <div className="shrink-0 border-t border-border/50 p-2" title={orgName}>
-        <div className="mx-auto h-8 w-8 rounded-lg bg-primary/[0.1] ring-1 ring-primary/15" aria-hidden />
-      </div>
-    );
-  }
-  return (
-    <div className="shrink-0 border-t border-border/50 bg-muted/15 px-3 py-3">
-      <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground/80">Workspace ativo</p>
-      <p className="mt-1 truncate text-xs font-semibold text-foreground" title={orgName}>
-        {orgName}
-      </p>
-    </div>
-  );
-}
-
 export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const collapsed = useUIStore((s) => s.sidebarCollapsed);
 
@@ -219,7 +199,6 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
       >
         {desktopHeader}
         <NavBlock showLabels={desktopShowLabels} />
-        <SidebarWorkspaceFooter collapsed={collapsed} />
       </aside>
       {mobileOpen ? (
         <div
@@ -239,7 +218,6 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
       >
         {mobileHeader}
         <NavBlock showLabels onLinkClick={onMobileClose} />
-        <SidebarWorkspaceFooter collapsed={false} />
       </aside>
     </>
   );
@@ -278,6 +256,11 @@ export function SidebarHeaderControl({ onMobileOpen }: { onMobileOpen: () => voi
       </Button>
     </>
   );
+}
+
+/** Rodapé do workspace na sidebar — UI removida; assinatura mantida para chamadores. */
+export function SidebarWorkspaceFooter(): null {
+  return null;
 }
 
 export { SIDEBAR_WIDTH, SIDEBAR_COLLAPSED };

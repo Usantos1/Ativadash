@@ -37,6 +37,7 @@ import {
 import { AnalyticsPageHeader } from "@/components/analytics/AnalyticsPageHeader";
 import { AnalyticsSection } from "@/components/analytics/AnalyticsSection";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatMutationBlockedMessage, getApiErrorMessage } from "@/lib/api";
 import type { IntegrationHealth } from "@/components/integrations/IntegrationCard";
 import { StatusBadge } from "@/components/premium";
 
@@ -214,7 +215,7 @@ function AtivaCrmIntegrationPanel({
       setLocalOk(IX.cfgSalvas);
       onNotify({ type: "success", text: IX.ativaCrmCfgSalvas });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erro ao salvar.";
+      const msg = getApiErrorMessage(err, "Erro ao salvar.");
       setLocalError(msg);
       onNotify({ type: "error", text: msg });
     } finally {
@@ -240,7 +241,7 @@ function AtivaCrmIntegrationPanel({
       setLocalOk(IX.integracaoRemovida);
       onNotify({ type: "success", text: "Ativa CRM desconectado." });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erro ao remover.";
+      const msg = getApiErrorMessage(err, "Erro ao remover.");
       setLocalError(msg);
     } finally {
       setRemoving(false);
@@ -426,7 +427,7 @@ function WebhooksIntegrationPanel({
       setEvents(ev.items);
       setTotal(ev.total);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Erro ao carregar webhooks";
+      const msg = formatMutationBlockedMessage(e, "Erro ao carregar webhooks");
       onNotify({ type: "error", text: msg });
       setEndpoints([]);
       setEvents([]);
@@ -456,7 +457,7 @@ function WebhooksIntegrationPanel({
         text: "Endpoint criado. Guarde o segredo — ele não será exibido de novo.",
       });
     } catch (err) {
-      onNotify({ type: "error", text: err instanceof Error ? err.message : "Erro ao criar" });
+      onNotify({ type: "error", text: formatMutationBlockedMessage(err, "Erro ao criar") });
     } finally {
       setCreating(false);
     }
@@ -468,7 +469,7 @@ function WebhooksIntegrationPanel({
       setEndpoints((prev) => prev.map((x) => (x.id === item.id ? item : x)));
       onNotify({ type: "success", text: item.active ? "Endpoint ativado." : "Endpoint desativado." });
     } catch (err) {
-      onNotify({ type: "error", text: err instanceof Error ? err.message : "Erro" });
+      onNotify({ type: "error", text: formatMutationBlockedMessage(err, "Erro") });
     }
   }
 
@@ -478,7 +479,7 @@ function WebhooksIntegrationPanel({
       onNotify({ type: "success", text: "Evento reprocessado (cópia gravada)." });
       void load();
     } catch (err) {
-      onNotify({ type: "error", text: err instanceof Error ? err.message : "Erro" });
+      onNotify({ type: "error", text: formatMutationBlockedMessage(err, "Erro") });
     }
   }
 
@@ -696,7 +697,7 @@ export function Integrations() {
       const url = await getGoogleAdsAuthUrl();
       window.location.href = url;
     } catch (e) {
-      setMessage({ type: "error", text: e instanceof Error ? e.message : IX.naoFoiPossivelConexao });
+      setMessage({ type: "error", text: getApiErrorMessage(e, IX.naoFoiPossivelConexao) });
       setConnecting(false);
     }
   };
@@ -708,7 +709,7 @@ export function Integrations() {
       const url = await getMetaAdsAuthUrl();
       window.location.href = url;
     } catch (e) {
-      setMessage({ type: "error", text: e instanceof Error ? e.message : IX.naoFoiPossivelConexao });
+      setMessage({ type: "error", text: getApiErrorMessage(e, IX.naoFoiPossivelConexao) });
       setConnecting(false);
     }
   };
@@ -722,7 +723,7 @@ export function Integrations() {
       );
       setMessage({ type: "success", text: IX.vinculoClienteOk });
     } catch (e) {
-      setMessage({ type: "error", text: e instanceof Error ? e.message : IX.vinculoClienteErro });
+      setMessage({ type: "error", text: getApiErrorMessage(e, IX.vinculoClienteErro) });
     }
   };
 
@@ -733,7 +734,7 @@ export function Integrations() {
       setList((prev) => prev.filter((i) => i.id !== id));
       setMessage({ type: "success", text: IX.integracaoDesvinculada });
     } catch (e) {
-      setMessage({ type: "error", text: e instanceof Error ? e.message : "Erro ao desvincular." });
+      setMessage({ type: "error", text: getApiErrorMessage(e, "Erro ao desvincular.") });
     }
   };
 

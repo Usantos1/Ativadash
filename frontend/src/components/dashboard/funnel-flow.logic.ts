@@ -1,4 +1,5 @@
 import type { MarketingDashboardSummary } from "@/lib/marketing-dashboard-api";
+import type { GoogleAdsMetricsSummary } from "@/lib/integrations-api";
 
 export type FlowVisualizationMode = "classic" | "hybrid";
 
@@ -51,9 +52,13 @@ export type AdaptiveFunnelModel = {
 function transitionDisplayLabel(fromId: string, toId: string): string {
   const map: Record<string, string> = {
     "imp-clk": "CTR",
+    "clk-conv": "Cliques → conv.",
     "clk-link": "Cliques → link",
+    "clk-lpv": "Cliques → LPV",
     "link-lpv": "Link → LPV",
     "lpv-lead": "LPV → Leads",
+    "lpv-cart": "LPV → carrinho",
+    "cart-chk": "Carrinho → checkout",
     "lead-chk": "Leads → checkout",
     "chk-pur": "Checkout → compras",
   };
@@ -84,6 +89,81 @@ export function buildStepsFromSummary(summary: MarketingDashboardSummary): Funne
     { id: "chk", label: "Checkout iniciado", short: "Checkout", value: summary.initiateCheckout },
     { id: "pur", label: "Compras", short: "Compras", value: summary.purchases },
   ];
+}
+
+/** Trecho monetização (Meta): LPV → carrinho → checkout → compra — para modo híbrido ou vendas. */
+export function buildMonetizationStepsFromSummary(summary: MarketingDashboardSummary): FunnelStep[] {
+  return [
+    {
+      id: "lpv",
+      label: "Landing Page Views",
+      short: "LPV",
+      value: summary.landingPageViews,
+    },
+    {
+      id: "cart",
+      label: "Add to cart",
+      short: "Carrinho",
+      value: summary.addToCart,
+    },
+    {
+      id: "chk",
+      label: "Checkout iniciado",
+      short: "Checkout",
+      value: summary.initiateCheckout,
+    },
+    {
+      id: "pur",
+      label: "Compras",
+      short: "Compras",
+      value: summary.purchases,
+    },
+  ];
+}
+
+/** Funil Meta conforme objetivo da conta (lead / venda completa / híbrido). */
+export function buildStepsFromSummaryForBusinessGoal(
+  summary: MarketingDashboardSummary,
+  funnelVariant: "lead" | "sales" | "hybrid",
+  primaryConversionLabel?: string | null
+): FunnelStep[] {
+  if (funnelVariant === "sales") {
+    const steps: FunnelStep[] = [
+      { id: "imp", label: "Impressões", short: "Impressões", value: summary.impressions },
+      { id: "clk", label: "Cliques", short: "Cliques", value: summary.clicks },
+      {
+        id: "lpv",
+        label: "Landing Page Views",
+        short: "LPV",
+        value: summary.landingPageViews,
+      },
+      {
+        id: "cart",
+        label: "Add to cart",
+        short: "Carrinho",
+        value: summary.addToCart,
+      },
+      {
+        id: "chk",
+        label: "Checkout iniciado",
+        short: "Checkout",
+        value: summary.initiateCheckout,
+      },
+      { id: "pur", label: "Compras", short: "Compras", value: summary.purchases },
+    ];
+    return steps;
+  }
+
+  let steps = buildStepsFromSummary(summary);
+  if (funnelVariant === "lead") {
+    steps = steps.filter((s) => !["chk", "pur", "link"].includes(s.id));
+  }
+  const lab = primaryConversionLabel?.trim();
+  if (lab) {
+    const short = lab.length > 14 ? `${lab.slice(0, 13)}…` : lab;
+    steps = steps.map((s) => (s.id === "lead" ? { ...s, label: lab, short } : s));
+  }
+  return steps;
 }
 
 function safeRatePct(from: number, to: number | null): number | null {
@@ -202,8 +282,21 @@ export function layerWidthsPercentFromGeometry(geo: ClassicFunnelGeometry): numb
   return geo.halfWidths.map((h) => (h / top) * 100);
 }
 
-export function buildAdaptiveFunnelModel(summary: MarketingDashboardSummary): AdaptiveFunnelModel {
-  const steps = buildStepsFromSummary(summary);
+export function buildGoogleAdsFunnelSteps(g: GoogleAdsMetricsSummary): FunnelStep[] {
+  return [
+    { id: "imp", label: "Impressões", short: "Impressões", value: g.impressions },
+    { id: "clk", label: "Cliques", short: "Cliques", value: g.clicks },
+    { id: "conv", label: "Conversões", short: "Conversões", value: g.conversions },
+  ];
+}
+
+/**
+ * Constrói o modelo adaptativo a partir de etapas já definidas (Meta completo ou Google simplificado).
+ */
+export function buildAdaptiveFunnelModelFromSteps(
+  steps: FunnelStep[],
+  funnelCopy: "meta" | "google" = "meta"
+): AdaptiveFunnelModel {
   const mode = determineFlowMode(steps);
 
   const numeric = steps
@@ -211,21 +304,20 @@ export function buildAdaptiveFunnelModel(summary: MarketingDashboardSummary): Ad
     .filter((v): v is number => v != null && v >= 0 && Number.isFinite(v));
   const scaleMax = numeric.length ? Math.max(...numeric, 1) : 1;
 
-  const imp = steps[0].value ?? 0;
+  const imp = steps[0]?.value ?? 0;
   const classicBase = imp > 0 ? imp : scaleMax;
 
   const transitions: FunnelTransition[] = [];
   for (let i = 0; i < steps.length - 1; i++) {
-    const from = steps[i];
-    const to = steps[i + 1];
+    const from = steps[i]!;
+    const to = steps[i + 1]!;
     const fromV = from.value;
     const toV = to.value;
     let ratePct: number | null = null;
     if (fromV != null && toV != null && fromV > 0) {
       ratePct = safeRatePct(fromV, toV);
     }
-    const isExpansion =
-      fromV != null && toV != null && fromV > 0 && toV > fromV;
+    const isExpansion = fromV != null && toV != null && fromV > 0 && toV > fromV;
 
     transitions.push({
       key: `${from.id}-${to.id}`,
@@ -252,7 +344,7 @@ export function buildAdaptiveFunnelModel(summary: MarketingDashboardSummary): Ad
   let bottleneckBadge: string | null = null;
 
   if (dropCandidates.length) {
-    let worst = dropCandidates[0];
+    let worst = dropCandidates[0]!;
     let minRate = worst.ratePct ?? Infinity;
     for (const t of dropCandidates) {
       const r = t.ratePct;
@@ -274,7 +366,9 @@ export function buildAdaptiveFunnelModel(summary: MarketingDashboardSummary): Ad
     bottleneckLine =
       mode === "classic"
         ? "Funil coerente: volumes não aumentam entre etapas consecutivas."
-        : "Híbrido: algumas etapas superam a anterior (eventos distintos na Meta). Compare volumes absolutos.";
+        : funnelCopy === "google"
+          ? "Híbrido: etapas podem superar a anterior (atribuição e conversões no Google Ads). Compare volumes absolutos."
+          : "Híbrido: algumas etapas superam a anterior (eventos distintos na Meta). Compare volumes absolutos.";
   }
 
   const classicGeometry = buildClassicFunnelGeometry(steps, classicBase);
@@ -290,6 +384,14 @@ export function buildAdaptiveFunnelModel(summary: MarketingDashboardSummary): Ad
     classicBase,
     classicGeometry,
   };
+}
+
+export function buildAdaptiveFunnelModel(summary: MarketingDashboardSummary): AdaptiveFunnelModel {
+  return buildAdaptiveFunnelModelFromSteps(buildStepsFromSummary(summary), "meta");
+}
+
+export function buildGoogleAdsFunnelModel(g: GoogleAdsMetricsSummary): AdaptiveFunnelModel {
+  return buildAdaptiveFunnelModelFromSteps(buildGoogleAdsFunnelSteps(g), "google");
 }
 
 function formatRatePlain(pct: number): string {

@@ -18,6 +18,17 @@ import { appendAuditLog } from "../services/audit-log.service.js";
 
 type AuthRequest = Request & { user: JwtPayload };
 
+function respondWebhookHandlerError(res: Response, e: unknown) {
+  const msg = e instanceof Error ? e.message : "Erro";
+  if (msg.includes("não está ativo")) {
+    return res.status(403).json({ code: "FORBIDDEN_PLAN", message: msg });
+  }
+  if (msg.includes("Sem permissão")) {
+    return res.status(403).json({ code: "FORBIDDEN_ROLE", message: msg });
+  }
+  return res.status(400).json({ message: msg });
+}
+
 const createSchema = z.object({
   name: z.string().min(1).max(120),
   publicSlug: z.string().min(3).max(63).regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/).optional().nullable(),
@@ -35,14 +46,7 @@ export async function webhooksEndpointsList(req: Request, res: Response) {
     const items = await listWebhookEndpoints(organizationId);
     return res.json({ items });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Erro";
-    if (msg.includes("não está ativo")) {
-      return res.status(403).json({ message: msg });
-    }
-    if (msg.includes("Sem permissão")) {
-      return res.status(403).json({ message: msg });
-    }
-    return res.status(400).json({ message: msg });
+    return respondWebhookHandlerError(res, e);
   }
 }
 
@@ -65,14 +69,7 @@ export async function webhooksEndpointsCreate(req: Request, res: Response) {
     });
     return res.status(201).json({ item, plainSecret });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Erro";
-    if (msg.includes("não está ativo")) {
-      return res.status(403).json({ message: msg });
-    }
-    if (msg.includes("Sem permissão")) {
-      return res.status(403).json({ message: msg });
-    }
-    return res.status(400).json({ message: msg });
+    return respondWebhookHandlerError(res, e);
   }
 }
 
@@ -96,11 +93,7 @@ export async function webhooksEndpointsPatch(req: Request, res: Response) {
     });
     return res.json({ item });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Erro";
-    if (msg.includes("não está ativo") || msg.includes("Sem permissão")) {
-      return res.status(403).json({ message: msg });
-    }
-    return res.status(400).json({ message: msg });
+    return respondWebhookHandlerError(res, e);
   }
 }
 
@@ -113,11 +106,7 @@ export async function webhooksEventsList(req: Request, res: Response) {
     const data = await listWebhookEvents(organizationId, { limit, offset });
     return res.json(data);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Erro";
-    if (msg.includes("não está ativo") || msg.includes("Sem permissão")) {
-      return res.status(403).json({ message: msg });
-    }
-    return res.status(400).json({ message: msg });
+    return respondWebhookHandlerError(res, e);
   }
 }
 
@@ -137,10 +126,6 @@ export async function webhooksEventsReplay(req: Request, res: Response) {
     });
     return res.status(201).json({ item });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Erro";
-    if (msg.includes("não está ativo") || msg.includes("Sem permissão")) {
-      return res.status(403).json({ message: msg });
-    }
-    return res.status(400).json({ message: msg });
+    return respondWebhookHandlerError(res, e);
   }
 }

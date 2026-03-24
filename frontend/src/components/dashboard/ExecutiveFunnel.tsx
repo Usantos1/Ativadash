@@ -4,17 +4,19 @@ import { formatNumber, formatPercent, formatSpend } from "@/lib/metrics-format";
 import { cn } from "@/lib/utils";
 import type { MarketingDashboardSummary } from "@/lib/marketing-dashboard-api";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-  buildAdaptiveFunnelModel,
-  type AdaptiveFunnelModel,
-  type FunnelFlowModel,
-  type FunnelStep,
-  type FunnelTransition,
-} from "./funnel-flow.logic";
+import type { AdaptiveFunnelModel, FunnelFlowModel, FunnelStep, FunnelTransition } from "./funnel-flow.logic";
 
 export type { FunnelStep, FunnelTransition, FunnelFlowModel, AdaptiveFunnelModel };
 
+/** Rótulo de grupo inserido após a etapa `afterStepId` (antes da transição seguinte). */
+export type FunnelSegmentBreak = { afterStepId: string; label: string };
+
 const LAYER_VIEW_H = 20;
+
+const FUNNEL_SVG_ACCENT = {
+  meta: { stop0: "#1877F2", o0: 0.26, stop1: "#1877F2", o1: 0.09 },
+  google: { stop0: "#34A853", o0: 0.26, stop1: "#34A853", o1: 0.09 },
+} as const;
 
 function formatTransitionRate(pct: number | null): string {
   if (pct == null || !Number.isFinite(pct)) return "—";
@@ -54,23 +56,32 @@ function FunnelTrapezoidLayer({
   summary,
   isBottleneck,
   gradientId,
+  platform,
 }: {
   step: FunnelStep;
   hwTop: number;
   hwBot: number;
   spend: number;
-  summary: MarketingDashboardSummary;
+  summary: MarketingDashboardSummary | null;
   isBottleneck: boolean;
   gradientId: string;
+  platform: "meta" | "google";
 }) {
   const v = step.value;
   const cx = 110;
   const pts = layerTrapezoidPoints(cx, hwTop, hwBot, LAYER_VIEW_H);
+  const accent = FUNNEL_SVG_ACCENT[platform];
 
   const tooltipExtra =
-    step.id === "lead" && spend > 0 && summary.leads > 0
+    summary &&
+    step.id === "lead" &&
+    spend > 0 &&
+    summary.leads > 0
       ? `CPL ≈ ${formatSpend(spend / summary.leads)}`
-      : step.id === "pur" && spend > 0 && summary.purchases > 0
+      : summary &&
+          step.id === "pur" &&
+          spend > 0 &&
+          summary.purchases > 0
         ? `Custo/compra ≈ ${formatSpend(spend / summary.purchases)}`
         : spend > 0 && v != null && v > 0
           ? `${formatSpend(spend / v)} por unidade`
@@ -89,8 +100,8 @@ function FunnelTrapezoidLayer({
         {!step.unavailable ? (
           <defs>
             <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.24} />
-              <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.08} />
+              <stop offset="0%" stopColor={accent.stop0} stopOpacity={accent.o0} />
+              <stop offset="100%" stopColor={accent.stop1} stopOpacity={accent.o1} />
             </linearGradient>
           </defs>
         ) : null}
@@ -143,11 +154,13 @@ function TransitionGap({
   spend,
   summary,
   isBottleneck,
+  platform,
 }: {
   t: FunnelTransition;
   spend: number;
-  summary: MarketingDashboardSummary;
+  summary: MarketingDashboardSummary | null;
   isBottleneck: boolean;
+  platform: "meta" | "google";
 }) {
   const rateText = formatTransitionRate(t.ratePct);
 
@@ -180,14 +193,17 @@ function TransitionGap({
           <p className="font-medium text-foreground">{t.formula}</p>
           {t.isExpansion && t.ratePct != null ? (
             <p className="mt-2 text-muted-foreground">
-              Taxa acima de 100%: a etapa seguinte superou a anterior (eventos diferentes na Meta). A silhueta do funil
-              permanece afunilada; o valor exibido é o real.
+              Taxa acima de 100%: a etapa seguinte superou a anterior (
+              {platform === "google"
+                ? "atribuição e conversões no Google Ads podem não seguir ordem estrita de volume"
+                : "eventos diferentes na Meta"}
+              ). A silhueta do funil permanece afunilada; o valor exibido é o real.
             </p>
           ) : null}
-          {t.from.id === "lead" && spend > 0 && summary.leads > 0 ? (
+          {summary && t.from.id === "lead" && spend > 0 && summary.leads > 0 ? (
             <p className="mt-2 text-muted-foreground">CPL ≈ {formatSpend(spend / summary.leads)}</p>
           ) : null}
-          {t.to.id === "pur" && spend > 0 && summary.purchases > 0 ? (
+          {summary && t.to.id === "pur" && spend > 0 && summary.purchases > 0 ? (
             <p className="mt-2 text-muted-foreground">
               Custo/compra ≈ {formatSpend(spend / summary.purchases)}
             </p>
@@ -203,19 +219,32 @@ function TransitionGap({
  * Larguras com escala √ + mínimo/máximo + passo mínimo entre etapas; modo híbrido preserva a silhueta.
  */
 export function ExecutiveFunnel({
-  summary,
+  model,
   spend,
+  summary,
+  platform,
   className,
   /** Quando true, omite gargalo/híbrido no cabeçalho e rodapé (painel de taxas ao lado no dashboard). */
   companionRatesPanel = false,
+  /** Agrupamento visual (ex.: modo híbrido Meta: LPV/resultado e monetização). */
+  segmentBreaks,
+  /** Substitui o título “Funil de conversão” (ex.: Captação, Monetização). */
+  funnelHeadline,
+  /** Substitui o parágrafo descritivo do cabeçalho. */
+  funnelSubline,
 }: {
-  summary: MarketingDashboardSummary;
+  model: AdaptiveFunnelModel;
   spend: number;
+  /** Resumo Meta para tooltips (CPL, compras); omitir no funil Google. */
+  summary: MarketingDashboardSummary | null;
+  platform: "meta" | "google";
   className?: string;
   companionRatesPanel?: boolean;
+  segmentBreaks?: FunnelSegmentBreak[];
+  funnelHeadline?: string;
+  funnelSubline?: string;
 }) {
   const baseId = useId();
-  const model = useMemo(() => buildAdaptiveFunnelModel(summary), [summary]);
   const hw = model.classicGeometry.halfWidths;
 
   const bnTransIdx =
@@ -245,12 +274,24 @@ export function ExecutiveFunnel({
       <header className="border-b border-border/35 pb-3 sm:pb-4">
         <div className="flex flex-wrap items-start justify-between gap-2 gap-y-2">
           <div className="min-w-0 space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-primary/80">Fluxo de conversão</p>
-            <h2 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">Funil de conversão</h2>
+            <p
+              className={cn(
+                "text-[10px] font-bold uppercase tracking-[0.14em]",
+                platform === "meta" ? "text-[#1877F2]" : "text-[#34A853]"
+              )}
+            >
+              Fluxo de conversão · {platform === "meta" ? "Meta Ads" : "Google Ads"}
+            </p>
+            <h2 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">
+              {funnelHeadline ?? "Funil de conversão"}
+            </h2>
             <p className="max-w-xl text-xs leading-snug text-muted-foreground sm:text-[13px]">
-              {companionRatesPanel
-                ? "Valores absolutos por etapa; silhueta afunilada."
-                : "Silhueta afunilada por etapa; valores absolutos dentro de cada faixa. Taxas entre as camadas."}
+              {funnelSubline ??
+                (companionRatesPanel
+                  ? platform === "google"
+                    ? "Impressões, cliques e conversões reportadas pela API no período."
+                    : "Valores absolutos por etapa; silhueta afunilada."
+                  : "Silhueta afunilada por etapa; valores absolutos dentro de cada faixa. Taxas entre as camadas.")}
             </p>
           </div>
           {!companionRatesPanel ? (
@@ -285,19 +326,38 @@ export function ExecutiveFunnel({
             const isBn = bottleneckStepIds.has(step.id);
             const gradientId = `${baseId}-lg-${step.id}`;
 
+            const prevId = i > 0 ? model.steps[i - 1]?.id : null;
+            const seg =
+              i > 0 && prevId
+                ? segmentBreaks?.find((b) => b.afterStepId === prevId)
+                : undefined;
+
             return (
               <div key={step.id} className="w-full">
                 {i > 0 ? (
-                  companionRatesPanel ? (
-                    <div className="h-1 sm:h-1.5" aria-hidden />
-                  ) : (
-                    <TransitionGap
-                      t={model.transitions[i - 1]!}
-                      spend={spend}
-                      summary={summary}
-                      isBottleneck={bnTransIdx === i - 1}
-                    />
-                  )
+                  <>
+                    {seg ? (
+                      <div
+                        className="flex min-h-[1.5rem] items-center justify-center py-1.5"
+                        role="presentation"
+                      >
+                        <span className="rounded-full border border-violet-500/35 bg-violet-500/[0.09] px-3 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-violet-950 dark:text-violet-100">
+                          {seg.label}
+                        </span>
+                      </div>
+                    ) : null}
+                    {companionRatesPanel ? (
+                      <div className="h-1 sm:h-1.5" aria-hidden />
+                    ) : (
+                      <TransitionGap
+                        t={model.transitions[i - 1]!}
+                        spend={spend}
+                        summary={summary}
+                        isBottleneck={bnTransIdx === i - 1}
+                        platform={platform}
+                      />
+                    )}
+                  </>
                 ) : null}
                 <FunnelTrapezoidLayer
                   step={step}
@@ -307,6 +367,7 @@ export function ExecutiveFunnel({
                   summary={summary}
                   isBottleneck={isBn}
                   gradientId={gradientId}
+                  platform={platform}
                 />
               </div>
             );
@@ -324,6 +385,7 @@ export function ExecutiveFunnel({
           ) : (
             <p className="text-[11px] text-muted-foreground sm:text-xs">
               Largura das faixas usa escala visual (não linear no volume bruto), com afunilamento mínimo entre etapas.
+              {platform === "google" ? " No Google Ads o funil resume três etapas com dados agregados da API." : null}
             </p>
           )}
         </footer>
