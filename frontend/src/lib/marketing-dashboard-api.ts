@@ -60,6 +60,9 @@ export type MarketingDashboardTimeseriesRow = {
   cpc: number | null;
 };
 
+/** Efetivo na Meta (campanha / conjunto / anúncio), quando a API de status respondeu. */
+export type MarketingDashboardEntityStatus = "ACTIVE" | "PAUSED" | "ARCHIVED" | "UNKNOWN";
+
 export type MarketingDashboardPerfRow = {
   id: string;
   name: string;
@@ -84,6 +87,7 @@ export type MarketingDashboardPerfRow = {
   initiateCheckout: number;
   addToCart: number;
   completeRegistration: number;
+  entityStatus: MarketingDashboardEntityStatus | null;
 };
 
 export type MarketingDashboardPayload =

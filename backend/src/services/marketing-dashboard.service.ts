@@ -231,6 +231,121 @@ type CampaignInsightRow = RawDailyRow & {
   campaign_id?: string;
 };
 
+/** Configuração na Meta (effective_status) — exposto ao dashboard para filtros. */
+export type MarketingDashboardEntityStatus = "ACTIVE" | "PAUSED" | "ARCHIVED" | "UNKNOWN";
+
+function normalizeMetaEffectiveStatus(raw: string | undefined): MarketingDashboardEntityStatus {
+  if (!raw) return "UNKNOWN";
+  const u = raw.toUpperCase();
+  if (u.includes("ACTIVE")) return "ACTIVE";
+  if (u.includes("PAUSED")) return "PAUSED";
+  if (u.includes("ARCHIVED") || u.includes("DELETED") || u.includes("CAMPAIGN_GROUP_PAUSED"))
+    return "ARCHIVED";
+  return "UNKNOWN";
+}
+
+type CampaignMetaRow = {
+  id: string;
+  name: string;
+  status?: string;
+  effective_status?: string;
+};
+
+async function fetchAllCampaignsForAccount(
+  accountId: string,
+  accessToken: string,
+  appSecret: string
+): Promise<CampaignMetaRow[]> {
+  try {
+    const path = `/act_${accountId}/campaigns?fields=id,name,status,effective_status&limit=500`;
+    const rows = await metaGraphGetAllPages<{
+      id?: string;
+      name?: string;
+      status?: string;
+      effective_status?: string;
+    }>(path, accessToken, appSecret);
+    return rows
+      .filter((r) => r.id)
+      .map((r) => ({
+        id: String(r.id),
+        name: r.name ?? "—",
+        status: r.status,
+        effective_status: r.effective_status,
+      }));
+  } catch (e) {
+    console.warn(
+      `[Meta dashboard] campaigns list act_${accountId}:`,
+      e instanceof Error ? e.message : e
+    );
+    return [];
+  }
+}
+
+function chunkIds(ids: string[], size: number): string[][] {
+  const out: string[][] = [];
+  for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size));
+  return out;
+}
+
+async function fetchAdsetEffectiveStatusMap(
+  accountId: string,
+  adsetIds: string[],
+  accessToken: string,
+  appSecret: string
+): Promise<Map<string, MarketingDashboardEntityStatus>> {
+  const map = new Map<string, MarketingDashboardEntityStatus>();
+  const unique = [...new Set(adsetIds.filter(Boolean))];
+  for (const part of chunkIds(unique, 40)) {
+    if (!part.length) continue;
+    try {
+      const filtering = encodeURIComponent(JSON.stringify([{ field: "id", operator: "IN", value: part }]));
+      const path = `/act_${accountId}/adsets?fields=id,effective_status&limit=500&filtering=${filtering}`;
+      const rows = await metaGraphGetAllPages<{ id?: string; effective_status?: string }>(
+        path,
+        accessToken,
+        appSecret
+      );
+      for (const r of rows) {
+        if (r.id) map.set(String(r.id), normalizeMetaEffectiveStatus(r.effective_status));
+      }
+    } catch (e) {
+      console.warn(
+        `[Meta dashboard] adset status act_${accountId}:`,
+        e instanceof Error ? e.message : e
+      );
+    }
+  }
+  return map;
+}
+
+async function fetchAdEffectiveStatusMap(
+  accountId: string,
+  adIds: string[],
+  accessToken: string,
+  appSecret: string
+): Promise<Map<string, MarketingDashboardEntityStatus>> {
+  const map = new Map<string, MarketingDashboardEntityStatus>();
+  const unique = [...new Set(adIds.filter(Boolean))];
+  for (const part of chunkIds(unique, 40)) {
+    if (!part.length) continue;
+    try {
+      const filtering = encodeURIComponent(JSON.stringify([{ field: "id", operator: "IN", value: part }]));
+      const path = `/act_${accountId}/ads?fields=id,effective_status&limit=500&filtering=${filtering}`;
+      const rows = await metaGraphGetAllPages<{ id?: string; effective_status?: string }>(
+        path,
+        accessToken,
+        appSecret
+      );
+      for (const r of rows) {
+        if (r.id) map.set(String(r.id), normalizeMetaEffectiveStatus(r.effective_status));
+      }
+    } catch (e) {
+      console.warn(`[Meta dashboard] ad status act_${accountId}:`, e instanceof Error ? e.message : e);
+    }
+  }
+  return map;
+}
+
 function buildPerfRow(
   name: string,
   id: string | undefined,
@@ -243,7 +358,8 @@ function buildPerfRow(
   reach: number,
   reachKnown: boolean,
   engagement: MetaInsightEngagement,
-  parentName?: string | null
+  parentName?: string | null,
+  entityStatus?: MarketingDashboardEntityStatus | null
 ) {
   const leads = engagement.leads;
   const purchases = engagement.purchases;
@@ -275,6 +391,7 @@ function buildPerfRow(
     initiateCheckout: engagement.initiateCheckout,
     addToCart: engagement.addToCart,
     completeRegistration: engagement.completeRegistration,
+    entityStatus: entityStatus ?? null,
   };
 }
 
@@ -525,6 +642,7 @@ export async function fetchMarketingDashboardPayload(
     const campaignMap = new Map<string, CampaignInsightRow & { _engagement: MetaInsightEngagement }>();
     const adsetOut: MarketingDashboardPerfRow[] = [];
     const adOut: MarketingDashboardPerfRow[] = [];
+    const allCampaignMetaById = new Map<string, CampaignMetaRow>();
 
     type AccInsight = {
       impressions?: string;
@@ -626,6 +744,21 @@ export async function fetchMarketingDashboardPayload(
         }
       }
 
+      const campaignListMeta = await fetchAllCampaignsForAccount(accountId, accessToken, appSecret);
+      for (const cm of campaignListMeta) {
+        if (!allCampaignMetaById.has(cm.id)) allCampaignMetaById.set(cm.id, cm);
+      }
+
+      const adsetIdsForStatus = adsetRows
+        .map((x) => (x.adset_id != null ? String(x.adset_id) : ""))
+        .filter(Boolean);
+      const adsetStatusMap = await fetchAdsetEffectiveStatusMap(
+        accountId,
+        adsetIdsForStatus,
+        accessToken,
+        appSecret
+      );
+
       for (const r of adsetRows) {
         const imp = parseInt(r.impressions ?? "0", 10) || 0;
         const clk = parseInt(r.clicks ?? "0", 10) || 0;
@@ -637,6 +770,8 @@ export async function fetchMarketingDashboardPayload(
         const rK = rawR !== undefined && rawR !== "";
         const rch = rK ? parseInt(rawR ?? "0", 10) || 0 : 0;
         const eng = parseInsightEngagement(r.actions, r.action_values, r.cost_per_action_type, `adset:${r.adset_id}`);
+        const aid = r.adset_id != null ? String(r.adset_id) : "";
+        const adsetSt = aid ? adsetStatusMap.get(aid) ?? null : null;
         adsetOut.push(
           buildPerfRow(
             r.adset_name ?? "—",
@@ -650,10 +785,21 @@ export async function fetchMarketingDashboardPayload(
             rch,
             rK,
             eng,
-            r.campaign_name ?? null
+            r.campaign_name ?? null,
+            adsetSt
           )
         );
       }
+
+      const adIdsForStatus = ads
+        .map((x) => (x.ad_id != null ? String(x.ad_id) : ""))
+        .filter(Boolean);
+      const adStatusMap = await fetchAdEffectiveStatusMap(
+        accountId,
+        adIdsForStatus,
+        accessToken,
+        appSecret
+      );
 
       for (const r of ads) {
         const imp = parseInt(r.impressions ?? "0", 10) || 0;
@@ -666,6 +812,8 @@ export async function fetchMarketingDashboardPayload(
         const rK = rawR !== undefined && rawR !== "";
         const rch = rK ? parseInt(rawR ?? "0", 10) || 0 : 0;
         const eng = parseInsightEngagement(r.actions, r.action_values, r.cost_per_action_type, `ad:${r.ad_id}`);
+        const adid = r.ad_id != null ? String(r.ad_id) : "";
+        const adSt = adid ? adStatusMap.get(adid) ?? null : null;
         adOut.push(
           buildPerfRow(
             r.ad_name ?? "—",
@@ -679,7 +827,8 @@ export async function fetchMarketingDashboardPayload(
             rch,
             rK,
             eng,
-            r.adset_name ?? null
+            r.adset_name ?? null,
+            adSt
           )
         );
       }
@@ -779,31 +928,93 @@ export async function fetchMarketingDashboardPayload(
     };
 
     const campaignsPerf: MarketingDashboardPerfRow[] = [];
-    for (const [, c] of campaignMap) {
-      const imp = parseInt(c.impressions ?? "0", 10) || 0;
-      const clk = parseInt(c.clicks ?? "0", 10) || 0;
-      const sp = parseFloat(c.spend ?? "0") || 0;
-      const rawLk = c.inline_link_clicks;
-      const lkK = rawLk !== undefined && rawLk !== "";
-      const lk = lkK ? parseInt(rawLk ?? "0", 10) || 0 : 0;
-      const rawR = c.reach;
-      const rK = rawR !== undefined && rawR !== "";
-      const rch = rK ? parseInt(rawR ?? "0", 10) || 0 : 0;
-      campaignsPerf.push(
-        buildPerfRow(
-          c.campaign_name ?? "—",
-          c.campaign_id,
-          null,
-          imp,
-          clk,
-          sp,
-          lk,
-          lkK,
-          rch,
-          rK,
-          c._engagement
-        )
-      );
+    const campaignKeysOrdered = [
+      ...new Set([...allCampaignMetaById.keys(), ...campaignMap.keys()]),
+    ];
+
+    if (allCampaignMetaById.size > 0) {
+      for (const key of campaignKeysOrdered) {
+        const meta = allCampaignMetaById.get(key);
+        const c = campaignMap.get(key);
+        const st = meta
+          ? normalizeMetaEffectiveStatus(meta.effective_status || meta.status)
+          : null;
+        if (c) {
+          const imp = parseInt(c.impressions ?? "0", 10) || 0;
+          const clk = parseInt(c.clicks ?? "0", 10) || 0;
+          const sp = parseFloat(c.spend ?? "0") || 0;
+          const rawLk = c.inline_link_clicks;
+          const lkK = rawLk !== undefined && rawLk !== "";
+          const lk = lkK ? parseInt(rawLk ?? "0", 10) || 0 : 0;
+          const rawR = c.reach;
+          const rK = rawR !== undefined && rawR !== "";
+          const rch = rK ? parseInt(rawR ?? "0", 10) || 0 : 0;
+          campaignsPerf.push(
+            buildPerfRow(
+              c.campaign_name ?? meta?.name ?? "—",
+              c.campaign_id ?? key,
+              null,
+              imp,
+              clk,
+              sp,
+              lk,
+              lkK,
+              rch,
+              rK,
+              c._engagement,
+              null,
+              st
+            )
+          );
+        } else if (meta) {
+          campaignsPerf.push(
+            buildPerfRow(
+              meta.name,
+              meta.id,
+              null,
+              0,
+              0,
+              0,
+              0,
+              false,
+              0,
+              false,
+              emptyEngagement(),
+              null,
+              st
+            )
+          );
+        }
+      }
+    } else {
+      for (const [, c] of campaignMap) {
+        const imp = parseInt(c.impressions ?? "0", 10) || 0;
+        const clk = parseInt(c.clicks ?? "0", 10) || 0;
+        const sp = parseFloat(c.spend ?? "0") || 0;
+        const rawLk = c.inline_link_clicks;
+        const lkK = rawLk !== undefined && rawLk !== "";
+        const lk = lkK ? parseInt(rawLk ?? "0", 10) || 0 : 0;
+        const rawR = c.reach;
+        const rK = rawR !== undefined && rawR !== "";
+        const rch = rK ? parseInt(rawR ?? "0", 10) || 0 : 0;
+        campaignsPerf.push(
+          buildPerfRow(
+            c.campaign_name ?? "—",
+            c.campaign_id,
+            null,
+            imp,
+            clk,
+            sp,
+            lk,
+            lkK,
+            rch,
+            rK,
+            c._engagement,
+            null,
+            null
+          )
+        );
+      }
     }
     campaignsPerf.sort((a, b) => b.spend - a.spend);
     adsetOut.sort((a, b) => b.spend - a.spend);

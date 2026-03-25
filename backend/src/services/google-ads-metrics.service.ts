@@ -23,10 +23,23 @@ export interface GoogleAdsMetricsSummary {
   conversionsValue: number;
 }
 
+export type GoogleAdsEntityStatus = "ACTIVE" | "PAUSED" | "ARCHIVED" | "UNKNOWN";
+
+function mapGoogleResourceStatus(raw: string | undefined): GoogleAdsEntityStatus {
+  if (!raw) return "UNKNOWN";
+  const u = raw.toUpperCase();
+  if (u === "ENABLED") return "ACTIVE";
+  if (u === "PAUSED") return "PAUSED";
+  if (u === "REMOVED" || u === "UNKNOWN") return "ARCHIVED";
+  return "UNKNOWN";
+}
+
 export interface GoogleAdsCampaignRow {
   campaignName: string;
   /** ID numérico da campanha no customer atual (mutações REST). */
   campaignId?: string;
+  /** Status da campanha na Google (ENABLED→ativo). */
+  entityStatus?: GoogleAdsEntityStatus;
   impressions: number;
   clicks: number;
   costMicros: number;
@@ -201,6 +214,7 @@ async function searchStream(
     SELECT
       campaign.id,
       campaign.name,
+      campaign.status,
       metrics.impressions,
       metrics.clicks,
       metrics.cost_micros,
@@ -232,7 +246,7 @@ async function searchStream(
   const raw = await res.json();
   const batches = Array.isArray(raw) ? raw : [raw];
   type MetricRow = {
-    campaign?: { id?: string; name?: string };
+    campaign?: { id?: string; name?: string; status?: string };
     metrics?: Record<string, string | number | undefined>;
   };
   const results: MetricRow[] = [];
@@ -260,6 +274,7 @@ async function searchStream(
     const cid = row.campaign?.id != null ? String(row.campaign.id) : undefined;
     const name = row.campaign?.name ?? "";
     const key = cid ?? `__name:${name}`;
+    const st = mapGoogleResourceStatus(row.campaign?.status);
 
     const existing = byCampaign.get(key);
     if (existing) {
@@ -268,10 +283,14 @@ async function searchStream(
       existing.costMicros += costMicros;
       existing.conversions += conversions;
       existing.conversionsValue += conversionsValue;
+      if (!existing.entityStatus || existing.entityStatus === "UNKNOWN") {
+        existing.entityStatus = st;
+      }
     } else {
       byCampaign.set(key, {
         campaignName: name,
         ...(cid ? { campaignId: cid } : {}),
+        entityStatus: st,
         impressions,
         clicks,
         costMicros,
@@ -512,6 +531,9 @@ async function resolveGoogleAdsCustomer(organizationId: string): Promise<Resolve
 export type GoogleAdsAdGroupRow = {
   campaignName: string;
   adGroupName: string;
+  campaignId?: string;
+  adGroupId?: string;
+  entityStatus?: GoogleAdsEntityStatus;
   impressions: number;
   clicks: number;
   costMicros: number;
@@ -540,8 +562,11 @@ export async function fetchGoogleAdsAdGroupMetrics(
   const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN.trim();
   const query = `
     SELECT
+      campaign.id,
       campaign.name,
+      ad_group.id,
       ad_group.name,
+      ad_group.status,
       metrics.impressions,
       metrics.clicks,
       metrics.cost_micros,
@@ -549,7 +574,7 @@ export async function fetchGoogleAdsAdGroupMetrics(
       metrics.conversions_value
     FROM ad_group
     WHERE segments.date BETWEEN '${range.start}' AND '${range.end}'
-      AND ad_group.status = 'ENABLED'
+      AND ad_group.status IN ('ENABLED', 'PAUSED')
   `.trim();
   try {
     const results = await googleSearchStreamResults(
@@ -559,28 +584,55 @@ export async function fetchGoogleAdsAdGroupMetrics(
       query
     );
     type Row = {
-      campaign?: { name?: string };
-      adGroup?: { name?: string };
+      campaign?: { id?: string | number; name?: string };
+      adGroup?: { id?: string | number; name?: string; status?: string };
       metrics?: Record<string, string | number | undefined>;
     };
-    const rows: GoogleAdsAdGroupRow[] = [];
+    const byKey = new Map<string, GoogleAdsAdGroupRow>();
     for (const raw of results) {
       const row = raw as Row;
       const m = row.metrics ?? {};
-      rows.push({
-        campaignName: row.campaign?.name ?? "",
-        adGroupName: row.adGroup?.name ?? "",
-        impressions: Number(m.impressions ?? 0),
-        clicks: Number(m.clicks ?? 0),
-        costMicros: Number(m.costMicros ?? (m as Record<string, unknown>).cost_micros ?? 0),
-        conversions: Number(m.conversions ?? 0),
-        conversionsValue: Number(
-          (m as Record<string, unknown>).conversionsValue ??
-            (m as Record<string, unknown>).conversions_value ??
-            0
-        ),
-      });
+      const impressions = Number(m.impressions ?? 0);
+      const clicks = Number(m.clicks ?? 0);
+      const costMicros = Number(m.costMicros ?? (m as Record<string, unknown>).cost_micros ?? 0);
+      const conversions = Number(m.conversions ?? 0);
+      const conversionsValue = Number(
+        (m as Record<string, unknown>).conversionsValue ??
+          (m as Record<string, unknown>).conversions_value ??
+          0
+      );
+      const cname = row.campaign?.name ?? "";
+      const gname = row.adGroup?.name ?? "";
+      const cid = row.campaign?.id != null ? String(row.campaign.id) : "";
+      const gid = row.adGroup?.id != null ? String(row.adGroup.id) : "";
+      const key = cid && gid ? `${cid}|${gid}` : `${cname}\0${gname}`;
+      const st = mapGoogleResourceStatus(row.adGroup?.status);
+      const existing = byKey.get(key);
+      if (existing) {
+        existing.impressions += impressions;
+        existing.clicks += clicks;
+        existing.costMicros += costMicros;
+        existing.conversions += conversions;
+        existing.conversionsValue += conversionsValue;
+        if (!existing.entityStatus || existing.entityStatus === "UNKNOWN") {
+          existing.entityStatus = st;
+        }
+      } else {
+        byKey.set(key, {
+          campaignName: cname,
+          adGroupName: gname,
+          ...(cid ? { campaignId: cid } : {}),
+          ...(gid ? { adGroupId: gid } : {}),
+          entityStatus: st,
+          impressions,
+          clicks,
+          costMicros,
+          conversions,
+          conversionsValue,
+        });
+      }
     }
+    const rows = Array.from(byKey.values()).sort((a, b) => b.costMicros - a.costMicros);
     return { ok: true, rows };
   } catch (e) {
     const raw = e instanceof Error ? e.message : String(e);
@@ -596,6 +648,7 @@ export type GoogleAdsAdRow = {
   campaignName: string;
   adGroupName: string;
   adId: string;
+  entityStatus?: GoogleAdsEntityStatus;
   impressions: number;
   clicks: number;
   costMicros: number;
@@ -616,6 +669,7 @@ export async function fetchGoogleAdsAdMetrics(
       campaign.name,
       ad_group.name,
       ad_group_ad.ad.id,
+      ad_group_ad.status,
       metrics.impressions,
       metrics.clicks,
       metrics.cost_micros,
@@ -623,6 +677,7 @@ export async function fetchGoogleAdsAdMetrics(
       metrics.conversions_value
     FROM ad_group_ad
     WHERE segments.date BETWEEN '${range.start}' AND '${range.end}'
+      AND ad_group_ad.status IN ('ENABLED', 'PAUSED')
   `.trim();
   try {
     const results = await googleSearchStreamResults(
@@ -634,29 +689,51 @@ export async function fetchGoogleAdsAdMetrics(
     type Row = {
       campaign?: { name?: string };
       adGroup?: { name?: string };
-      adGroupAd?: { ad?: { id?: string | number } };
+      adGroupAd?: { ad?: { id?: string | number }; status?: string };
       metrics?: Record<string, string | number | undefined>;
     };
-    const rows: GoogleAdsAdRow[] = [];
+    const byAd = new Map<string, GoogleAdsAdRow>();
     for (const raw of results) {
       const row = raw as Row;
       const m = row.metrics ?? {};
       const idRaw = row.adGroupAd?.ad?.id;
-      rows.push({
-        campaignName: row.campaign?.name ?? "",
-        adGroupName: row.adGroup?.name ?? "",
-        adId: idRaw != null ? String(idRaw) : "",
-        impressions: Number(m.impressions ?? 0),
-        clicks: Number(m.clicks ?? 0),
-        costMicros: Number(m.costMicros ?? (m as Record<string, unknown>).cost_micros ?? 0),
-        conversions: Number(m.conversions ?? 0),
-        conversionsValue: Number(
-          (m as Record<string, unknown>).conversionsValue ??
-            (m as Record<string, unknown>).conversions_value ??
-            0
-        ),
-      });
+      const adId = idRaw != null ? String(idRaw) : "";
+      const key = adId || `__:${row.campaign?.name ?? ""}:${row.adGroup?.name ?? ""}:${byAd.size}`;
+      const impressions = Number(m.impressions ?? 0);
+      const clicks = Number(m.clicks ?? 0);
+      const costMicros = Number(m.costMicros ?? (m as Record<string, unknown>).cost_micros ?? 0);
+      const conversions = Number(m.conversions ?? 0);
+      const conversionsValue = Number(
+        (m as Record<string, unknown>).conversionsValue ??
+          (m as Record<string, unknown>).conversions_value ??
+          0
+      );
+      const st = mapGoogleResourceStatus(row.adGroupAd?.status);
+      const existing = byAd.get(key);
+      if (existing) {
+        existing.impressions += impressions;
+        existing.clicks += clicks;
+        existing.costMicros += costMicros;
+        existing.conversions += conversions;
+        existing.conversionsValue += conversionsValue;
+        if (!existing.entityStatus || existing.entityStatus === "UNKNOWN") {
+          existing.entityStatus = st;
+        }
+      } else {
+        byAd.set(key, {
+          campaignName: row.campaign?.name ?? "",
+          adGroupName: row.adGroup?.name ?? "",
+          adId,
+          entityStatus: st,
+          impressions,
+          clicks,
+          costMicros,
+          conversions,
+          conversionsValue,
+        });
+      }
     }
+    const rows = Array.from(byAd.values()).sort((a, b) => b.costMicros - a.costMicros);
     return { ok: true, rows };
   } catch (e) {
     const raw = e instanceof Error ? e.message : String(e);

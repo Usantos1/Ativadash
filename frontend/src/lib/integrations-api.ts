@@ -45,9 +45,12 @@ export interface GoogleAdsMetricsSummary {
   conversionsValue: number;
 }
 
+export type GoogleAdsEntityStatusUi = "ACTIVE" | "PAUSED" | "ARCHIVED" | "UNKNOWN";
+
 export interface GoogleAdsCampaignRow {
   campaignName: string;
   campaignId?: string;
+  entityStatus?: GoogleAdsEntityStatusUi;
   impressions: number;
   clicks: number;
   costMicros: number;
@@ -58,6 +61,9 @@ export interface GoogleAdsCampaignRow {
 export interface GoogleAdsAdGroupRow {
   campaignName: string;
   adGroupName: string;
+  campaignId?: string;
+  adGroupId?: string;
+  entityStatus?: GoogleAdsEntityStatusUi;
   impressions: number;
   clicks: number;
   costMicros: number;
@@ -69,6 +75,7 @@ export interface GoogleAdsAdRow {
   campaignName: string;
   adGroupName: string;
   adId: string;
+  entityStatus?: GoogleAdsEntityStatusUi;
   impressions: number;
   clicks: number;
   costMicros: number;

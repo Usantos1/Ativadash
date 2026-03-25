@@ -23,6 +23,11 @@ import {
   type GoogleAdsAdGroupRow,
   type GoogleAdsAdRow,
 } from "@/lib/integrations-api";
+import {
+  mapGoogleAdGroupToPerfRow,
+  mapGoogleAdToPerfRow,
+  mapGoogleCampaignToPerfRow,
+} from "@/lib/google-ads-perf-mapper";
 import { fetchMarketingSettings, type MarketingSettingsDto } from "@/lib/marketing-settings-api";
 import { ExecutiveFunnel } from "@/components/dashboard/ExecutiveFunnel";
 import {
@@ -45,9 +50,6 @@ import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DashboardPlatformDiagnostics } from "@/components/dashboard/DashboardPlatformDiagnostics";
 import { DashboardPerformanceTable } from "@/components/dashboard/dashboard-performance-table";
 import { ConsolidatedSummaryGrid } from "@/components/dashboard/ConsolidatedSummaryGrid";
-import { GoogleAdGroupsTable } from "@/components/dashboard/GoogleAdGroupsTable";
-import { GoogleAdsLevelTable } from "@/components/dashboard/GoogleAdsLevelTable";
-import { GoogleCampaignsTable } from "@/components/dashboard/GoogleCampaignsTable";
 
 const GOOGLE_ADS_API_NOT_READY_COPY =
   "Google Ads em preparação neste ambiente. Quando a API estiver liberada, os dados aparecerão automaticamente.";
@@ -273,6 +275,21 @@ export function Dashboard() {
     };
   }, [metaOk, dash]);
 
+  const googlePerfCampaigns = useMemo(() => {
+    if (!googleOk || !metrics?.ok) return [];
+    return metrics.campaigns.map((c) => mapGoogleCampaignToPerfRow(c, goalCtx.businessGoalMode));
+  }, [googleOk, metrics, goalCtx.businessGoalMode]);
+
+  const googlePerfAdGroups = useMemo(
+    () => googleAdGroupRows.map((r) => mapGoogleAdGroupToPerfRow(r, goalCtx.businessGoalMode)),
+    [googleAdGroupRows, goalCtx.businessGoalMode]
+  );
+
+  const googlePerfAds = useMemo(
+    () => googleAdRows.map((r) => mapGoogleAdToPerfRow(r, goalCtx.businessGoalMode)),
+    [googleAdRows, goalCtx.businessGoalMode]
+  );
+
   const refresh = useCallback(async () => {
     await refreshAll();
     await loadDashboard(true);
@@ -344,6 +361,8 @@ export function Dashboard() {
   const googleWidgetLoading = hasGoogle && metricsLoading && !googleOk;
   const googleStatus = metaOk && dash.ok ? dash.integrationStatus.googleAds.status : "not_connected";
   const googleNotConnected = hasGoogle && googleStatus === "not_connected";
+  const googleBlockError =
+    !googleWidgetLoading && metricsError && hasGoogle && !googleNotConnected ? metricsError : null;
   const googleEmptyPeriod =
     googleOk &&
     googleDerived &&
@@ -1006,6 +1025,8 @@ export function Dashboard() {
                           labelEmpty="Nenhuma campanha no período."
                           nameHeader="Campanha"
                           businessGoalMode={goalCtx.businessGoalMode}
+                          levelLabel="Campanhas"
+                          filterResetKey={`meta-campaign-${perfPlatform}`}
                         />
                       </TabsContent>
                       <TabsContent value="adset" className="outline-none">
@@ -1015,6 +1036,8 @@ export function Dashboard() {
                           nameHeader="Conjunto"
                           subNameKey="campaign"
                           businessGoalMode={goalCtx.businessGoalMode}
+                          levelLabel="Conjuntos de anúncios"
+                          filterResetKey={`meta-adset-${perfPlatform}`}
                         />
                       </TabsContent>
                       <TabsContent value="ad" className="outline-none">
@@ -1024,6 +1047,8 @@ export function Dashboard() {
                           nameHeader="Anúncio"
                           subNameKey="adset"
                           businessGoalMode={goalCtx.businessGoalMode}
+                          levelLabel="Anúncios"
+                          filterResetKey={`meta-ad-${perfPlatform}`}
                         />
                       </TabsContent>
                     </Tabs>
@@ -1046,55 +1071,77 @@ export function Dashboard() {
                         </TabsTrigger>
                       </TabsList>
                       <TabsContent value="campaign" className="outline-none">
-                        <GoogleCampaignsTable
-                          rows={googleOk && metrics?.ok ? metrics.campaigns : []}
-                          businessGoalMode={goalCtx.businessGoalMode}
-                          loading={hasGoogle && metricsLoading && !googleOk}
-                          emptyLabel={
-                            !hasGoogle
-                              ? "Google Ads não configurado para este workspace."
-                              : googleNotConnected
-                                ? "Conecte o Google Ads em Integrações."
-                                : googleEmptyPeriod
-                                  ? "Sem campanhas com dados no período."
-                                  : "Nenhuma campanha no período."
-                          }
-                          errorMessage={
-                            !googleWidgetLoading && metricsError && hasGoogle && !googleNotConnected
-                              ? metricsError
-                              : null
-                          }
-                        />
+                        {googleBlockError ? (
+                          <div className="rounded-xl border border-destructive/20 bg-destructive/[0.04] px-4 py-8 text-center text-sm text-destructive">
+                            {googleBlockError}
+                          </div>
+                        ) : hasGoogle && metricsLoading && !googleOk ? (
+                          <div className="h-48 animate-pulse rounded-xl bg-muted/30" />
+                        ) : (
+                          <DashboardPerformanceTable
+                            rows={googlePerfCampaigns}
+                            labelEmpty={
+                              !hasGoogle
+                                ? "Google Ads não configurado para este workspace."
+                                : googleNotConnected
+                                  ? "Conecte o Google Ads em Integrações."
+                                  : googleEmptyPeriod
+                                    ? "Sem campanhas com dados no período."
+                                    : "Nenhuma campanha no período."
+                            }
+                            nameHeader="Campanha"
+                            levelLabel="Campanhas"
+                            filterResetKey={`google-campaign-${perfPlatform}`}
+                            businessGoalMode={goalCtx.businessGoalMode}
+                          />
+                        )}
                       </TabsContent>
                       <TabsContent value="adgroup" className="outline-none">
-                        <GoogleAdGroupsTable
-                          rows={googleAdGroupRows}
-                          businessGoalMode={goalCtx.businessGoalMode}
-                          loading={googleDeepLoading && !googleAdGroupRows.length}
-                          emptyLabel="Nenhum grupo com métricas no período."
-                          errorMessage={
-                            !googleWidgetLoading && metricsError && hasGoogle && !googleNotConnected
-                              ? metricsError
-                              : googleAdGroupRows.length === 0 && googleDeepError
-                                ? googleDeepError
-                                : null
-                          }
-                        />
+                        {googleBlockError ? (
+                          <div className="rounded-xl border border-destructive/20 bg-destructive/[0.04] px-4 py-8 text-center text-sm text-destructive">
+                            {googleBlockError}
+                          </div>
+                        ) : googleDeepLoading && googlePerfAdGroups.length === 0 ? (
+                          <div className="h-48 animate-pulse rounded-xl bg-muted/30" />
+                        ) : googleDeepError && googlePerfAdGroups.length === 0 ? (
+                          <div className="rounded-xl border border-destructive/20 bg-destructive/[0.04] px-4 py-8 text-center text-sm text-destructive">
+                            {googleDeepError}
+                          </div>
+                        ) : (
+                          <DashboardPerformanceTable
+                            rows={googlePerfAdGroups}
+                            labelEmpty="Nenhum grupo de anúncios no período."
+                            nameHeader="Grupo de anúncios"
+                            subNameKey="campaign"
+                            businessGoalMode={goalCtx.businessGoalMode}
+                            levelLabel="Grupos de anúncios"
+                            filterResetKey={`google-adgroup-${perfPlatform}`}
+                          />
+                        )}
                       </TabsContent>
                       <TabsContent value="ad" className="outline-none">
-                        <GoogleAdsLevelTable
-                          rows={googleAdRows}
-                          businessGoalMode={goalCtx.businessGoalMode}
-                          loading={googleDeepLoading && !googleAdRows.length}
-                          emptyLabel="Nenhum anúncio com métricas no período."
-                          errorMessage={
-                            !googleWidgetLoading && metricsError && hasGoogle && !googleNotConnected
-                              ? metricsError
-                              : googleAdRows.length === 0 && googleDeepError
-                                ? googleDeepError
-                                : null
-                          }
-                        />
+                        {googleBlockError ? (
+                          <div className="rounded-xl border border-destructive/20 bg-destructive/[0.04] px-4 py-8 text-center text-sm text-destructive">
+                            {googleBlockError}
+                          </div>
+                        ) : googleDeepLoading && googlePerfAds.length === 0 ? (
+                          <div className="h-48 animate-pulse rounded-xl bg-muted/30" />
+                        ) : googleDeepError && googlePerfAds.length === 0 ? (
+                          <div className="rounded-xl border border-destructive/20 bg-destructive/[0.04] px-4 py-8 text-center text-sm text-destructive">
+                            {googleDeepError}
+                          </div>
+                        ) : (
+                          <DashboardPerformanceTable
+                            rows={googlePerfAds}
+                            labelEmpty="Nenhum anúncio no período."
+                            nameHeader="Anúncio"
+                            subNameKey="campaign"
+                            subNameHeader="Campanha · grupo"
+                            businessGoalMode={goalCtx.businessGoalMode}
+                            levelLabel="Anúncios"
+                            filterResetKey={`google-ad-${perfPlatform}`}
+                          />
+                        )}
                       </TabsContent>
                     </Tabs>
                   </TabsContent>
