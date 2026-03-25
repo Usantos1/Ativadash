@@ -424,8 +424,9 @@ Exemplo de config mínima versionada no repositório: `deploy/nginx-app-spa.exam
 
 ### 500 no `app.ativadash.com` (Nginx)
 
-1. Log: `sudo tail -60 /var/log/nginx/error.log` (procura `rewrite cycle`, `permission denied`, `No such file`).
-2. Ficheiros: `ls -la /ativadash/frontend/dist/index.html` e `sudo -u www-data test -r .../index.html && echo OK`.
+1. **Obrigatório:** `ls -la /ativadash/frontend/dist/index.html` tem de existir. Se der *No such file*, o **build do front não está na VPS** (só atualizaste o repo/git). Gera `frontend/dist` no PC e envia com `rsync`/`scp` — ver §10.
+2. Log: `sudo tail -60 /var/log/nginx/error.log`. A mensagem **`rewrite or internal redirection cycle` … **`/index.html`** quase sempre significa **`index.html` em falta** (ou `root` do Nginx aponta para pasta errada).
+3. Permissões: `sudo -u www-data test -r /ativadash/frontend/dist/index.html && echo OK`.
 3. Config **mínima** (sem `location = /index.html`): ver `deploy/nginx-app-spa.example.conf`. Se ainda der 500, **apaga** o bloco `location ^~ /assets/` e deixa só `location / { try_files ... }`.
 4. Conflito: `sudo nginx -T 2>&1 | grep -n app.ativadash` — não pode haver **dois** `server` com o mesmo `server_name` e `listen 443` a servir o app.
 
