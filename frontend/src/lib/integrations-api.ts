@@ -191,6 +191,8 @@ export interface MetaAdsMetricsSummary {
 export interface MetaAdsCampaignRow {
   campaignName: string;
   campaignId?: string;
+  /** Status de entrega (Graph `effective_status`), quando o backend envia */
+  entityStatus?: GoogleAdsEntityStatusUi;
   impressions: number;
   clicks: number;
   spend: number;

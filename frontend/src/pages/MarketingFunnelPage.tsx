@@ -4,7 +4,6 @@ import {
   ArrowRight,
   BarChart3,
   CalendarRange,
-  Clock,
   DollarSign,
   Eye,
   MousePointer,
@@ -19,69 +18,23 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { IndeterminateLoadingBar } from "@/components/ui/indeterminate-loading-bar";
 import { ScrollRegion } from "@/components/ui/scroll-region";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { MarketingDateRangeDialog } from "@/components/marketing/MarketingDateRangeDialog";
-import { PerformanceAlerts } from "@/components/marketing/PerformanceAlerts";
 import { CaptureTrendComposedChart } from "@/components/marketing/CaptureTrendComposedChart";
 import { CaptureDualDonuts } from "@/components/marketing/CaptureDualDonuts";
 import { RevenueDetailModal } from "@/components/marketing/RevenueDetailModal";
 import { AnalyticsSection } from "@/components/analytics/AnalyticsSection";
-import {
-  PageHeaderPremium,
-  FilterBarPremium,
-  KpiCardPremium,
-  DataTablePremium,
-  StatusBadge,
-} from "@/components/premium";
+import { PageHeaderPremium, KpiCardPremium, DataTablePremium, StatusBadge } from "@/components/premium";
 import { formatCost, formatNumber, formatSpend } from "@/lib/metrics-format";
 import { cn } from "@/lib/utils";
 import { useMarketingFilteredAggregates } from "@/hooks/useMarketingFilteredAggregates";
-import {
-  enrichCampaignsWithGrades,
-  inferPseudoUtmCampaign,
-  type TempFilter,
-} from "@/lib/marketing-capture-aggregate";
+import { enrichCampaignsWithGrades, inferPseudoUtmCampaign } from "@/lib/marketing-capture-aggregate";
 
 export type FunnelVariant = "captacao" | "conversao" | "receita";
 
 const VARIANT_EYEBROW: Record<FunnelVariant, string> = {
-  captacao: "Funil · aquisição",
-  conversao: "Funil · conversão",
-  receita: "Funil · monetização",
-};
-
-/** Bloco de foco visível por rota (captação / conversão / receita). */
-const VARIANT_FOCUS: Record<FunnelVariant, { title: string; bullets: string[] }> = {
-  captacao: {
-    title: "Foco desta tela",
-    bullets: [
-      "Rankings de campanha por volume e CPL — o que mais puxa aquisição",
-      "Comparativo com o período anterior quando a comparação estiver ativa",
-      "Temperatura (frio/quente) espelhada da visão Marketing",
-    ],
-  },
-  conversao: {
-    title: "Foco desta tela",
-    bullets: [
-      "Gargalos entre clique → lead → venda com leitura por faixa",
-      "CPA e ROAS lado a lado com alertas de meta",
-      "Campanhas que concentram desperdício ou conversão fraca",
-    ],
-  },
-  receita: {
-    title: "Foco desta tela",
-    bullets: [
-      "Receita atribuída (Google) e valor de compra (Meta) no mesmo recorte",
-      "Diferença explícita entre zero real e dado ausente da API",
-      "Estimativas de composição quando só uma plataforma tem valor",
-    ],
-  },
+  captacao: "ADS · topo",
+  conversao: "ADS · meio",
+  receita: "ADS · fundo",
 };
 
 const VARIANT_COPY: Record<
@@ -90,18 +43,18 @@ const VARIANT_COPY: Record<
 > = {
   captacao: {
     title: "Captação",
-    subtitle: "Tráfego, aquisição e eficiência de mídia — mesmo contexto de filtros da visão Marketing.",
-    emptyHint: "Conecte Google Ads e/ou Meta Ads para ver impressões, cliques, CPL e comparativos.",
+    subtitle: "Topo do funil — tráfego e custo de clique.",
+    emptyHint: "Conecte as integrações para ver aquisição.",
   },
   conversao: {
     title: "Conversão",
-    subtitle: "Leads, vendas, faixas de performance e temperatura — leitura operacional densa.",
-    emptyHint: "Com as integrações ativas, exibimos funil, CPA e tabelas por qualificação.",
+    subtitle: "Meio do funil — lead, CPL e gargalos.",
+    emptyHint: "Conecte as integrações para ver conversão.",
   },
   receita: {
     title: "Receita",
-    subtitle: "Monetização atribuída, ROAS, ticket e composição estimada do faturamento.",
-    emptyHint: "Valor de conversão do Google e compras do Meta alimentam esta visão.",
+    subtitle: "Fundo do funil — ROAS e monetização.",
+    emptyHint: "Conecte as integrações para ver receita.",
   },
 };
 
@@ -137,26 +90,14 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
     pickerOpen,
     setPickerOpen,
     applyDateFilter,
-    cmpLoading,
     hasGoogle,
     hasMeta,
     metrics,
     metaMetrics,
-    cmpMetrics,
-    cmpMetaMetrics,
     metricsLoading,
     metaMetricsLoading,
     refreshAll,
     lastUpdated,
-    insightData,
-    insightLoading,
-    launches,
-    launchId,
-    setLaunchId,
-    tempFilter,
-    setTempFilter,
-    selectedLaunch,
-    leadGoalTarget,
     settings,
     aggG,
     aggM,
@@ -189,42 +130,13 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
 
   const leadResultLabel = settings?.primaryConversionLabel?.trim() || "Leads";
 
-  const focusBullets = useMemo(() => {
-    const mode = settings?.businessGoalMode ?? "HYBRID";
-    const base = VARIANT_FOCUS[variant];
-    if (variant === "conversao") {
-      const low = leadResultLabel.toLowerCase();
-      if (mode === "LEADS") {
-        return [
-          `Prioridade: taxas até o resultado principal (clique → ${low})`,
-          ...base.bullets.slice(1),
-        ];
-      }
-      if (mode === "SALES") {
-        return [
-          "Prioridade: fundo do funil (checkout e compras) e custo por venda",
-          ...base.bullets.slice(1),
-        ];
-      }
-      return [
-        `Topo: aquisição e ${low} · Fundo: vendas e receita`,
-        ...base.bullets.slice(1),
-      ];
-    }
-    return base.bullets;
-  }, [variant, settings?.businessGoalMode, leadResultLabel]);
+  const dataSourceLabel =
+    hasMeta && hasGoogle ? "Meta + Google" : hasMeta ? "Meta" : hasGoogle ? "Google" : "—";
 
   const revenueLeadSecondary =
     variant === "receita" &&
     settings?.businessGoalMode === "LEADS" &&
     !settings?.showRevenueBlocksInLeadMode;
-
-  const funnelCurrentSpend =
-    (metrics?.ok ? metrics.summary.costMicros / 1_000_000 : 0) +
-    (metaMetrics?.ok ? metaMetrics.summary.spend : 0);
-  const funnelPrevSpend =
-    (cmpMetrics?.ok ? cmpMetrics.summary.costMicros / 1_000_000 : 0) +
-    (cmpMetaMetrics?.ok ? cmpMetaMetrics.summary.spend : 0);
 
   const hasData = metrics?.ok || metaMetrics?.ok;
   const loadingBlock =
@@ -239,18 +151,6 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
     }
     setTimeout(() => setShareHint(null), 2200);
   }, []);
-
-  const tempBtn = (id: TempFilter, label: string) => (
-    <Button
-      type="button"
-      size="sm"
-      variant={tempFilter === id ? "default" : "outline"}
-      className={cn("h-8 rounded-md px-3 text-xs font-medium", tempFilter !== id && "border-border/80 bg-background")}
-      onClick={() => setTempFilter(id)}
-    >
-      {label}
-    </Button>
-  );
 
   const gradedCampaigns = useMemo(
     () => enrichCampaignsWithGrades(googleCampaignsFiltered, metaCampaignsFiltered),
@@ -349,56 +249,53 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
     ];
   }, [aggG.conversionsValue, aggM.purchaseValue]);
 
-  const dataSourceLabel =
-    hasMeta && hasGoogle ? "Meta + Google Ads" : hasMeta ? "Meta Ads" : hasGoogle ? "Google Ads" : "—";
-
-  const faltaMetaLeads =
-    leadGoalTarget != null && leadGoalTarget > 0 ? Math.max(0, Math.round(leadGoalTarget - leadsReais)) : null;
-  const targetCpa = settings?.targetCpaBrl ?? null;
-  const faltaInvestir =
-    leadGoalTarget != null && targetCpa != null && leadGoalTarget > 0
-      ? leadGoalTarget * targetCpa - filteredSpend
-      : null;
-
   return (
     <div className="w-full space-y-6">
       <PageHeaderPremium
         eyebrow={VARIANT_EYEBROW[variant]}
-        breadcrumbs={[{ label: "Marketing", href: "/marketing" }, { label: vc.title }]}
+        breadcrumbs={[{ label: "Painel ADS", href: "/marketing" }, { label: vc.title }]}
         title={vc.title}
         subtitle={vc.subtitle}
         meta={
           <>
             {lastUpdated ? (
-              <span>
-                Sincronizado:{" "}
+              <span className="text-xs text-muted-foreground">
+                Sync{" "}
                 <span className="font-medium text-foreground">
                   {lastUpdated.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
                 </span>
               </span>
             ) : null}
-            {compareEnabled ? (
-              <span className="rounded-md border border-primary/20 bg-primary/[0.08] px-2 py-0.5 text-[11px] font-semibold text-primary">
-                Comparação ativa
-              </span>
-            ) : null}
-            <span>
-              Fonte: <span className="font-medium text-foreground">{dataSourceLabel}</span>
-            </span>
             {hasGoogle || hasMeta ? (
               <StatusBadge tone={dataHealthy && !loadingAny ? "healthy" : "alert"} dot>
-                {loadingAny ? "Sincronizando" : dataHealthy ? "Dados OK" : "Checar integrações"}
+                {loadingAny ? "…" : dataHealthy ? "OK" : "Integrações"}
               </StatusBadge>
             ) : null}
-            <Link to="/marketing" className="font-semibold text-primary underline-offset-4 hover:underline">
-              Visão completa Marketing
-            </Link>
           </>
         }
         actions={
           hasGoogle || hasMeta ? (
             <div className="flex flex-col gap-2 sm:items-end">
               <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 rounded-lg border-border/70 bg-background/80 shadow-sm"
+                  onClick={() => setPickerOpen(true)}
+                >
+                  <CalendarRange className="mr-1.5 h-3.5 w-3.5 opacity-70" />
+                  {dateRangeLabel}
+                </Button>
+                <MarketingDateRangeDialog
+                  open={pickerOpen}
+                  onOpenChange={setPickerOpen}
+                  initial={dateRange}
+                  initialLabel={dateRangeLabel}
+                  initialPresetId={presetId}
+                  initialCompare={false}
+                  onApply={applyDateFilter}
+                />
                 <Button
                   variant="outline"
                   size="sm"
@@ -424,171 +321,15 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                   <Share2 className="mr-1.5 h-3.5 w-3.5" />
                   Compartilhar
                 </Button>
+                <Button variant="default" size="sm" className="h-9 rounded-lg shadow-sm" asChild>
+                  <Link to="/marketing/configuracoes">Metas e alertas</Link>
+                </Button>
               </div>
               {shareHint ? <span className="text-right text-xs text-muted-foreground">{shareHint}</span> : null}
             </div>
           ) : null
         }
       />
-
-      <div
-        className={cn(
-          "rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/[0.07] via-background to-background px-4 py-3.5 shadow-[var(--shadow-surface-sm)]"
-        )}
-      >
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
-          {VARIANT_FOCUS[variant].title}
-        </p>
-        <ul className="mt-2.5 grid gap-2 text-sm leading-snug text-muted-foreground sm:grid-cols-3">
-          {focusBullets.map((b) => (
-            <li key={b} className="flex gap-2">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/80" aria-hidden />
-              <span>{b}</span>
-            </li>
-          ))}
-        </ul>
-        {variant === "captacao" && settings?.businessGoalMode === "SALES" ? (
-          <p className="mt-3 border-t border-primary/15 pt-3 text-xs leading-relaxed text-muted-foreground">
-            Modo <span className="font-medium text-foreground">vendas</span>: esta rota continua focada em aquisição. Cruze com{" "}
-            <Link to="/marketing/conversao" className="font-medium text-primary underline-offset-4 hover:underline">
-              Conversão
-            </Link>{" "}
-            e{" "}
-            <Link to="/marketing/receita" className="font-medium text-primary underline-offset-4 hover:underline">
-              Receita
-            </Link>{" "}
-            para o fundo do funil.
-          </p>
-        ) : null}
-      </div>
-
-      <FilterBarPremium
-        sticky
-        label="Contexto e período"
-        footer={
-          launchId !== "all" && selectedLaunch ? (
-            <>
-              Filtro por lançamento alinhado a tokens de “{selectedLaunch.name}” nos nomes de campanha (Google/Meta).
-            </>
-          ) : undefined
-        }
-      >
-        <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex min-w-0 max-w-full items-center gap-2 sm:max-w-[min(100%,380px)]">
-              <Select value={launchId} onValueChange={setLaunchId}>
-                <SelectTrigger className="h-9 min-w-0 flex-1 rounded-lg border-border/70 bg-background text-sm shadow-sm">
-                  <SelectValue placeholder="Lançamento" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os lançamentos</SelectItem>
-                  {launches.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>
-                      {l.name} · {l.project.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {launchId !== "all" && selectedLaunch ? (
-                <StatusBadge tone={dataHealthy && !loadingAny ? "connected" : "alert"} dot>
-                  {dataHealthy && !loadingAny ? "Contexto OK" : "Aguardando"}
-                </StatusBadge>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap gap-1 rounded-xl border border-border/55 bg-muted/30 p-1 shadow-inner">
-              {tempBtn("geral", "Geral")}
-              {tempBtn("frio", "Frio")}
-              {tempBtn("quente", "Quente")}
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 gap-2 rounded-lg border-border/70 bg-background shadow-sm"
-              onClick={() => setPickerOpen(true)}
-            >
-              <CalendarRange className="h-3.5 w-3.5 opacity-70" />
-              <span className="font-medium">{dateRangeLabel}</span>
-            </Button>
-            <MarketingDateRangeDialog
-              open={pickerOpen}
-              onOpenChange={setPickerOpen}
-              initial={dateRange}
-              initialLabel={dateRangeLabel}
-              initialPresetId={presetId}
-              initialCompare={compareEnabled}
-              onApply={applyDateFilter}
-            />
-          </div>
-          {!(hasGoogle || hasMeta) ? (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Clock className="h-3.5 w-3.5 shrink-0" />
-              Conecte integrações para liberar esta visão.
-            </span>
-          ) : (
-            <span className="text-[11px] text-muted-foreground">Deltas ao ativar comparação no calendário.</span>
-          )}
-        </div>
-      </FilterBarPremium>
-
-      {(hasGoogle || hasMeta) && (
-        <AnalyticsSection
-          eyebrow="Governança"
-          title="Período, metas e alertas"
-          description="Mesmo motor da visão Marketing — leitura compacta antes dos blocos analíticos."
-          dense
-        >
-          <div className="space-y-4">
-            {compareEnabled ? (
-              <div className="rounded-xl border border-border/50 bg-muted/20 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-                {cmpLoading ? (
-                  <span>Carregando período anterior…</span>
-                ) : funnelPrevSpend <= 0 && funnelCurrentSpend <= 0 ? (
-                  <span>Sem gasto registrado nos dois períodos.</span>
-                ) : (
-                  <span>
-                    <strong className="font-semibold text-foreground">Gasto anterior:</strong>{" "}
-                    <span className="font-semibold tabular-nums text-foreground">{formatSpend(funnelPrevSpend)}</span>
-                    {funnelCurrentSpend > 0 && funnelPrevSpend > 0 && (
-                      <>
-                        {" "}
-                        (
-                        {funnelCurrentSpend >= funnelPrevSpend ? "+" : ""}
-                        {(((funnelCurrentSpend - funnelPrevSpend) / funnelPrevSpend) * 100).toFixed(1)}%)
-                      </>
-                    )}
-                  </span>
-                )}
-              </div>
-            ) : null}
-            <div className="grid gap-4 lg:grid-cols-12 lg:items-start">
-              <div className="grid gap-3 sm:grid-cols-2 lg:col-span-5">
-                <KpiCardPremium
-                  variant="compact"
-                  label="Falta para meta de leads"
-                  value={faltaMetaLeads != null ? formatNumber(faltaMetaLeads) : "—"}
-                  icon={TrendingUp}
-                  hint={
-                    leadGoalTarget != null
-                      ? `Meta: ${formatNumber(leadGoalTarget)} leads.`
-                      : "Defina em Metas e alertas."
-                  }
-                />
-                <KpiCardPremium
-                  variant="compact"
-                  label="Falta investir (est.)"
-                  value={faltaInvestir != null ? formatSpend(faltaInvestir) : "—"}
-                  icon={DollarSign}
-                  hint="Meta × CPA alvo − gasto."
-                />
-              </div>
-              <div className="lg:col-span-7">
-                <PerformanceAlerts alerts={insightData?.alerts} loading={insightLoading} />
-              </div>
-            </div>
-          </div>
-        </AnalyticsSection>
-      )}
 
       {!hasGoogle && !hasMeta ? (
         <EmptyState

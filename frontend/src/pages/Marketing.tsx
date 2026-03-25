@@ -1,39 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import {
-  BarChart3,
-  RefreshCw,
-  Share2,
-  Clock,
-  CalendarRange,
-  Pencil,
-  Pause,
-  Play,
-  Wallet,
-  Loader2,
-} from "lucide-react";
+import { differenceInDays, parseISO } from "date-fns";
+import { BarChart3, RefreshCw, Share2, CalendarRange, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { MarketingDateRangeDialog } from "@/components/marketing/MarketingDateRangeDialog";
 import { IndeterminateLoadingBar } from "@/components/ui/indeterminate-loading-bar";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ScrollRegion } from "@/components/ui/scroll-region";
-import {
-  PageHeaderPremium,
-  FilterBarPremium,
-  DataTablePremium,
-  StatusBadge,
-  AnalyticsSection,
-} from "@/components/premium";
+import { MarketingCampaignsOsTable } from "@/components/marketing/MarketingCampaignsOsTable";
+import { PageHeaderPremium, StatusBadge, AnalyticsSection } from "@/components/premium";
 import { CaptureTrendComposedChart } from "@/components/marketing/CaptureTrendComposedChart";
 import {
   CockpitSectionTitle,
@@ -41,21 +18,28 @@ import {
   MarketingChannelPanel,
   MarketingChannelPanelSales,
   MarketingCockpitStatus,
-  MarketingEfficiencyChips,
   MarketingFunnelStrip,
   type FunnelStripStep,
 } from "@/components/marketing/MarketingCockpit";
-import { formatNumber, formatSpend } from "@/lib/metrics-format";
 import { cn } from "@/lib/utils";
-import type { GoogleAdsCampaignRow, MetaAdsCampaignRow } from "@/lib/integrations-api";
+import type {
+  GoogleAdsAdGroupRow,
+  GoogleAdsAdRow,
+  MetaAdRow,
+  MetaAdsetRow,
+} from "@/lib/integrations-api";
+import {
+  fetchGoogleAdsAdGroups,
+  fetchGoogleAdsAds,
+  fetchMetaAdsByAdLevel,
+  fetchMetaAdsetsMetrics,
+} from "@/lib/integrations-api";
 import { useMarketingMetrics } from "@/hooks/useMarketingMetrics";
-import { fetchLaunches, type LaunchRow } from "@/lib/workspace-api";
 import { fetchMarketingSettings, type MarketingSettingsDto } from "@/lib/marketing-settings-api";
 import { fetchOrganizationContext, type OrganizationContext } from "@/lib/organization-api";
 import {
   defaultMarketingGoalContext,
   goalContextFromSettingsDto,
-  type AccountObjective,
 } from "@/lib/business-goal-mode";
 import {
   buildOperationalActions,
@@ -70,7 +54,6 @@ import {
 } from "@/lib/marketing-contract-api";
 import { canUserMutateMarketingAds } from "@/lib/marketing-ads-permissions";
 import {
-  type TempFilter,
   aggregateGoogle,
   aggregateMeta,
   buildMergedDailyChart,
@@ -78,269 +61,9 @@ import {
   filterGoogleCampaigns,
   filterMetaCampaigns,
 } from "@/lib/marketing-capture-aggregate";
-import {
-  campaignEfficiencyTonesSorted,
-  chartLeadExtrema,
-  deriveAccountHealth,
-  diagnoseConversionFunnel,
-  type CampaignEfficiencyTone,
-} from "@/lib/marketing-strategic-insights";
-
-type UnifiedCampaignRow = {
-  channel: "Google" | "Meta";
-  campaignName: string;
-  externalId?: string;
-  spend: number;
-  impressions: number;
-  clicks: number;
-  leads: number;
-  sales: number;
-  revenue: number;
-};
-
-/** Volume “principal” por campanha conforme objetivo (evita misturar lead Meta com compra). */
-function campaignPrimaryVolume(row: UnifiedCampaignRow, mode: AccountObjective): number {
-  if (mode === "SALES" && row.channel === "Meta") return row.sales;
-  return row.leads;
-}
-
-function sortUnifiedCampaignSlice(
-  rows: UnifiedCampaignRow[],
-  sort: "spend" | "revenue" | "leads",
-  goalMode: AccountObjective
-): UnifiedCampaignRow[] {
-  const copy = [...rows];
-  if (sort === "spend") copy.sort((a, b) => b.spend - a.spend);
-  else if (sort === "revenue") copy.sort((a, b) => b.revenue - a.revenue || b.spend - a.spend);
-  else
-    copy.sort((a, b) => {
-      const va = campaignPrimaryVolume(a, goalMode);
-      const vb = campaignPrimaryVolume(b, goalMode);
-      return vb - va || b.spend - a.spend;
-    });
-  return copy;
-}
-
-type CockpitCampaignsTableProps = {
-  rows: UnifiedCampaignRow[];
-  tones: CampaignEfficiencyTone[];
-  goalMode: AccountObjective;
-  canMutateCampaigns: boolean;
-  mutatingAdsKey: string | null;
-  runMetaStatus: (id: string, next: "PAUSED" | "ACTIVE") => void;
-  runGoogleStatus: (id: string, next: "PAUSED" | "ENABLED") => void;
-  openBudgetDialog: (id: string, name: string) => void;
-};
-
-function CockpitCampaignsTable({
-  rows,
-  tones,
-  goalMode,
-  canMutateCampaigns,
-  mutatingAdsKey,
-  runMetaStatus,
-  runGoogleStatus,
-  openBudgetDialog,
-}: CockpitCampaignsTableProps) {
-  return (
-    <ScrollRegion className="scrollbar-thin">
-      <DataTablePremium className="min-w-[820px] text-[13px]">
-        <thead>
-          <tr>
-            <th className="w-10 text-center" aria-label="Status" />
-            <th className="sticky left-0 z-30 min-w-[200px] max-w-[280px] bg-card text-left shadow-[4px_0_12px_-8px_rgba(0,0,0,0.2)]">
-              Campanha
-            </th>
-            <th className="text-right">Investimento</th>
-            <th className="text-right">Impr.</th>
-            <th className="text-right">Cliques</th>
-            <th className="text-right">CTR</th>
-            <th className="text-right">CPC</th>
-            <th className="text-right">
-              {goalMode === "SALES" ? "Compras / conv." : "Leads / conv."}
-            </th>
-            {goalMode === "HYBRID" ? <th className="text-right">Vendas</th> : null}
-            {goalMode === "LEADS" ? (
-              <th className="text-right">CPA</th>
-            ) : (
-              <>
-                <th className="text-right">Receita</th>
-                <th className="text-right">CPA</th>
-                <th className="text-right">ROAS</th>
-              </>
-            )}
-            {canMutateCampaigns ? <th className="text-right">Ações</th> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => {
-            const ctr = row.impressions > 0 ? (row.clicks / row.impressions) * 100 : null;
-            const cpc = row.clicks > 0 ? row.spend / row.clicks : null;
-            const primaryVol = campaignPrimaryVolume(row, goalMode);
-            const volumeDisplay = goalMode === "HYBRID" ? row.leads : primaryVol;
-            const cpa =
-              goalMode === "LEADS"
-                ? row.leads > 0
-                  ? row.spend / row.leads
-                  : null
-                : goalMode === "SALES"
-                  ? primaryVol > 0
-                    ? row.spend / primaryVol
-                    : null
-                  : row.leads + row.sales > 0
-                    ? row.spend / (row.leads + row.sales)
-                    : null;
-            const roasRow = row.spend > 0 && row.revenue > 0 ? row.revenue / row.spend : null;
-            const ext = row.externalId;
-            const gBusy = ext && mutatingAdsKey?.startsWith(`google:${ext}:`);
-            const mBusy = ext && mutatingAdsKey?.startsWith(`meta:${ext}:`);
-            const effTone = tones[i] ?? "neutral";
-            const rowTint =
-              effTone === "bad"
-                ? "bg-rose-500/[0.07]"
-                : effTone === "good"
-                  ? "bg-emerald-500/[0.07]"
-                  : "";
-            const stickyBg = rowTint || "bg-card";
-            const rowKey = `${row.channel}-${row.externalId ?? row.campaignName}-${i}`;
-            return (
-              <tr key={rowKey} className={cn("border-b border-border/40", rowTint)}>
-                <td className="px-1 text-center align-middle">
-                  <span
-                    className={cn(
-                      "mx-auto block h-2.5 w-2.5 rounded-full",
-                      effTone === "bad" && "bg-rose-500 shadow-[0_0_0_2px_rgba(244,63,94,0.25)]",
-                      effTone === "good" && "bg-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.2)]",
-                      effTone === "neutral" && "bg-amber-400/90"
-                    )}
-                    title={effTone === "good" ? "Performance forte" : effTone === "bad" ? "Atenção" : "Neutro"}
-                  />
-                </td>
-                <td
-                  className={cn(
-                    "sticky left-0 z-20 min-w-[200px] max-w-[280px] truncate py-2 font-medium text-foreground shadow-[4px_0_12px_-8px_rgba(0,0,0,0.15)]",
-                    stickyBg
-                  )}
-                  title={row.campaignName}
-                >
-                  {row.campaignName || "—"}
-                </td>
-                <td className="text-right tabular-nums font-medium">{formatSpend(row.spend)}</td>
-                <td className="text-right tabular-nums text-muted-foreground">
-                  {formatNumber(row.impressions)}
-                </td>
-                <td className="text-right tabular-nums text-muted-foreground">
-                  {formatNumber(row.clicks)}
-                </td>
-                <td className="text-right tabular-nums">{ctr != null ? `${ctr.toFixed(2)}%` : "—"}</td>
-                <td className="text-right tabular-nums">{cpc != null ? formatSpend(cpc) : "—"}</td>
-                <td className="text-right tabular-nums">{formatNumber(volumeDisplay)}</td>
-                {goalMode === "HYBRID" ? (
-                  <td className="text-right tabular-nums">{formatNumber(row.sales)}</td>
-                ) : null}
-                {goalMode === "LEADS" ? (
-                  <td className="text-right tabular-nums">{cpa != null ? formatSpend(cpa) : "—"}</td>
-                ) : (
-                  <>
-                    <td className="text-right tabular-nums">{formatSpend(row.revenue)}</td>
-                    <td className="text-right tabular-nums">{cpa != null ? formatSpend(cpa) : "—"}</td>
-                    <td className="text-right tabular-nums font-medium">
-                      {roasRow != null ? `${roasRow.toFixed(2)}x` : "—"}
-                    </td>
-                  </>
-                )}
-                {canMutateCampaigns ? (
-                  <td className="text-right">
-                    {row.channel === "Meta" && ext ? (
-                      <div className="inline-flex items-center justify-end gap-0.5">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title="Pausar (Meta)"
-                          disabled={!!mBusy}
-                          onClick={() => void runMetaStatus(ext, "PAUSED")}
-                        >
-                          {mBusy && mutatingAdsKey === `meta:${ext}:PAUSED` ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Pause className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title="Ativar (Meta)"
-                          disabled={!!mBusy}
-                          onClick={() => void runMetaStatus(ext, "ACTIVE")}
-                        >
-                          {mBusy && mutatingAdsKey === `meta:${ext}:ACTIVE` ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Play className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title="Orçamento diário"
-                          disabled={!!mBusy}
-                          onClick={() => openBudgetDialog(ext, row.campaignName)}
-                        >
-                          <Wallet className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ) : row.channel === "Google" && ext ? (
-                      <div className="inline-flex items-center justify-end gap-0.5">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title="Pausar (Google)"
-                          disabled={!!gBusy}
-                          onClick={() => void runGoogleStatus(ext, "PAUSED")}
-                        >
-                          {gBusy && mutatingAdsKey === `google:${ext}:PAUSED` ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Pause className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title="Ativar (Google)"
-                          disabled={!!gBusy}
-                          onClick={() => void runGoogleStatus(ext, "ENABLED")}
-                        >
-                          {gBusy && mutatingAdsKey === `google:${ext}:ENABLED` ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Play className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                  </td>
-                ) : null}
-              </tr>
-            );
-          })}
-        </tbody>
-      </DataTablePremium>
-    </ScrollRegion>
-  );
-}
+import { chartLeadExtrema, deriveAccountHealth } from "@/lib/marketing-strategic-insights";
+import { generateInsights } from "@/lib/marketing-insights-engine";
+import type { OsCampaignRow } from "@/lib/marketing-campaign-os";
 
 export function Marketing() {
   const navigate = useNavigate();
@@ -348,7 +71,6 @@ export function Marketing() {
     dateRange,
     dateRangeLabel,
     presetId,
-    compareEnabled,
     pickerOpen,
     setPickerOpen,
     applyDateFilter,
@@ -367,9 +89,13 @@ export function Marketing() {
   const user = useAuthStore((s) => s.user);
   const memberships = useAuthStore((s) => s.memberships);
 
-  const [launches, setLaunches] = useState<LaunchRow[]>([]);
-  const [launchId, setLaunchId] = useState<string>("all");
-  const [tempFilter, setTempFilter] = useState<TempFilter>("geral");
+  const [osPlatform, setOsPlatform] = useState<"meta" | "google">("meta");
+  const [osLevel, setOsLevel] = useState<"campaign" | "adset" | "ad">("campaign");
+  const [metaAdsetRows, setMetaAdsetRows] = useState<MetaAdsetRow[]>([]);
+  const [metaAdRows, setMetaAdRows] = useState<MetaAdRow[]>([]);
+  const [googleAdGroupRowsOs, setGoogleAdGroupRowsOs] = useState<GoogleAdsAdGroupRow[]>([]);
+  const [googleAdRowsOs, setGoogleAdRowsOs] = useState<GoogleAdsAdRow[]>([]);
+  const [deepLoading, setDeepLoading] = useState(false);
   const [settings, setSettings] = useState<MarketingSettingsDto | null>(null);
   const [shareHint, setShareHint] = useState<string | null>(null);
   const [adsActionHint, setAdsActionHint] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
@@ -379,8 +105,6 @@ export function Marketing() {
   const [budgetInput, setBudgetInput] = useState("");
   const [budgetSaving, setBudgetSaving] = useState(false);
   const [orgCtx, setOrgCtx] = useState<OrganizationContext | null>(null);
-  const [campaignSort, setCampaignSort] = useState<"spend" | "revenue" | "leads">("spend");
-  const campaignSortInitRef = useRef(false);
 
   const membershipRole = useMemo(() => {
     if (!user?.organizationId) return null;
@@ -406,13 +130,6 @@ export function Marketing() {
 
   useEffect(() => {
     let c = false;
-    fetchLaunches()
-      .then((list) => {
-        if (!c) setLaunches(list);
-      })
-      .catch(() => {
-        if (!c) setLaunches([]);
-      });
     fetchMarketingSettings()
       .then((s) => {
         if (!c) setSettings(s);
@@ -424,21 +141,6 @@ export function Marketing() {
       c = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (!settings || campaignSortInitRef.current) return;
-    campaignSortInitRef.current = true;
-    const m = settings.businessGoalMode;
-    if (m === "LEADS") setCampaignSort("leads");
-    else if (m === "SALES") setCampaignSort("revenue");
-    else setCampaignSort("spend");
-  }, [settings]);
-
-  const selectedLaunch = useMemo(
-    () => (launchId === "all" ? null : launches.find((l) => l.id === launchId) ?? null),
-    [launches, launchId]
-  );
-  const launchNameForFilter = selectedLaunch?.name ?? null;
 
   const runMetaStatus = useCallback(
     async (id: string, status: "PAUSED" | "ACTIVE") => {
@@ -524,13 +226,13 @@ export function Marketing() {
 
   const googleCampaignsFiltered = useMemo(() => {
     if (!metrics?.ok) return [];
-    return filterGoogleCampaigns(metrics.campaigns, launchNameForFilter, tempFilter);
-  }, [metrics, launchNameForFilter, tempFilter]);
+    return filterGoogleCampaigns(metrics.campaigns, null, "geral");
+  }, [metrics]);
 
   const metaCampaignsFiltered = useMemo(() => {
     if (!metaMetrics?.ok) return [];
-    return filterMetaCampaigns(metaMetrics.campaigns, launchNameForFilter, tempFilter);
-  }, [metaMetrics, launchNameForFilter, tempFilter]);
+    return filterMetaCampaigns(metaMetrics.campaigns, null, "geral");
+  }, [metaMetrics]);
 
   const aggG = useMemo(() => aggregateGoogle(googleCampaignsFiltered), [googleCampaignsFiltered]);
   const aggM = useMemo(() => aggregateMeta(metaCampaignsFiltered), [metaCampaignsFiltered]);
@@ -553,88 +255,205 @@ export function Marketing() {
   const clicksT = aggG.clicks + aggM.clicks;
   const ctrT = impressionsT > 0 ? (clicksT / impressionsT) * 100 : null;
   const roasBlend = filteredSpend > 0 && attributedRevenue > 0 ? attributedRevenue / filteredSpend : null;
-  const leadToSalePct = aggM.leads > 0 ? (aggM.purchases / aggM.leads) * 100 : null;
-
   const goalCtx = useMemo(() => {
     if (!settings) return defaultMarketingGoalContext();
     return goalContextFromSettingsDto(settings);
   }, [settings]);
   const goalMode = goalCtx.businessGoalMode;
 
-  const unifiedCampaignRows = useMemo(() => {
-    const gRows: GoogleAdsCampaignRow[] = metrics?.ok ? googleCampaignsFiltered : [];
-    const mRows: MetaAdsCampaignRow[] = metaMetrics?.ok ? metaCampaignsFiltered : [];
-    const out: UnifiedCampaignRow[] = [];
-    for (const r of gRows) {
-      out.push({
-        channel: "Google",
-        campaignName: r.campaignName,
-        externalId: r.campaignId,
-        spend: r.costMicros / 1_000_000,
-        impressions: r.impressions,
-        clicks: r.clicks,
-        leads: r.conversions,
-        sales: 0,
-        revenue: r.conversionsValue ?? 0,
-      });
+  const periodDays = useMemo(() => {
+    const a = parseISO(dateRange.startDate);
+    const b = parseISO(dateRange.endDate);
+    return Math.max(1, differenceInDays(b, a) + 1);
+  }, [dateRange.startDate, dateRange.endDate]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (osPlatform === "meta") {
+      if (osLevel === "campaign") {
+        setMetaAdsetRows([]);
+        setMetaAdRows([]);
+        setDeepLoading(false);
+        return;
+      }
+      if (!hasMeta) return;
+      setDeepLoading(true);
+      void (async () => {
+        try {
+          if (osLevel === "adset") {
+            const res = await fetchMetaAdsetsMetrics(dateRange);
+            if (!cancelled) {
+              setMetaAdsetRows(res?.ok ? res.rows : []);
+              setMetaAdRows([]);
+            }
+          } else {
+            const res = await fetchMetaAdsByAdLevel(dateRange);
+            if (!cancelled) {
+              setMetaAdRows(res?.ok ? res.rows : []);
+              setMetaAdsetRows([]);
+            }
+          }
+        } finally {
+          if (!cancelled) setDeepLoading(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
     }
-    for (const r of mRows) {
-      out.push({
+    if (osPlatform === "google") {
+      if (osLevel === "campaign") {
+        setGoogleAdGroupRowsOs([]);
+        setGoogleAdRowsOs([]);
+        setDeepLoading(false);
+        return;
+      }
+      if (!hasGoogle || metrics?.ok !== true) {
+        setGoogleAdGroupRowsOs([]);
+        setGoogleAdRowsOs([]);
+        setDeepLoading(false);
+        return;
+      }
+      setDeepLoading(true);
+      void (async () => {
+        try {
+          if (osLevel === "adset") {
+            const ag = await fetchGoogleAdsAdGroups(dateRange);
+            if (!cancelled) {
+              setGoogleAdGroupRowsOs(ag?.ok ? ag.rows : []);
+              setGoogleAdRowsOs([]);
+            }
+          } else {
+            const ads = await fetchGoogleAdsAds(dateRange);
+            if (!cancelled) {
+              setGoogleAdRowsOs(ads?.ok ? ads.rows : []);
+              setGoogleAdGroupRowsOs([]);
+            }
+          }
+        } finally {
+          if (!cancelled) setDeepLoading(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+    return undefined;
+  }, [osPlatform, osLevel, dateRange.startDate, dateRange.endDate, hasMeta, hasGoogle, metrics?.ok]);
+
+  const osRows: OsCampaignRow[] = useMemo(() => {
+    if (osPlatform === "meta") {
+      if (!metaMetrics?.ok) return [];
+      if (osLevel === "campaign") {
+        return metaCampaignsFiltered.map((r, i) => ({
+          id: `meta-camp-${r.campaignId ?? i}`,
+          channel: "Meta",
+          level: "campaign",
+          name: r.campaignName,
+          externalId: r.campaignId,
+          effectiveStatus: r.entityStatus ?? null,
+          spend: r.spend,
+          impressions: r.impressions,
+          clicks: r.clicks,
+          leads: r.leads + (r.messagingConversationsStarted ?? 0),
+          sales: r.purchases ?? 0,
+          revenue: r.purchaseValue ?? 0,
+        }));
+      }
+      if (osLevel === "adset") {
+        return metaAdsetRows.map((r, i) => ({
+          id: `meta-adset-${r.adsetId ?? "x"}-${i}`,
+          channel: "Meta",
+          level: "adset",
+          name: r.adsetName,
+          parentLabel: r.campaignName ?? null,
+          externalId: r.adsetId,
+          spend: r.spend,
+          impressions: r.impressions,
+          clicks: r.clicks,
+          leads: r.leads,
+          sales: r.purchases ?? 0,
+          revenue: r.purchaseValue ?? 0,
+        }));
+      }
+      return metaAdRows.map((r, i) => ({
+        id: `meta-ad-${r.adId ?? "x"}-${i}`,
         channel: "Meta",
-        campaignName: r.campaignName,
-        externalId: r.campaignId,
+        level: "ad",
+        name: r.adName,
+        parentLabel: [r.campaignName, r.adsetName].filter(Boolean).join(" · ") || null,
+        externalId: r.adId,
         spend: r.spend,
         impressions: r.impressions,
         clicks: r.clicks,
         leads: r.leads,
         sales: r.purchases ?? 0,
         revenue: r.purchaseValue ?? 0,
-      });
+      }));
     }
-    return out;
-  }, [metrics?.ok, metaMetrics?.ok, googleCampaignsFiltered, metaCampaignsFiltered]);
-
-  const sortedMetaCampaignRows = useMemo(() => {
-    const meta = unifiedCampaignRows.filter((r) => r.channel === "Meta");
-    return sortUnifiedCampaignSlice(meta, campaignSort, goalMode);
-  }, [unifiedCampaignRows, campaignSort, goalMode]);
-
-  const sortedGoogleCampaignRows = useMemo(() => {
-    const google = unifiedCampaignRows.filter((r) => r.channel === "Google");
-    return sortUnifiedCampaignSlice(google, campaignSort, goalMode);
-  }, [unifiedCampaignRows, campaignSort, goalMode]);
-
-  const metaCampaignEfficiencyTones = useMemo(
-    () =>
-      campaignEfficiencyTonesSorted(
-        goalMode,
-        sortedMetaCampaignRows.map((r) => ({
-          spend: r.spend,
-          leads: r.leads,
-          sales: r.sales,
-          revenue: r.revenue,
-        }))
-      ),
-    [goalMode, sortedMetaCampaignRows]
-  );
-
-  const googleCampaignEfficiencyTones = useMemo(
-    () =>
-      campaignEfficiencyTonesSorted(
-        goalMode,
-        sortedGoogleCampaignRows.map((r) => ({
-          spend: r.spend,
-          leads: r.leads,
-          sales: r.sales,
-          revenue: r.revenue,
-        }))
-      ),
-    [goalMode, sortedGoogleCampaignRows]
-  );
+    if (osPlatform === "google" && metrics?.ok) {
+      if (osLevel === "campaign") {
+        return googleCampaignsFiltered.map((r, i) => ({
+          id: `gg-camp-${r.campaignId ?? i}`,
+          channel: "Google",
+          level: "campaign",
+          name: r.campaignName,
+          externalId: r.campaignId,
+          effectiveStatus: r.entityStatus ?? null,
+          spend: r.costMicros / 1_000_000,
+          impressions: r.impressions,
+          clicks: r.clicks,
+          leads: r.conversions,
+          sales: r.conversions,
+          revenue: r.conversionsValue ?? 0,
+        }));
+      }
+      if (osLevel === "adset") {
+        return googleAdGroupRowsOs.map((r, i) => ({
+          id: `gg-ag-${r.campaignName}-${r.adGroupName}-${i}`,
+          channel: "Google",
+          level: "adset",
+          name: r.adGroupName,
+          parentLabel: r.campaignName,
+          effectiveStatus: r.entityStatus ?? null,
+          spend: r.costMicros / 1_000_000,
+          impressions: r.impressions,
+          clicks: r.clicks,
+          leads: r.conversions,
+          sales: r.conversions,
+          revenue: r.conversionsValue ?? 0,
+        }));
+      }
+      return googleAdRowsOs.map((r, i) => ({
+        id: `gg-ad-${r.adId}-${i}`,
+        channel: "Google",
+        level: "ad",
+        name: r.adId ? `Anúncio ${r.adId}` : `Anúncio ${i + 1}`,
+        parentLabel: `${r.campaignName} · ${r.adGroupName}`,
+        effectiveStatus: r.entityStatus ?? null,
+        spend: r.costMicros / 1_000_000,
+        impressions: r.impressions,
+        clicks: r.clicks,
+        leads: r.conversions,
+        sales: r.conversions,
+        revenue: r.conversionsValue ?? 0,
+      }));
+    }
+    return [];
+  }, [
+    osPlatform,
+    osLevel,
+    metaMetrics?.ok,
+    metrics?.ok,
+    metaCampaignsFiltered,
+    googleCampaignsFiltered,
+    metaAdsetRows,
+    metaAdRows,
+    googleAdGroupRowsOs,
+    googleAdRowsOs,
+  ]);
 
   const cpaTrafego = leadsReais > 0 ? filteredSpend / leadsReais : 0;
-  const surveyRatePct = clicksT > 0 ? (leadsReais / clicksT) * 100 : null;
-
   const targetCpa = settings?.targetCpaBrl ?? null;
 
   const accountHealth = useMemo(
@@ -663,19 +482,37 @@ export function Marketing() {
     ]
   );
 
-  const funnelDiagnosis = useMemo(
-    () =>
-      diagnoseConversionFunnel({
-        goalMode,
-        ctrT,
-        surveyRatePct,
-        leadToSalePct,
-        aggMLeads: aggM.leads,
-      }),
-    [goalMode, ctrT, surveyRatePct, leadToSalePct, aggM.leads]
-  );
-
   const chartDayInsights = useMemo(() => chartLeadExtrema(mergedChartData), [mergedChartData]);
+
+  const insightPulse = useMemo(
+    () =>
+      generateInsights({
+        goalMode,
+        spend: filteredSpend,
+        clicks: clicksT,
+        leads: leadsReais,
+        impressions: impressionsT,
+        landingPageViews: aggM.landingPageViews,
+        cpl: leadsReais > 0 ? cpaTrafego : null,
+        cplTarget: settings?.targetCpaBrl ?? null,
+        maxCpl: settings?.maxCpaBrl ?? null,
+        ctrPct: ctrT,
+        purchases: aggM.purchases,
+      }),
+    [
+      goalMode,
+      filteredSpend,
+      clicksT,
+      leadsReais,
+      impressionsT,
+      aggM.landingPageViews,
+      aggM.purchases,
+      cpaTrafego,
+      settings?.targetCpaBrl,
+      settings?.maxCpaBrl,
+      ctrT,
+    ]
+  );
 
   const metaLeadishAgg = aggM.leads + aggM.messagingConversationsStarted;
   const metaCplChannel =
@@ -690,9 +527,6 @@ export function Marketing() {
     googleSpendAgg > 0 && (aggG.conversionsValue ?? 0) > 0
       ? (aggG.conversionsValue ?? 0) / googleSpendAgg
       : null;
-
-  const cpmT = impressionsT > 0 ? (filteredSpend / impressionsT) * 1_000 : null;
-  const cpcT = clicksT > 0 ? filteredSpend / clicksT : null;
 
   const ctrLowCampaigns = useMemo(
     () => findCtrLowCampaigns(metaCampaignsFiltered, googleCampaignsFiltered),
@@ -745,24 +579,48 @@ export function Marketing() {
   ]);
 
   const funnelStripSteps: FunnelStripStep[] = useMemo(() => {
-    const steps: FunnelStripStep[] = [
-      { key: "imp_click", title: "Impressões", volume: impressionsT, ratePct: ctrT },
-      { key: "click_lead", title: "Cliques", volume: clicksT, ratePct: surveyRatePct },
+    const lpv = aggM.landingPageViews;
+    const ctrFromImpr = ctrT;
+    const lpvPerClick = clicksT > 0 ? (lpv / clicksT) * 100 : null;
+    const leadPerClick = clicksT > 0 ? (leadsReais / clicksT) * 100 : null;
+    return [
+      { key: "impr", title: "Impressões", volume: impressionsT, ratePct: null },
+      { key: "clk", title: "Cliques", volume: clicksT, ratePct: ctrFromImpr },
+      { key: "lpv", title: "LPV", volume: lpv, ratePct: lpvPerClick },
+      { key: "lead", title: "Leads", volume: leadsReais, ratePct: leadPerClick },
     ];
-    if (funnelDiagnosis.steps.some((s) => s.key === "lead_sale")) {
-      steps.push({
-        key: "lead_sale",
-        title: "Lead → compra",
-        volume: Math.max(0, aggM.leads),
-        ratePct: leadToSalePct,
-      });
-    }
-    return steps;
-  }, [impressionsT, clicksT, ctrT, surveyRatePct, funnelDiagnosis.steps, aggM.leads, leadToSalePct]);
+  }, [impressionsT, clicksT, ctrT, aggM.landingPageViews, leadsReais]);
+
+  const funnelWorstKey = useMemo(() => {
+    const lpv = aggM.landingPageViews;
+    const ctrS = ctrT == null ? 1 : ctrT >= 1 ? 3 : ctrT >= 0.5 ? 2 : 0;
+    const lpvS =
+      clicksT < 10 ? 2 : lpv / Math.max(1, clicksT) >= 0.28 ? 3 : lpv / Math.max(1, clicksT) >= 0.12 ? 2 : 0;
+    const leadS =
+      clicksT < 10
+        ? 2
+        : leadsReais / Math.max(1, clicksT) >= 0.04
+          ? 3
+          : leadsReais / Math.max(1, clicksT) >= 0.015
+            ? 2
+            : 0;
+    const ranked = [
+      { key: "clk" as const, s: ctrS },
+      { key: "lpv" as const, s: lpvS },
+      { key: "lead" as const, s: leadS },
+    ];
+    ranked.sort((a, b) => a.s - b.s);
+    return ranked[0].s < 2 ? ranked[0].key : null;
+  }, [ctrT, clicksT, aggM.landingPageViews, leadsReais]);
 
   const dataHealthy =
     (hasGoogle && metrics?.ok && !metricsError) || (hasMeta && metaMetrics?.ok && !metaMetricsError);
   const loadingAny = metricsLoading || metaMetricsLoading;
+
+  useEffect(() => {
+    if (!hasMeta && hasGoogle) setOsPlatform("google");
+    if (hasMeta && !hasGoogle) setOsPlatform("meta");
+  }, [hasMeta, hasGoogle]);
 
   const handleShare = useCallback(async () => {
     const url = window.location.href;
@@ -775,49 +633,25 @@ export function Marketing() {
     setTimeout(() => setShareHint(null), 2500);
   }, []);
 
-  const tempBtn = (id: TempFilter, label: string) => (
-    <Button
-      type="button"
-      size="sm"
-      variant={tempFilter === id ? "default" : "outline"}
-      className={cn("h-8 rounded-md px-3 text-xs font-medium", tempFilter !== id && "border-border/80 bg-background")}
-      onClick={() => setTempFilter(id)}
-    >
-      {label}
-    </Button>
-  );
-
-  const dataSourceLabel =
-    hasMeta && hasGoogle ? "Meta + Google Ads" : hasMeta ? "Meta Ads" : hasGoogle ? "Google Ads" : "—";
-
   return (
     <div className="w-full space-y-6">
       <PageHeaderPremium
-        eyebrow="Mídia paga"
-        title="Performance de mídia"
-        subtitle="Período único nas redes. Status, fila de ações e campanhas no mesmo lugar."
+        eyebrow="ADS"
+        title="Painel ADS"
+        subtitle="Cockpit operacional — ler, decidir e agir."
         meta={
           <>
             {lastUpdated ? (
-              <span>
-                Última sincronização:{" "}
+              <span className="text-xs text-muted-foreground">
+                Sync{" "}
                 <span className="font-medium text-foreground">
-                  {lastUpdated.toLocaleDateString("pt-BR")} ·{" "}
-                  {lastUpdated.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                  {lastUpdated.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
                 </span>
               </span>
             ) : null}
-            {compareEnabled ? (
-              <span className="rounded-md border border-primary/20 bg-primary/[0.08] px-2 py-0.5 text-[11px] font-semibold text-primary">
-                Comparando com período anterior
-              </span>
-            ) : null}
-            <span>
-              Fonte: <span className="font-medium text-foreground">{dataSourceLabel}</span>
-            </span>
             {hasGoogle || hasMeta ? (
               <StatusBadge tone={dataHealthy && !loadingAny ? "healthy" : "alert"} dot>
-                {loadingAny ? "Sincronizando" : dataHealthy ? "Dados disponíveis" : "Checar integrações"}
+                {loadingAny ? "…" : dataHealthy ? "OK" : "Integrações"}
               </StatusBadge>
             ) : null}
           </>
@@ -826,6 +660,25 @@ export function Marketing() {
           hasGoogle || hasMeta ? (
             <div className="flex flex-col gap-2 sm:items-end">
               <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 rounded-lg border-border/70 bg-background/80 shadow-sm"
+                  onClick={() => setPickerOpen(true)}
+                >
+                  <CalendarRange className="mr-1.5 h-3.5 w-3.5 opacity-70" />
+                  {dateRangeLabel}
+                </Button>
+                <MarketingDateRangeDialog
+                  open={pickerOpen}
+                  onOpenChange={setPickerOpen}
+                  initial={dateRange}
+                  initialLabel={dateRangeLabel}
+                  initialPresetId={presetId}
+                  initialCompare={false}
+                  onApply={applyDateFilter}
+                />
                 <Button
                   variant="outline"
                   size="sm"
@@ -837,16 +690,6 @@ export function Marketing() {
                     className={`mr-1.5 h-3.5 w-3.5 ${metricsLoading || metaMetricsLoading ? "animate-spin" : ""}`}
                   />
                   Atualizar
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 rounded-lg border-border/70 bg-background/80 shadow-sm"
-                  type="button"
-                  onClick={() => navigate("/lancamentos")}
-                >
-                  <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                  Lançamentos
                 </Button>
                 <Button
                   size="sm"
@@ -892,73 +735,6 @@ export function Marketing() {
         </div>
       ) : null}
 
-      <FilterBarPremium
-        sticky
-        label="Contexto e período"
-        footer={
-          launchId !== "all" && selectedLaunch ? (
-            <>Lançamento: nomes de campanha devem refletir “{selectedLaunch.name}”.</>
-          ) : undefined
-        }
-      >
-        <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex min-w-0 max-w-full items-center gap-2 sm:max-w-[min(100%,380px)]">
-              <Select value={launchId} onValueChange={setLaunchId}>
-                <SelectTrigger className="h-9 min-w-0 flex-1 rounded-lg border-border/70 bg-background text-sm shadow-sm">
-                  <SelectValue placeholder="Lançamento" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os lançamentos</SelectItem>
-                  {launches.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>
-                      {l.name} · {l.project.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {launchId !== "all" && selectedLaunch ? (
-                <StatusBadge tone={dataHealthy && !loadingAny ? "connected" : "alert"} dot>
-                  {dataHealthy && !loadingAny ? "Contexto OK" : "Aguardando"}
-                </StatusBadge>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap items-center gap-1 rounded-xl border border-border/55 bg-muted/30 p-1 shadow-inner">
-              {tempBtn("geral", "Geral")}
-              {tempBtn("frio", "Frio")}
-              {tempBtn("quente", "Quente")}
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 max-w-full justify-start gap-2 rounded-lg border-border/70 bg-background shadow-sm sm:max-w-[300px]"
-              onClick={() => setPickerOpen(true)}
-            >
-              <CalendarRange className="h-3.5 w-3.5 shrink-0 opacity-70" />
-              <span className="truncate text-left font-medium">{dateRangeLabel}</span>
-            </Button>
-            <MarketingDateRangeDialog
-              open={pickerOpen}
-              onOpenChange={setPickerOpen}
-              initial={dateRange}
-              initialLabel={dateRangeLabel}
-              initialPresetId={presetId}
-              initialCompare={compareEnabled}
-              onApply={applyDateFilter}
-            />
-          </div>
-          {!(hasGoogle || hasMeta) ? (
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Clock className="h-3.5 w-3.5 shrink-0" />
-              Conecte integrações para liberar métricas nesta página.
-            </span>
-          ) : (
-            <span className="text-[11px] text-muted-foreground">Comparação: calendário.</span>
-          )}
-        </div>
-      </FilterBarPremium>
-
       {(hasGoogle || hasMeta) && loadingAny && (
         <div className="rounded-xl border border-primary/25 bg-primary/[0.07] px-4 py-3 shadow-[var(--shadow-surface-sm)]">
           <IndeterminateLoadingBar label="Carregando métricas na API (Google / Meta)…" />
@@ -992,6 +768,18 @@ export function Marketing() {
                   goalMode === "SALES" || goalMode === "HYBRID" ? roasBlend : null
                 }
               />
+              {insightPulse.length ? (
+                <div className="flex flex-wrap gap-2">
+                  {insightPulse.slice(0, 4).map((i) => (
+                    <span
+                      key={i.id}
+                      className="max-w-full rounded-lg border border-border/60 bg-muted/40 px-2.5 py-1 text-[11px] font-medium leading-snug text-foreground"
+                    >
+                      {i.title}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               <div>
                 <CockpitSectionTitle kicker="Ações">O que fazer agora</CockpitSectionTitle>
                 <MarketingActionQueue
@@ -1117,13 +905,9 @@ export function Marketing() {
                   )}
                 </div>
               </div>
-              <MarketingEfficiencyChips ctr={ctrT} cpc={cpcT} cpm={cpmT} />
               <div>
                 <CockpitSectionTitle kicker="Funil">Etapas</CockpitSectionTitle>
-                <MarketingFunnelStrip
-                  steps={funnelStripSteps}
-                  worstKey={funnelDiagnosis.bottleneckKey}
-                />
+                <MarketingFunnelStrip steps={funnelStripSteps} worstKey={funnelWorstKey} />
               </div>
               <div className="overflow-hidden rounded-2xl border border-border/50 bg-card/40 shadow-[var(--shadow-surface-sm)]">
                 <CaptureTrendComposedChart
@@ -1140,95 +924,38 @@ export function Marketing() {
             </>
           )}
 
-          {(metrics?.ok || metaMetrics?.ok) && unifiedCampaignRows.length > 0 && (
-            <>
-              <div className="mb-3 flex flex-col gap-2 rounded-xl border border-border/60 bg-gradient-to-r from-muted/40 to-background px-3 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
-                <p className="font-medium text-foreground">
-                  <span className="tabular-nums text-lg font-bold">{sortedMetaCampaignRows.length}</span>
-                  <span className="text-muted-foreground"> Meta · </span>
-                  <span className="tabular-nums text-lg font-bold">{sortedGoogleCampaignRows.length}</span>
-                  <span className="text-muted-foreground"> Google</span>
+          {(metrics?.ok || metaMetrics?.ok) && (hasMeta || hasGoogle) && (
+            <AnalyticsSection eyebrow="Operação" title="Central de controle" dense>
+              {deepLoading ? (
+                <p className="mb-3 text-xs font-semibold text-primary">Carregando nível ({osLevel})…</p>
+              ) : null}
+              {osRows.length > 0 ? (
+                <MarketingCampaignsOsTable
+                  rows={osRows}
+                  goalMode={goalMode}
+                  targetCplBrl={settings?.targetCpaBrl ?? null}
+                  maxCplBrl={settings?.maxCpaBrl ?? null}
+                  targetRoas={settings?.targetRoas ?? null}
+                  periodDays={periodDays}
+                  canMutateCampaigns={canMutateCampaigns}
+                  mutatingAdsKey={mutatingAdsKey}
+                  runMetaStatus={(id, s) => void runMetaStatus(id, s)}
+                  runGoogleStatus={(id, s) => void runGoogleStatus(id, s)}
+                  openBudgetDialog={openBudgetDialog}
+                  onAfterMutation={() => void refreshAll()}
+                  platform={osPlatform}
+                  onPlatformChange={setOsPlatform}
+                  level={osLevel}
+                  onLevelChange={setOsLevel}
+                  hasMeta={hasMeta}
+                  hasGoogle={hasGoogle}
+                />
+              ) : (
+                <p className="py-10 text-center text-sm text-muted-foreground">
+                  Nenhuma linha para este nível e período.
                 </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-muted-foreground">Ordenar:</span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={campaignSort === "spend" ? "default" : "outline"}
-                    className="h-8 rounded-md px-3 text-xs"
-                    onClick={() => setCampaignSort("spend")}
-                  >
-                    Investimento
-                  </Button>
-                  {goalMode !== "LEADS" ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={campaignSort === "revenue" ? "default" : "outline"}
-                      className="h-8 rounded-md px-3 text-xs"
-                      onClick={() => setCampaignSort("revenue")}
-                    >
-                      Receita
-                    </Button>
-                  ) : null}
-                  {goalMode !== "SALES" ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={campaignSort === "leads" ? "default" : "outline"}
-                      className="h-8 rounded-md px-3 text-xs"
-                      onClick={() => setCampaignSort("leads")}
-                    >
-                      Leads / conv.
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={campaignSort === "leads" ? "default" : "outline"}
-                      className="h-8 rounded-md px-3 text-xs"
-                      onClick={() => setCampaignSort("leads")}
-                    >
-                      Compras / conv.
-                    </Button>
-                  )}
-                  <Link
-                    to="/marketing/integracoes"
-                    className="font-semibold text-primary underline-offset-4 hover:underline sm:ml-1"
-                  >
-                    Integrações
-                  </Link>
-                </div>
-              </div>
-              {sortedMetaCampaignRows.length > 0 ? (
-                <AnalyticsSection title="Meta — campanhas" dense>
-                  <CockpitCampaignsTable
-                    rows={sortedMetaCampaignRows}
-                    tones={metaCampaignEfficiencyTones}
-                    goalMode={goalMode}
-                    canMutateCampaigns={canMutateCampaigns}
-                    mutatingAdsKey={mutatingAdsKey}
-                    runMetaStatus={runMetaStatus}
-                    runGoogleStatus={runGoogleStatus}
-                    openBudgetDialog={openBudgetDialog}
-                  />
-                </AnalyticsSection>
-              ) : null}
-              {sortedGoogleCampaignRows.length > 0 ? (
-                <AnalyticsSection title="Google — campanhas" dense>
-                  <CockpitCampaignsTable
-                    rows={sortedGoogleCampaignRows}
-                    tones={googleCampaignEfficiencyTones}
-                    goalMode={goalMode}
-                    canMutateCampaigns={canMutateCampaigns}
-                    mutatingAdsKey={mutatingAdsKey}
-                    runMetaStatus={runMetaStatus}
-                    runGoogleStatus={runGoogleStatus}
-                    openBudgetDialog={openBudgetDialog}
-                  />
-                </AnalyticsSection>
-              ) : null}
-            </>
+              )}
+            </AnalyticsSection>
           )}
 
 

@@ -772,9 +772,9 @@ export function MarketingSettings() {
       </Button>
 
       <PageHeaderPremium
-        eyebrow="Marketing"
+        eyebrow="ADS"
         breadcrumbs={[
-          { label: "Marketing", href: "/marketing" },
+          { label: "Painel ADS", href: "/marketing" },
           { label: "Metas e alertas" },
         ]}
         title="Metas e alertas de performance"

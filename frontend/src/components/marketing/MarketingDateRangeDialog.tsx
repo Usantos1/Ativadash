@@ -44,7 +44,7 @@ export function MarketingDateRangeDialog({
   initial,
   initialLabel,
   initialPresetId,
-  initialCompare,
+  initialCompare: _initialCompare,
   onApply,
 }: Props) {
   const [presetId, setPresetId] = useState<MarketingPresetId>(initialPresetId);
@@ -52,8 +52,6 @@ export function MarketingDateRangeDialog({
     from: parseYmdToLocalDate(initial.startDate),
     to: parseYmdToLocalDate(initial.endDate),
   }));
-  const [compare, setCompare] = useState(initialCompare);
-
   useEffect(() => {
     if (!open) return;
     setPresetId(initialPresetId);
@@ -61,8 +59,7 @@ export function MarketingDateRangeDialog({
       from: parseYmdToLocalDate(initial.startDate),
       to: parseYmdToLocalDate(initial.endDate),
     });
-    setCompare(initialCompare);
-  }, [open, initial.startDate, initial.endDate, initialPresetId, initialCompare, initialLabel]);
+  }, [open, initial.startDate, initial.endDate, initialPresetId, initialLabel]);
 
   const recentIds = useMemo(() => loadRecentPresetIds(), [open]);
 
@@ -91,7 +88,7 @@ export function MarketingDateRangeDialog({
       endDate,
       label,
       presetId,
-      compareEnabled: compare,
+      compareEnabled: false,
     });
     onOpenChange(false);
   }
@@ -199,17 +196,6 @@ export function MarketingDateRangeDialog({
             />
 
             <div className="mt-4 space-y-3 border-t border-border/80 pt-4">
-              <label className="flex cursor-pointer items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-border"
-                  checked={compare}
-                  onChange={(e) => setCompare(e.target.checked)}
-                />
-                <span className="font-medium">Comparar</span>
-                <span className="text-muted-foreground">com o período anterior de mesmo tamanho</span>
-              </label>
-
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span className="rounded-md border border-border/80 bg-muted/40 px-2 py-1 font-medium">
                   {presetId === "custom" ? "Personalizado" : labelForPreset(presetId)}

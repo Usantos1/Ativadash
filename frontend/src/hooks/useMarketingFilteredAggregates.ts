@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { GoogleAdsCampaignRow, MetaAdsCampaignRow } from "@/lib/integrations-api";
 import { useMarketingMetrics } from "@/hooks/useMarketingMetrics";
-import { fetchLaunches, fetchGoals, type LaunchRow } from "@/lib/workspace-api";
+import { fetchGoals } from "@/lib/workspace-api";
 import { fetchMarketingSettings, type MarketingSettingsDto } from "@/lib/marketing-settings-api";
 import {
-  type TempFilter,
   aggregateGoogle,
   aggregateMeta,
   buildGoogleOnlyDailyChart,
@@ -19,6 +18,10 @@ import {
   splitHotColdLeadsSpend,
 } from "@/lib/marketing-capture-aggregate";
 
+/**
+ * Agregados para Captação / Conversão / Receita.
+ * Contexto fixo: todas as campanhas (sem filtro por lançamento ou temperatura).
+ */
 export function useMarketingFilteredAggregates() {
   const metricsApi = useMarketingMetrics();
   const {
@@ -35,21 +38,11 @@ export function useMarketingFilteredAggregates() {
     metaMetricsLoading,
   } = metricsApi;
 
-  const [launches, setLaunches] = useState<LaunchRow[]>([]);
-  const [launchId, setLaunchId] = useState<string>("all");
-  const [tempFilter, setTempFilter] = useState<TempFilter>("geral");
   const [settings, setSettings] = useState<MarketingSettingsDto | null>(null);
   const [leadGoalTarget, setLeadGoalTarget] = useState<number | null>(null);
 
   useEffect(() => {
     let c = false;
-    fetchLaunches()
-      .then((list) => {
-        if (!c) setLaunches(list);
-      })
-      .catch(() => {
-        if (!c) setLaunches([]);
-      });
     fetchGoals()
       .then((g) => {
         if (!c) setLeadGoalTarget(pickLeadGoalTarget(g));
@@ -69,34 +62,28 @@ export function useMarketingFilteredAggregates() {
     };
   }, []);
 
-  const selectedLaunch = useMemo(
-    () => (launchId === "all" ? null : launches.find((l) => l.id === launchId) ?? null),
-    [launches, launchId]
-  );
-  const launchNameForFilter = selectedLaunch?.name ?? null;
-
   const googleDaily = metrics?.ok ? metrics.daily ?? [] : [];
   const metaDaily = metaMetrics?.ok ? metaMetrics.daily ?? [] : [];
 
   const googleCampaignsFiltered = useMemo(() => {
     if (!metrics?.ok) return [];
-    return filterGoogleCampaigns(metrics.campaigns, launchNameForFilter, tempFilter);
-  }, [metrics, launchNameForFilter, tempFilter]);
+    return filterGoogleCampaigns(metrics.campaigns, null, "geral");
+  }, [metrics]);
 
   const metaCampaignsFiltered = useMemo(() => {
     if (!metaMetrics?.ok) return [];
-    return filterMetaCampaigns(metaMetrics.campaigns, launchNameForFilter, tempFilter);
-  }, [metaMetrics, launchNameForFilter, tempFilter]);
+    return filterMetaCampaigns(metaMetrics.campaigns, null, "geral");
+  }, [metaMetrics]);
 
   const googleCampaignsCmpFiltered = useMemo(() => {
     if (!cmpMetrics?.ok) return [];
-    return filterGoogleCampaigns(cmpMetrics.campaigns, launchNameForFilter, tempFilter);
-  }, [cmpMetrics, launchNameForFilter, tempFilter]);
+    return filterGoogleCampaigns(cmpMetrics.campaigns, null, "geral");
+  }, [cmpMetrics]);
 
   const metaCampaignsCmpFiltered = useMemo(() => {
     if (!cmpMetaMetrics?.ok) return [];
-    return filterMetaCampaigns(cmpMetaMetrics.campaigns, launchNameForFilter, tempFilter);
-  }, [cmpMetaMetrics, launchNameForFilter, tempFilter]);
+    return filterMetaCampaigns(cmpMetaMetrics.campaigns, null, "geral");
+  }, [cmpMetaMetrics]);
 
   const cmpAggG = useMemo(() => aggregateGoogle(googleCampaignsCmpFiltered), [googleCampaignsCmpFiltered]);
   const cmpAggM = useMemo(() => aggregateMeta(metaCampaignsCmpFiltered), [metaCampaignsCmpFiltered]);
@@ -226,13 +213,6 @@ export function useMarketingFilteredAggregates() {
 
   return {
     ...metricsApi,
-    launches,
-    launchId,
-    setLaunchId,
-    tempFilter,
-    setTempFilter,
-    selectedLaunch,
-    launchNameForFilter,
     settings,
     leadGoalTarget,
     googleDaily,

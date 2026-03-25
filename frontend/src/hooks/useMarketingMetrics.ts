@@ -201,7 +201,7 @@ export function useMarketingMetrics(opts?: {
     setDateRange({ startDate: p.startDate, endDate: p.endDate });
     setDateRangeLabel(p.label);
     setPresetId(p.presetId);
-    setCompareEnabled(p.compareEnabled);
+    setCompareEnabled(false);
     if (p.presetId !== "custom") {
       pushRecentPreset(p.presetId);
     }

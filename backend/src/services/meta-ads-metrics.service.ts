@@ -43,9 +43,42 @@ export interface MetaAdsMetricsSummary {
   roas?: number;
 }
 
+/** Alinhado ao contrato do frontend (Google `entityStatus`). */
+export type MetaEntityStatusUi = "ACTIVE" | "PAUSED" | "ARCHIVED" | "UNKNOWN";
+
+function mapMetaEffectiveStatusToUi(raw: string | undefined): MetaEntityStatusUi {
+  const u = (raw ?? "").toUpperCase();
+  if (u === "ACTIVE") return "ACTIVE";
+  if (u === "PAUSED") return "PAUSED";
+  if (u === "ARCHIVED" || u === "DELETED") return "ARCHIVED";
+  return "UNKNOWN";
+}
+
+/** effective_status por id de campanha (Graph). */
+async function fetchMetaCampaignStatusById(
+  accountNumericId: string,
+  accessToken: string,
+  appSecret: string
+): Promise<Map<string, MetaEntityStatusUi>> {
+  const path = `/act_${accountNumericId}/campaigns?fields=id,effective_status&limit=500`;
+  const rows = await graphGetAllPages<{ id?: string; effective_status?: string }>(
+    path,
+    accessToken,
+    appSecret
+  );
+  const map = new Map<string, MetaEntityStatusUi>();
+  for (const r of rows) {
+    if (!r.id) continue;
+    map.set(String(r.id), mapMetaEffectiveStatusToUi(r.effective_status));
+  }
+  return map;
+}
+
 export interface MetaAdsCampaignRow {
   campaignName: string;
   campaignId?: string;
+  /** Status de entrega no Meta (Graph `effective_status`), quando disponível */
+  entityStatus?: MetaEntityStatusUi;
   impressions: number;
   clicks: number;
   spend: number;
@@ -490,6 +523,27 @@ export async function fetchMetaAdsMetrics(
               messagingConversationsStarted > 0 ? messagingConversationsStarted : undefined,
           });
         }
+      }
+
+      try {
+        const statusById = await fetchMetaCampaignStatusById(
+          accountId,
+          config.access_token,
+          appSecret
+        );
+        for (const c of campaigns) {
+          const cid = (c as InsightRow & { campaign_id?: string }).campaign_id;
+          if (!cid) continue;
+          const st = statusById.get(String(cid));
+          if (st === undefined) continue;
+          const row = campaignMap.get(cid);
+          if (row) row.entityStatus = st;
+        }
+      } catch (e) {
+        console.warn(
+          `[Meta Ads] campaign effective_status act_${accountId}:`,
+          e instanceof Error ? e.message : e
+        );
       }
     }
 
