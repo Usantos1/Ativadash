@@ -380,6 +380,36 @@ ls /ativadash/frontend/dist
 
 Deve ter `index.html` e pasta `assets/`.
 
+### A UI na nuvem ainda parece a do localhost antigo?
+
+O **código React não vem do `git pull` na VPS** — só o que está em `frontend/dist`. Se já fizeste `scp` e **continua diferente**:
+
+1. **Confirma que o Nginx aponta para a pasta onde copiaste:**
+   ```bash
+   sudo nginx -T 2>&1 | grep -E "server_name app\.ativadash|root "
+   ```
+   O `root` tem de ser **`/ativadash/frontend/dist`** (ou o caminho onde está o teu `index.html`).
+
+2. **Compara o `index.html` do PC com o da VPS** (a linha `<script … src="/assets/…">` tem de ser **idêntica** no mesmo build):
+   - No PC (PowerShell, pasta `frontend`): `Select-String -Path .\dist\index.html -Pattern 'src='`
+   - Na VPS: `grep src= /ativadash/frontend/dist/index.html`
+   - De fora: `curl -s https://app.ativadash.com/ | grep src=`  
+   Se o `curl` for diferente do teu PC → **cache** (Cloudflare: *Purge Everything*) ou **outro `root`** / outro servidor.
+
+3. **Build na própria VPS** (garante o mesmo código que está no Git — útil quando o Windows bloqueia `npm ci` / `esbuild`):
+
+   ```bash
+   cd /ativadash
+   git pull origin main
+   cd frontend
+   npm ci
+   VITE_API_URL=https://api.ativadash.com npm run build
+   sudo chown -R www-data:www-data dist
+   sudo chmod -R 755 dist
+   ```
+
+   Depois recarrega o site em **janela anónima**.
+
 ### Erro clássico ao copiar com `scp`
 
 - **Certo:** o conteúdo de `dist` fica **direto** na pasta do Nginx: nela devem existir `index.html` e `assets/` **no mesmo nível**.
