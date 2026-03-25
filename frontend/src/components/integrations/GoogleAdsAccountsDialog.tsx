@@ -128,7 +128,10 @@ export function GoogleAdsAccountsDialog({ open, onOpenChange, integrationId, cli
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[min(90vh,720px)] max-w-3xl overflow-y-auto">
+      <DialogContent
+        showClose
+        className="max-h-[min(90dvh,720px)] w-[min(100vw-1.5rem,42rem)] max-w-[min(100vw-1.5rem,42rem)] min-w-0 overflow-y-auto overflow-x-hidden p-4 sm:p-6"
+      >
         <DialogHeader>
           <DialogTitle>Contas Google Ads desta conexão</DialogTitle>
           <DialogDescription>
@@ -154,7 +157,9 @@ export function GoogleAdsAccountsDialog({ open, onOpenChange, integrationId, cli
             <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs">
               <p>
                 <span className="text-muted-foreground">Google conectado:</span>{" "}
-                <span className="font-medium text-foreground">{setup.googleUserEmail ?? "—"}</span>
+                <span className="font-medium text-foreground">
+                  {setup.googleUserEmail ?? "— (reconecte após atualização: falta permissão de e-mail no OAuth)"}
+                </span>
               </p>
               <p className="mt-1 text-muted-foreground">
                 Contas acessíveis: <strong className="text-foreground">{setup.accessibleCount}</strong> · Vínculos com
@@ -169,16 +174,42 @@ export function GoogleAdsAccountsDialog({ open, onOpenChange, integrationId, cli
               </p>
             </div>
 
-            <div className="overflow-x-auto rounded-lg border border-border/60">
-              <table className="w-full min-w-[640px] border-collapse text-left text-xs">
+            {clients.length === 0 ? (
+              <p className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-950 dark:text-amber-100">
+                Não há clientes comerciais nesta empresa. Crie clientes em Projetos / Clientes para poder vincular cada
+                conta Google Ads.
+              </p>
+            ) : null}
+            <div className="min-w-0 overflow-hidden rounded-lg border border-border/60">
+              <table className="w-full table-fixed border-collapse text-left text-xs">
+                <colgroup>
+                  <col style={{ width: "24%" }} />
+                  <col style={{ width: "14%" }} />
+                  <col style={{ width: "13%" }} />
+                  <col style={{ width: "9%" }} />
+                  <col style={{ width: "20%" }} />
+                  <col style={{ width: "20%" }} />
+                </colgroup>
                 <thead>
                   <tr className="border-b border-border/60 bg-muted/30">
-                    <th className="px-2 py-2 font-semibold">Conta</th>
-                    <th className="px-2 py-2 font-semibold">ID</th>
-                    <th className="px-2 py-2 font-semibold">Tipo</th>
-                    <th className="px-2 py-2 font-semibold">Moeda</th>
-                    <th className="px-2 py-2 font-semibold">Vínculo cliente</th>
-                    <th className="px-2 py-2 font-semibold">Ações</th>
+                    <th className="px-1.5 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:px-2 sm:text-xs sm:normal-case sm:tracking-normal">
+                      Conta
+                    </th>
+                    <th className="px-1.5 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:px-2 sm:text-xs sm:normal-case sm:tracking-normal">
+                      ID
+                    </th>
+                    <th className="px-1.5 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:px-2 sm:text-xs sm:normal-case sm:tracking-normal">
+                      Tipo
+                    </th>
+                    <th className="px-1.5 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:px-2 sm:text-xs sm:normal-case sm:tracking-normal">
+                      Moeda
+                    </th>
+                    <th className="px-1.5 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:px-2 sm:text-xs sm:normal-case sm:tracking-normal">
+                      Vínculo
+                    </th>
+                    <th className="px-1.5 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:px-2 sm:text-xs sm:normal-case sm:tracking-normal">
+                      Ações
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -188,8 +219,8 @@ export function GoogleAdsAccountsDialog({ open, onOpenChange, integrationId, cli
                     const busyDef = rowBusy === `def:${c.customerId}`;
                     return (
                       <tr key={c.customerId} className="border-b border-border/40 align-top">
-                        <td className="px-2 py-2">
-                          <div className="font-medium text-foreground">{c.descriptiveName ?? "—"}</div>
+                        <td className="min-w-0 break-words px-1.5 py-2 sm:px-2">
+                          <div className="font-medium leading-snug text-foreground">{c.descriptiveName ?? "—"}</div>
                           {c.status ? (
                             <div className="text-[10px] text-muted-foreground">Status API: {c.status}</div>
                           ) : null}
@@ -199,8 +230,10 @@ export function GoogleAdsAccountsDialog({ open, onOpenChange, integrationId, cli
                             </span>
                           ) : null}
                         </td>
-                        <td className="px-2 py-2 font-mono tabular-nums">{formatAdsCustomerId(c.customerId)}</td>
-                        <td className="px-2 py-2">
+                        <td className="min-w-0 break-all px-1.5 py-2 font-mono text-[10px] tabular-nums sm:px-2 sm:text-xs">
+                          {formatAdsCustomerId(c.customerId)}
+                        </td>
+                        <td className="min-w-0 break-words px-1.5 py-2 sm:px-2">
                           {c.isManager ? (
                             <span className="text-amber-800 dark:text-amber-200">Manager (MCC)</span>
                           ) : (
@@ -212,8 +245,8 @@ export function GoogleAdsAccountsDialog({ open, onOpenChange, integrationId, cli
                             </div>
                           ) : null}
                         </td>
-                        <td className="px-2 py-2">{c.currencyCode ?? "—"}</td>
-                        <td className="px-2 py-2">
+                        <td className="min-w-0 px-1.5 py-2 sm:px-2">{c.currencyCode ?? "—"}</td>
+                        <td className="min-w-0 break-words px-1.5 py-2 sm:px-2">
                           {assignForThis.length === 0 ? (
                             <span className="text-muted-foreground">—</span>
                           ) : (
@@ -240,24 +273,29 @@ export function GoogleAdsAccountsDialog({ open, onOpenChange, integrationId, cli
                             </ul>
                           )}
                         </td>
-                        <td className="px-2 py-2">
-                          <div className="flex flex-col gap-2">
+                        <td className="min-w-0 px-1.5 py-2 sm:px-2">
+                          <div className="flex w-full max-w-full flex-col gap-2">
                             {!c.isManager ? (
                               <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                className="h-8 text-xs"
+                                className="h-auto min-h-8 w-full whitespace-normal px-2 py-1.5 text-left text-[11px] leading-tight"
+                                title="Conta usada no painel quando o contexto comercial da integração é “Nenhum”"
                                 disabled={!!rowBusy || busyDef}
                                 onClick={() => void setDefault(c.customerId)}
                               >
-                                {busyDef ? <Loader2 className="h-3 w-3 animate-spin" /> : "Usar como padrão org."}
+                                {busyDef ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  "Padrão org."
+                                )}
                               </Button>
                             ) : null}
                             {!c.isManager ? (
-                              <div className="flex flex-wrap items-center gap-1">
+                              <div className="flex w-full max-w-full flex-col gap-2">
                                 <select
-                                  className="h-8 max-w-[160px] rounded-md border border-input bg-background px-1 text-[11px]"
+                                  className="h-8 w-full max-w-full rounded-md border border-input bg-background px-1.5 text-[11px]"
                                   aria-label="Cliente para vincular"
                                   value={assignPick[c.customerId] ?? ""}
                                   disabled={!!rowBusy}
@@ -265,7 +303,7 @@ export function GoogleAdsAccountsDialog({ open, onOpenChange, integrationId, cli
                                     setAssignPick((prev) => ({ ...prev, [c.customerId]: e.target.value }))
                                   }
                                 >
-                                  <option value="">Vincular a cliente…</option>
+                                  <option value="">Cliente…</option>
                                   {clients.map((cl) => (
                                     <option key={cl.id} value={cl.id}>
                                       {cl.name}
@@ -275,7 +313,7 @@ export function GoogleAdsAccountsDialog({ open, onOpenChange, integrationId, cli
                                 <Button
                                   type="button"
                                   size="sm"
-                                  className="h-8 text-xs"
+                                  className="h-8 w-full text-xs"
                                   disabled={!!rowBusy || !(assignPick[c.customerId] ?? "").trim()}
                                   onClick={() => {
                                     const v = assignPick[c.customerId];
@@ -286,8 +324,9 @@ export function GoogleAdsAccountsDialog({ open, onOpenChange, integrationId, cli
                                 </Button>
                               </div>
                             ) : (
-                              <span className="text-[11px] text-muted-foreground">
-                                Vincule contas cliente (não MCC) aos clientes comerciais.
+                              <span className="text-[10px] leading-snug text-muted-foreground sm:text-[11px]">
+                                Use contas <strong className="font-medium">Cliente</strong> para vincular a clientes
+                                comerciais.
                               </span>
                             )}
                           </div>

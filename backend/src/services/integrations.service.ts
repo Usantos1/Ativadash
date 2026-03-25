@@ -6,7 +6,13 @@ import { parseGoogleAdsConfig, syncAccessibleGoogleAdsCustomers } from "./google
 
 const GOOGLE_ADS_SLUG = "google-ads";
 const META_ADS_SLUG = "meta";
-const SCOPES = ["https://www.googleapis.com/auth/adwords"];
+/** `userinfo` exige openid + email; só `adwords` não devolve perfil no OAuth v2 userinfo. */
+const SCOPES = [
+  "https://www.googleapis.com/auth/adwords",
+  "openid",
+  "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/userinfo.profile",
+];
 const META_SCOPES = ["ads_read", "ads_management"]; // ads_read = read-only; ads_management for account list
 const BASE = env.FRONTEND_URL;
 
@@ -83,9 +89,14 @@ export async function exchangeGoogleAdsCode(code: string, state: string): Promis
       const u = (await ui.json()) as { email?: string; id?: string };
       google_user_email = u.email;
       google_user_sub = u.id;
+    } else if (process.env.NODE_ENV !== "production") {
+      const t = await ui.text().catch(() => "");
+      console.warn("[Google Ads OAuth] userinfo falhou:", ui.status, t.slice(0, 200));
     }
-  } catch {
-    /* opcional */
+  } catch (e) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[Google Ads OAuth] userinfo exceção:", e instanceof Error ? e.message : e);
+    }
   }
 
   const sameGoogleIdentity =
