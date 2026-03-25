@@ -4,15 +4,16 @@ import {
   isGoogleAdsDeveloperTokenConfigured,
   isGoogleAdsUxPending,
 } from "../utils/google-ads-readiness.js";
+import {
+  resolveGoogleAdsOperationalContext,
+  buildGoogleAdsHeaders,
+  normalizeGoogleAdsCustomerId,
+} from "./google-ads-accounts.service.js";
 
-const GOOGLE_ADS_SLUG = "google-ads";
 const API_VERSION = "v20";
 
-interface GoogleAdsConfig {
-  access_token: string;
-  refresh_token: string | null;
-  expiry_date: number;
-}
+/** Contexto opcional: alinha queries à conta comercial (workspace) quando enviado pelo cliente. */
+export type GoogleAdsMetricsQueryContext = { clientAccountId?: string | null };
 
 export interface GoogleAdsMetricsSummary {
   impressions: number;
@@ -64,6 +65,7 @@ export type GoogleAdsMetricsErrorCode =
   | "MISSING_DEVELOPER_TOKEN"
   | "TOKEN_REFRESH_FAILED"
   | "API_PENDING_OR_RESTRICTED"
+  | "SELECT_GOOGLE_ADS_CUSTOMER"
   | "UNKNOWN";
 
 export type GoogleAdsMetricsResult =
@@ -137,79 +139,31 @@ function classifyGoogleAdsError(raw: string): GoogleAdsMetricsResult {
   return googleAdsFailure("UNKNOWN", MSG_GOOGLE_SOFT_UNAVAILABLE, raw);
 }
 
-async function getGoogleAdsConfig(organizationId: string): Promise<GoogleAdsConfig | null> {
-  const integration = await prisma.integration.findUnique({
-    where: {
-      organizationId_slug: { organizationId, slug: GOOGLE_ADS_SLUG },
-    },
-  });
-  if (!integration?.config || integration.status !== "connected") return null;
-  try {
-    return JSON.parse(integration.config) as GoogleAdsConfig;
-  } catch {
-    return null;
+function mapOperationalCodeToMetrics(code: string): GoogleAdsMetricsErrorCode {
+  switch (code) {
+    case "NOT_CONNECTED":
+      return "NOT_CONNECTED";
+    case "api_not_ready":
+      return "api_not_ready";
+    case "pending_configuration":
+      return "pending_configuration";
+    case "TOKEN_REFRESH_FAILED":
+      return "TOKEN_REFRESH_FAILED";
+    case "SELECT_GOOGLE_ADS_CUSTOMER":
+      return "SELECT_GOOGLE_ADS_CUSTOMER";
+    default:
+      return "UNKNOWN";
   }
-}
-
-async function refreshAndSaveGoogleAdsToken(
-  organizationId: string,
-  current: GoogleAdsConfig
-): Promise<string> {
-  if (!current.refresh_token) throw new Error("Sem refresh token");
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: env.GOOGLE_CLIENT_ID,
-      client_secret: env.GOOGLE_CLIENT_SECRET,
-      refresh_token: current.refresh_token,
-      grant_type: "refresh_token",
-    }),
-  });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`Falha ao renovar token: ${t}`);
-  }
-  const data = (await res.json()) as { access_token: string; expires_in: number };
-  const config: GoogleAdsConfig = {
-    access_token: data.access_token,
-    refresh_token: current.refresh_token,
-    expiry_date: Date.now() + data.expires_in * 1000,
-  };
-  await prisma.integration.update({
-    where: { organizationId_slug: { organizationId, slug: GOOGLE_ADS_SLUG } },
-    data: {
-      config: JSON.stringify(config),
-      lastSyncAt: new Date(),
-    },
-  });
-  return config.access_token;
-}
-
-async function listAccessibleCustomers(accessToken: string, developerToken: string): Promise<string[]> {
-  const res = await fetch(
-    `https://googleads.googleapis.com/${API_VERSION}/customers:listAccessibleCustomers`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "developer-token": developerToken,
-      },
-    }
-  );
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`ListAccessibleCustomers: ${res.status} ${text}`);
-  }
-  const data = (await res.json()) as { resourceNames?: string[] };
-  return (data.resourceNames ?? []).map((r) => r.replace("customers/", ""));
 }
 
 async function searchStream(
   accessToken: string,
   developerToken: string,
   customerId: string,
-  range: { start: string; end: string }
+  range: { start: string; end: string },
+  loginCustomerId: string | null
 ): Promise<{ summary: GoogleAdsMetricsSummary; campaigns: GoogleAdsCampaignRow[] }> {
+  const cid = normalizeGoogleAdsCustomerId(customerId);
   const query = `
     SELECT
       campaign.id,
@@ -226,14 +180,10 @@ async function searchStream(
   `.trim();
 
   const res = await fetch(
-    `https://googleads.googleapis.com/${API_VERSION}/customers/${customerId}/googleAds:searchStream`,
+    `https://googleads.googleapis.com/${API_VERSION}/customers/${cid}/googleAds:searchStream`,
     {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "developer-token": developerToken,
-        "Content-Type": "application/json",
-      },
+      headers: buildGoogleAdsHeaders(accessToken, developerToken, loginCustomerId),
       body: JSON.stringify({ query }),
     }
   );
@@ -319,8 +269,10 @@ async function searchStreamDaily(
   accessToken: string,
   developerToken: string,
   customerId: string,
-  range: { start: string; end: string }
+  range: { start: string; end: string },
+  loginCustomerId: string | null
 ): Promise<GoogleAdsDailyRow[]> {
+  const cid = normalizeGoogleAdsCustomerId(customerId);
   const query = `
     SELECT
       segments.date,
@@ -334,14 +286,10 @@ async function searchStreamDaily(
   `.trim();
 
   const res = await fetch(
-    `https://googleads.googleapis.com/${API_VERSION}/customers/${customerId}/googleAds:searchStream`,
+    `https://googleads.googleapis.com/${API_VERSION}/customers/${cid}/googleAds:searchStream`,
     {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "developer-token": developerToken,
-        "Content-Type": "application/json",
-      },
+      headers: buildGoogleAdsHeaders(accessToken, developerToken, loginCustomerId),
       body: JSON.stringify({ query }),
     }
   );
@@ -389,16 +337,9 @@ async function searchStreamDaily(
 
 export async function fetchGoogleAdsMetrics(
   organizationId: string,
-  range: { start: string; end: string }
+  range: { start: string; end: string },
+  queryContext?: GoogleAdsMetricsQueryContext
 ): Promise<GoogleAdsMetricsResult> {
-  const config = await getGoogleAdsConfig(organizationId);
-  if (!config) {
-    return googleAdsFailure(
-      "NOT_CONNECTED",
-      "Google Ads não está conectado. Quando a API estiver liberada, conecte em Integrações para ver os dados aqui."
-    );
-  }
-
   if (isGoogleAdsUxPending()) {
     return googleAdsFailure("api_not_ready", MSG_API_NOT_READY);
   }
@@ -407,35 +348,40 @@ export async function fetchGoogleAdsMetrics(
     return googleAdsFailure("pending_configuration", MSG_PENDING_CONFIGURATION);
   }
 
-  const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN.trim();
-
-  let accessToken = config.access_token;
-  const now = Date.now();
-  const margin = 5 * 60 * 1000; // 5 min
-  if (config.expiry_date && now >= config.expiry_date - margin) {
-    try {
-      accessToken = await refreshAndSaveGoogleAdsToken(organizationId, config);
-    } catch (e) {
-      const raw = e instanceof Error ? e.message : String(e);
-      return classifyGoogleAdsError(raw);
+  const operational = await resolveGoogleAdsOperationalContext(organizationId, {
+    clientAccountId: queryContext?.clientAccountId,
+  });
+  if (!operational.ok) {
+    const code = mapOperationalCodeToMetrics(operational.code);
+    if (code === "NOT_CONNECTED") {
+      return googleAdsFailure(
+        "NOT_CONNECTED",
+        "Google Ads não está conectado. Quando a API estiver liberada, conecte em Integrações para ver os dados aqui."
+      );
     }
+    return googleAdsFailure(code, operational.message);
   }
 
+  const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN.trim();
+  const { accessToken, customerId, loginCustomerId } = operational;
+
   try {
-    const customerIds = await listAccessibleCustomers(accessToken, developerToken);
-    if (customerIds.length === 0) {
-      return {
-        ok: true,
-        summary: { impressions: 0, clicks: 0, costMicros: 0, conversions: 0, conversionsValue: 0 },
-        campaigns: [],
-        daily: [],
-      };
-    }
-    const customerId = customerIds[0];
-    const { summary, campaigns } = await searchStream(accessToken, developerToken, customerId, range);
+    const { summary, campaigns } = await searchStream(
+      accessToken,
+      developerToken,
+      customerId,
+      range,
+      loginCustomerId
+    );
     let daily: GoogleAdsDailyRow[] = [];
     try {
-      daily = await searchStreamDaily(accessToken, developerToken, customerId, range);
+      daily = await searchStreamDaily(
+        accessToken,
+        developerToken,
+        customerId,
+        range,
+        loginCustomerId
+      );
     } catch (e) {
       if (shouldLogGoogleAdsTechnical("daily:series")) {
         console.warn("[Google Ads] daily series:", e instanceof Error ? e.message : e);
@@ -452,17 +398,15 @@ async function googleSearchStreamResults(
   accessToken: string,
   developerToken: string,
   customerId: string,
-  query: string
+  query: string,
+  loginCustomerId: string | null
 ): Promise<unknown[]> {
+  const cid = normalizeGoogleAdsCustomerId(customerId);
   const res = await fetch(
-    `https://googleads.googleapis.com/${API_VERSION}/customers/${customerId}/googleAds:searchStream`,
+    `https://googleads.googleapis.com/${API_VERSION}/customers/${cid}/googleAds:searchStream`,
     {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "developer-token": developerToken,
-        "Content-Type": "application/json",
-      },
+      headers: buildGoogleAdsHeaders(accessToken, developerToken, loginCustomerId),
       body: JSON.stringify({ query }),
     }
   );
@@ -481,51 +425,42 @@ async function googleSearchStreamResults(
 }
 
 export type ResolveGoogleAdsCustomerResult =
-  | { ok: true; accessToken: string; customerId: string }
+  | {
+      ok: true;
+      accessToken: string;
+      customerId: string;
+      loginCustomerId: string | null;
+      integrationId: string;
+    }
   | { ok: false; code: GoogleAdsMetricsErrorCode; message: string };
 
-async function resolveGoogleAdsCustomer(organizationId: string): Promise<ResolveGoogleAdsCustomerResult> {
-  const config = await getGoogleAdsConfig(organizationId);
-  if (!config) {
-    return { ok: false, code: "NOT_CONNECTED", message: "Google Ads não conectado para esta organização." };
-  }
+async function resolveGoogleAdsCustomer(
+  organizationId: string,
+  queryContext?: GoogleAdsMetricsQueryContext
+): Promise<ResolveGoogleAdsCustomerResult> {
   if (isGoogleAdsUxPending()) {
     return { ok: false, code: "api_not_ready", message: MSG_API_NOT_READY };
   }
   if (!isGoogleAdsDeveloperTokenConfigured()) {
     return { ok: false, code: "pending_configuration", message: MSG_PENDING_CONFIGURATION };
   }
-  const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN.trim();
-
-  let accessToken = config.access_token;
-  const now = Date.now();
-  const margin = 5 * 60 * 1000;
-  if (config.expiry_date && now >= config.expiry_date - margin) {
-    try {
-      accessToken = await refreshAndSaveGoogleAdsToken(organizationId, config);
-    } catch (e) {
-      const raw = e instanceof Error ? e.message : String(e);
-      const classified = classifyGoogleAdsError(raw);
-      if (!classified.ok) {
-        return { ok: false, code: classified.code, message: classified.message };
-      }
-      return { ok: false, code: "UNKNOWN", message: raw };
-    }
+  const ctx = await resolveGoogleAdsOperationalContext(organizationId, {
+    clientAccountId: queryContext?.clientAccountId,
+  });
+  if (!ctx.ok) {
+    return {
+      ok: false,
+      code: mapOperationalCodeToMetrics(ctx.code),
+      message: ctx.message,
+    };
   }
-  try {
-    const customerIds = await listAccessibleCustomers(accessToken, developerToken);
-    if (customerIds.length === 0) {
-      return { ok: true, accessToken, customerId: "" };
-    }
-    return { ok: true, accessToken, customerId: customerIds[0] };
-  } catch (e) {
-    const raw = e instanceof Error ? e.message : String(e);
-    const classified = classifyGoogleAdsError(raw);
-    if (!classified.ok) {
-      return { ok: false, code: classified.code, message: classified.message };
-    }
-    return { ok: false, code: "UNKNOWN", message: raw };
-  }
+  return {
+    ok: true,
+    accessToken: ctx.accessToken,
+    customerId: ctx.customerId,
+    loginCustomerId: ctx.loginCustomerId,
+    integrationId: ctx.integrationId,
+  };
 }
 
 export type GoogleAdsAdGroupRow = {
@@ -554,9 +489,10 @@ export type GoogleAdsDeepResult<T> =
 
 export async function fetchGoogleAdsAdGroupMetrics(
   organizationId: string,
-  range: { start: string; end: string }
+  range: { start: string; end: string },
+  queryContext?: GoogleAdsMetricsQueryContext
 ): Promise<GoogleAdsDeepResult<GoogleAdsAdGroupRow>> {
-  const ctx = await resolveGoogleAdsCustomer(organizationId);
+  const ctx = await resolveGoogleAdsCustomer(organizationId, queryContext);
   if (!ctx.ok) return { ok: false, code: ctx.code, message: ctx.message };
   if (!ctx.customerId) return { ok: true, rows: [] };
   const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN.trim();
@@ -581,7 +517,8 @@ export async function fetchGoogleAdsAdGroupMetrics(
       ctx.accessToken,
       developerToken,
       ctx.customerId,
-      query
+      query,
+      ctx.loginCustomerId
     );
     type Row = {
       campaign?: { id?: string | number; name?: string };
@@ -658,9 +595,10 @@ export type GoogleAdsAdRow = {
 
 export async function fetchGoogleAdsAdMetrics(
   organizationId: string,
-  range: { start: string; end: string }
+  range: { start: string; end: string },
+  queryContext?: GoogleAdsMetricsQueryContext
 ): Promise<GoogleAdsDeepResult<GoogleAdsAdRow>> {
-  const ctx = await resolveGoogleAdsCustomer(organizationId);
+  const ctx = await resolveGoogleAdsCustomer(organizationId, queryContext);
   if (!ctx.ok) return { ok: false, code: ctx.code, message: ctx.message };
   if (!ctx.customerId) return { ok: true, rows: [] };
   const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN.trim();
@@ -684,7 +622,8 @@ export async function fetchGoogleAdsAdMetrics(
       ctx.accessToken,
       developerToken,
       ctx.customerId,
-      query
+      query,
+      ctx.loginCustomerId
     );
     type Row = {
       campaign?: { name?: string };
@@ -747,9 +686,10 @@ export async function fetchGoogleAdsAdMetrics(
 
 export async function fetchGoogleAdsSearchTerms(
   organizationId: string,
-  range: { start: string; end: string }
+  range: { start: string; end: string },
+  queryContext?: GoogleAdsMetricsQueryContext
 ): Promise<GoogleAdsDeepResult<GoogleAdsSearchTermRow>> {
-  const ctx = await resolveGoogleAdsCustomer(organizationId);
+  const ctx = await resolveGoogleAdsCustomer(organizationId, queryContext);
   if (!ctx.ok) return { ok: false, code: ctx.code, message: ctx.message };
   if (!ctx.customerId) return { ok: true, rows: [] };
   const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN.trim();
@@ -767,7 +707,8 @@ export async function fetchGoogleAdsSearchTerms(
       ctx.accessToken,
       developerToken,
       ctx.customerId,
-      query
+      query,
+      ctx.loginCustomerId
     );
     type Row = {
       searchTermView?: { searchTerm?: string };
@@ -818,9 +759,10 @@ function resolveGoogleCampaignResource(
 export async function mutateGoogleCampaignStatus(
   organizationId: string,
   campaignExternalId: string,
-  enabled: boolean
+  enabled: boolean,
+  queryContext?: GoogleAdsMetricsQueryContext
 ): Promise<{ ok: true } | { ok: false; message: string }> {
-  const ctx = await resolveGoogleAdsCustomer(organizationId);
+  const ctx = await resolveGoogleAdsCustomer(organizationId, queryContext);
   if (!ctx.ok) {
     return { ok: false, message: ctx.message };
   }
@@ -837,15 +779,26 @@ export async function mutateGoogleCampaignStatus(
   }
   const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN.trim();
   const status = enabled ? "ENABLED" : "PAUSED";
-  const url = `https://googleads.googleapis.com/${API_VERSION}/customers/${resolved.customerId}/campaigns:mutate`;
+  const mutateCid = normalizeGoogleAdsCustomerId(resolved.customerId);
+  const url = `https://googleads.googleapis.com/${API_VERSION}/customers/${mutateCid}/campaigns:mutate`;
+
+  let loginForMutate = ctx.loginCustomerId;
+  if (normalizeGoogleAdsCustomerId(resolved.customerId) !== normalizeGoogleAdsCustomerId(ctx.customerId)) {
+    const acc = await prisma.googleAdsAccessibleCustomer.findUnique({
+      where: {
+        integrationId_customerId: {
+          integrationId: ctx.integrationId,
+          customerId: mutateCid,
+        },
+      },
+    });
+    loginForMutate = acc?.managerCustomerId ? normalizeGoogleAdsCustomerId(acc.managerCustomerId) : null;
+  }
+
   try {
     const res = await fetch(url, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${ctx.accessToken}`,
-        "developer-token": developerToken,
-        "Content-Type": "application/json",
-      },
+      headers: buildGoogleAdsHeaders(ctx.accessToken, developerToken, loginForMutate),
       body: JSON.stringify({
         operations: [
           {

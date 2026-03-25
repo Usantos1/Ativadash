@@ -6,6 +6,7 @@ import {
   fetchGoogleAdsAdMetrics,
   fetchGoogleAdsSearchTerms,
   mutateGoogleCampaignStatus,
+  type GoogleAdsMetricsQueryContext,
 } from "../services/google-ads-metrics.service.js";
 import { fetchMetaAdsMetrics } from "../services/meta-ads-metrics.service.js";
 import {
@@ -50,6 +51,15 @@ import { appendAuditLog } from "../services/audit-log.service.js";
 import { mergeMarketingGoalIntoDashboardPayload } from "../services/marketing-dashboard-goal-merge.service.js";
 
 type AuthRequest = Request & { user: JwtPayload };
+
+/** `clientAccountId` na query força o contexto comercial (workspace); vazio ou `null` = visão só organização. */
+function googleAdsQueryContextFromReq(req: Request): GoogleAdsMetricsQueryContext | undefined {
+  const raw = req.query.clientAccountId;
+  if (raw === undefined) return undefined;
+  const s = Array.isArray(raw) ? raw[0] : raw;
+  if (s === "" || s === "null") return { clientAccountId: null };
+  return { clientAccountId: String(s) };
+}
 
 /** Corpo JSON para 403 em mutações de mídia (doc contrato: FORBIDDEN_PLAN | FORBIDDEN_ROLE). */
 function jsonMutateForbidden(e: unknown): { code: string; message: string } {
@@ -104,7 +114,7 @@ export async function getGoogleAdsMetricsHandler(req: Request, res: Response) {
       endDate: req.query.endDate as string | undefined,
       period: req.query.period as string | undefined,
     });
-    const result = await fetchGoogleAdsMetrics(organizationId, range);
+    const result = await fetchGoogleAdsMetrics(organizationId, range, googleAdsQueryContextFromReq(req));
     return res.json(result);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -520,7 +530,12 @@ export async function patchGoogleCampaignStatusContractHandler(req: Request, res
     return res.status(403).json(jsonMutateForbidden(e));
   }
   const enabled = parsed.data.status === "ENABLED";
-  const out = await mutateGoogleCampaignStatus(organizationId, externalId, enabled);
+  const out = await mutateGoogleCampaignStatus(
+    organizationId,
+    externalId,
+    enabled,
+    googleAdsQueryContextFromReq(req)
+  );
   if (!out.ok) {
     return res.status(400).json({ ok: false, message: out.message });
   }
@@ -546,7 +561,7 @@ export async function getGoogleAdGroupsHandler(req: Request, res: Response) {
       endDate: req.query.endDate as string | undefined,
       period: req.query.period as string | undefined,
     });
-    const result = await fetchGoogleAdsAdGroupMetrics(organizationId, range);
+    const result = await fetchGoogleAdsAdGroupMetrics(organizationId, range, googleAdsQueryContextFromReq(req));
     return res.json(result);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -563,7 +578,7 @@ export async function getGoogleAdsAdsHandler(req: Request, res: Response) {
       endDate: req.query.endDate as string | undefined,
       period: req.query.period as string | undefined,
     });
-    const result = await fetchGoogleAdsAdMetrics(organizationId, range);
+    const result = await fetchGoogleAdsAdMetrics(organizationId, range, googleAdsQueryContextFromReq(req));
     return res.json(result);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -580,7 +595,7 @@ export async function getGoogleSearchTermsHandler(req: Request, res: Response) {
       endDate: req.query.endDate as string | undefined,
       period: req.query.period as string | undefined,
     });
-    const result = await fetchGoogleAdsSearchTerms(organizationId, range);
+    const result = await fetchGoogleAdsSearchTerms(organizationId, range, googleAdsQueryContextFromReq(req));
     return res.json(result);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -596,7 +611,7 @@ export async function postGoogleCampaignMutateStubHandler(req: Request, res: Res
   } catch (e) {
     return res.status(403).json(jsonMutateForbidden(e));
   }
-  const out = await mutateGoogleCampaignStatus(organizationId, "", true);
+  const out = await mutateGoogleCampaignStatus(organizationId, "", true, googleAdsQueryContextFromReq(req));
   return res.status(501).json(out);
 }
 

@@ -2,6 +2,7 @@ import { env } from "../config/env.js";
 import { prisma } from "../utils/prisma.js";
 import { createState, consumeState } from "../utils/oauth-state.js";
 import { assertCanAddIntegration } from "./plan-limits.service.js";
+import { parseGoogleAdsConfig, syncAccessibleGoogleAdsCustomers } from "./google-ads-accounts.service.js";
 
 const GOOGLE_ADS_SLUG = "google-ads";
 const META_ADS_SLUG = "meta";
@@ -57,12 +58,6 @@ export async function exchangeGoogleAdsCode(code: string, state: string): Promis
     expires_in: number;
   };
 
-  const config = JSON.stringify({
-    access_token: data.access_token,
-    refresh_token: data.refresh_token ?? null,
-    expiry_date: Date.now() + data.expires_in * 1000,
-  });
-
   const existingGoogle = await prisma.integration.findUnique({
     where: { organizationId_slug: { organizationId, slug: GOOGLE_ADS_SLUG } },
   });
@@ -70,8 +65,50 @@ export async function exchangeGoogleAdsCode(code: string, state: string): Promis
     await assertCanAddIntegration(organizationId);
   }
 
-  // Upsert por @@unique([organizationId, slug]) → constraint "Integration_organizationId_slug_key" no Postgres.
-  await prisma.integration.upsert({
+  const prev = existingGoogle?.config ? parseGoogleAdsConfig(existingGoogle.config) : null;
+  const refresh_token = data.refresh_token ?? prev?.refresh_token ?? null;
+  if (!refresh_token && process.env.NODE_ENV !== "production") {
+    console.warn(
+      "[Google Ads OAuth] Sem refresh_token na resposta; reautorize com prompt=consent se a sessão não persistir."
+    );
+  }
+
+  let google_user_email: string | undefined;
+  let google_user_sub: string | undefined;
+  try {
+    const ui = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+      headers: { Authorization: `Bearer ${data.access_token}` },
+    });
+    if (ui.ok) {
+      const u = (await ui.json()) as { email?: string; id?: string };
+      google_user_email = u.email;
+      google_user_sub = u.id;
+    }
+  } catch {
+    /* opcional */
+  }
+
+  const sameGoogleIdentity =
+    Boolean(google_user_sub && prev?.google_user_sub && google_user_sub === prev.google_user_sub);
+
+  const configObj = {
+    access_token: data.access_token,
+    refresh_token,
+    expiry_date: Date.now() + data.expires_in * 1000,
+    google_user_email,
+    google_user_sub,
+    default_google_customer_id: null as string | null,
+    default_login_customer_id: null as string | null,
+  };
+
+  if (sameGoogleIdentity && prev?.default_google_customer_id) {
+    configObj.default_google_customer_id = prev.default_google_customer_id ?? null;
+    configObj.default_login_customer_id = prev.default_login_customer_id ?? null;
+  }
+
+  const config = JSON.stringify(configObj);
+
+  const row = await prisma.integration.upsert({
     where: {
       organizationId_slug: { organizationId, slug: GOOGLE_ADS_SLUG },
     },
@@ -89,6 +126,17 @@ export async function exchangeGoogleAdsCode(code: string, state: string): Promis
       lastSyncAt: new Date(),
     },
   });
+
+  const sync = await syncAccessibleGoogleAdsCustomers(row.id, organizationId);
+  if (!sync.ok && process.env.NODE_ENV !== "production") {
+    console.warn("[Google Ads] sync após OAuth:", sync.message);
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    console.info(
+      `[Google Ads OAuth] org=${organizationId} integration=${row.id} email=${google_user_email ?? "?"} refresh=${refresh_token ? "sim" : "NÃO"} synced=${sync.ok ? sync.count : "fail"}`
+    );
+  }
 
   return organizationId;
 }
@@ -186,15 +234,46 @@ export async function listIntegrations(organizationId: string) {
     where: { organizationId },
     orderBy: { createdAt: "asc" },
   });
-  return list.map((i) => ({
-    id: i.id,
-    platform: i.platform,
-    slug: i.slug,
-    status: i.status,
-    clientAccountId: i.clientAccountId,
-    lastSyncAt: i.lastSyncAt?.toISOString() ?? null,
-    createdAt: i.createdAt.toISOString(),
-  }));
+  const googleIds = list.filter((i) => i.slug === GOOGLE_ADS_SLUG && i.status === "connected").map((i) => i.id);
+  const [accCounts, asnCounts] = await Promise.all([
+    googleIds.length
+      ? prisma.googleAdsAccessibleCustomer.groupBy({
+          by: ["integrationId"],
+          where: { integrationId: { in: googleIds } },
+          _count: { id: true },
+        })
+      : Promise.resolve([]),
+    googleIds.length
+      ? prisma.googleAdsCustomerAssignment.groupBy({
+          by: ["integrationId"],
+          where: { integrationId: { in: googleIds } },
+          _count: { id: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const accMap = new Map(accCounts.map((g) => [g.integrationId, g._count.id]));
+  const asnMap = new Map(asnCounts.map((g) => [g.integrationId, g._count.id]));
+
+  return list.map((i) => {
+    const base = {
+      id: i.id,
+      platform: i.platform,
+      slug: i.slug,
+      status: i.status,
+      clientAccountId: i.clientAccountId,
+      lastSyncAt: i.lastSyncAt?.toISOString() ?? null,
+      createdAt: i.createdAt.toISOString(),
+    };
+    if (i.slug !== GOOGLE_ADS_SLUG) return base;
+    const parsed = i.config ? parseGoogleAdsConfig(i.config) : null;
+    return {
+      ...base,
+      googleUserEmail: parsed?.google_user_email ?? null,
+      googleAdsAccessibleCount: accMap.get(i.id) ?? 0,
+      googleAdsAssignmentCount: asnMap.get(i.id) ?? 0,
+      googleAdsDefaultCustomerId: parsed?.default_google_customer_id ?? null,
+    };
+  });
 }
 
 export async function updateIntegrationClientAccount(
@@ -225,9 +304,13 @@ export async function disconnectIntegration(integrationId: string, organizationI
     where: { id: integrationId, organizationId },
   });
   if (!integration) return false;
-  await prisma.integration.update({
-    where: { id: integrationId },
-    data: { status: "disconnected", config: null },
-  });
+  await prisma.$transaction([
+    prisma.googleAdsCustomerAssignment.deleteMany({ where: { integrationId } }),
+    prisma.googleAdsAccessibleCustomer.deleteMany({ where: { integrationId } }),
+    prisma.integration.update({
+      where: { id: integrationId },
+      data: { status: "disconnected", config: null },
+    }),
+  ]);
   return true;
 }

@@ -130,6 +130,7 @@ model Organization {
   matrixGrantsAsMatrix   MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantMatrix")
   matrixGrantsAsWorkspace MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantWorkspace")
   assetAccessGrants      AssetAccessGrant[]
+  googleAdsCustomerAssignments GoogleAdsCustomerAssignment[]
 
   @@index([parentOrganizationId])
   @@index([organizationKind])
@@ -419,6 +420,7 @@ model ClientAccount {
 
   projects Project[]
   integrations Integration[]
+  googleAdsCustomerAssignments GoogleAdsCustomerAssignment[]
 
   @@index([organizationId])
 }
@@ -476,6 +478,46 @@ model Integration {
   @@index([organizationId])
   @@index([organizationId, slug])
   @@index([clientAccountId])
+
+  googleAdsAccessibleCustomers GoogleAdsAccessibleCustomer[]
+  googleAdsCustomerAssignments GoogleAdsCustomerAssignment[]
+}
+
+/// Contas Google Ads devolvidas por ListAccessibleCustomers + metadados (por integração OAuth).
+model GoogleAdsAccessibleCustomer {
+  id                String   @id @default(cuid())
+  integrationId     String
+  integration       Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  customerId        String
+  descriptiveName   String?
+  currencyCode      String?
+  isManager         Boolean  @default(false)
+  /// Conta MCC usada como login-customer-id para consultar este customer (filho).
+  managerCustomerId String?
+  status            String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([integrationId, customerId])
+  @@index([integrationId])
+}
+
+/// Vínculo explícito: cliente comercial → customer Google Ads (sob uma integração OAuth).
+model GoogleAdsCustomerAssignment {
+  id               String   @id @default(cuid())
+  integrationId    String
+  integration      Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientAccountId  String
+  clientAccount    ClientAccount @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+  googleCustomerId String
+  loginCustomerId  String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([integrationId, clientAccountId])
+  @@index([organizationId])
 }
 
 model Dashboard {

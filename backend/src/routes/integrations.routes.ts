@@ -11,6 +11,24 @@ router.get("/", ...authCtx, integrations.listHandler);
 router.patch("/:id/client", ...authCtx, integrations.patchIntegrationClientHandler);
 router.delete("/:id", ...authCtx, integrations.disconnectHandler);
 
+router.get("/google-ads/setup", ...authCtx, integrations.getGoogleAdsSetupHandler);
+router.post("/google-ads/sync-accessible", ...authCtx, integrations.postGoogleAdsSyncAccessibleHandler);
+router.patch(
+  "/google-ads/:integrationId/default-customer",
+  ...authCtx,
+  integrations.patchGoogleAdsDefaultCustomerHandler
+);
+router.put(
+  "/google-ads/:integrationId/assignments/:clientAccountId",
+  ...authCtx,
+  integrations.putGoogleAdsClientAssignmentHandler
+);
+router.delete(
+  "/google-ads/:integrationId/assignments/:clientAccountId",
+  ...authCtx,
+  integrations.deleteGoogleAdsClientAssignmentHandler
+);
+
 router.get("/google-ads/auth-url", ...authCtx, integrations.getGoogleAdsAuthUrlHandler);
 router.get("/google-ads/callback", integrations.googleAdsCallbackHandler);
 

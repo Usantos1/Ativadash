@@ -9,10 +9,25 @@ import {
   disconnectIntegration,
   updateIntegrationClientAccount,
 } from "../services/integrations.service.js";
+import {
+  getGoogleAdsSetup,
+  syncGoogleAdsAccessibleForOrganization,
+  setDefaultGoogleAdsCustomer,
+  upsertGoogleAdsClientAssignment,
+  deleteGoogleAdsClientAssignment,
+} from "../services/google-ads-accounts.service.js";
 import { env } from "../config/env.js";
 
 const patchIntegrationClientSchema = z.object({
   clientAccountId: z.string().min(1).nullable().optional(),
+});
+
+const patchGoogleAdsDefaultSchema = z.object({
+  customerId: z.union([z.string().min(1), z.null()]),
+});
+
+const putGoogleAdsAssignmentSchema = z.object({
+  googleCustomerId: z.string().min(1),
 });
 
 type AuthRequest = Request & { user: { organizationId: string } };
@@ -145,6 +160,104 @@ export async function disconnectHandler(req: Request, res: Response) {
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: "Erro ao desvincular" });
+  }
+}
+
+export async function getGoogleAdsSetupHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  if (!user?.organizationId) {
+    return res.status(401).json({ message: "Não autorizado" });
+  }
+  try {
+    const setup = await getGoogleAdsSetup(user.organizationId);
+    if (!setup) {
+      return res.status(404).json({ message: "Google Ads não conectado." });
+    }
+    return res.json(setup);
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao carregar contas Google Ads." });
+  }
+}
+
+export async function postGoogleAdsSyncAccessibleHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  if (!user?.organizationId) {
+    return res.status(401).json({ message: "Não autorizado" });
+  }
+  try {
+    const r = await syncGoogleAdsAccessibleForOrganization(user.organizationId);
+    if (!r.ok) {
+      return res.status(400).json({ message: r.message });
+    }
+    return res.json({ ok: true, count: r.count });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao sincronizar contas acessíveis." });
+  }
+}
+
+export async function patchGoogleAdsDefaultCustomerHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const { integrationId } = req.params;
+  if (!user?.organizationId || !integrationId) {
+    return res.status(400).json({ message: "Dados inválidos" });
+  }
+  const parsed = patchGoogleAdsDefaultSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Dados inválidos" });
+  }
+  try {
+    const r = await setDefaultGoogleAdsCustomer(integrationId, user.organizationId, parsed.data.customerId);
+    if (!r.ok) {
+      return res.status(400).json({ message: r.message });
+    }
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao definir conta padrão." });
+  }
+}
+
+export async function putGoogleAdsClientAssignmentHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const { integrationId, clientAccountId } = req.params;
+  if (!user?.organizationId || !integrationId || !clientAccountId) {
+    return res.status(400).json({ message: "Dados inválidos" });
+  }
+  const parsed = putGoogleAdsAssignmentSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Dados inválidos" });
+  }
+  try {
+    const r = await upsertGoogleAdsClientAssignment(
+      integrationId,
+      user.organizationId,
+      clientAccountId,
+      parsed.data.googleCustomerId
+    );
+    if (!r.ok) {
+      return res.status(400).json({ message: r.message });
+    }
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao vincular conta ao cliente." });
+  }
+}
+
+export async function deleteGoogleAdsClientAssignmentHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const { integrationId, clientAccountId } = req.params;
+  if (!user?.organizationId || !integrationId || !clientAccountId) {
+    return res.status(400).json({ message: "Dados inválidos" });
+  }
+  try {
+    await deleteGoogleAdsClientAssignment(integrationId, user.organizationId, clientAccountId);
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao remover vínculo." });
   }
 }
 

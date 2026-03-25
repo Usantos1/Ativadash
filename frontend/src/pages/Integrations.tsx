@@ -16,6 +16,7 @@ import {
   patchIntegrationClientAccount,
   type IntegrationFromApi,
 } from "@/lib/integrations-api";
+import { GoogleAdsAccountsDialog } from "@/components/integrations/GoogleAdsAccountsDialog";
 import { fetchClients, type ClientAccount } from "@/lib/workspace-api";
 import {
   fetchMarketingSettings,
@@ -609,6 +610,8 @@ export function Integrations() {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [sessionEvents, setSessionEvents] = useState<{ t: number; kind: "ok" | "err"; text: string }[]>([]);
   const [clients, setClients] = useState<ClientAccount[]>([]);
+  const [googleAdsAccountsOpen, setGoogleAdsAccountsOpen] = useState(false);
+  const [googleAdsAccountsIntegrationId, setGoogleAdsAccountsIntegrationId] = useState<string | null>(null);
 
   const refetchIntegrations = useCallback(async () => {
     try {
@@ -647,7 +650,10 @@ export function Integrations() {
     const connected = searchParams.get("connected");
     const error = searchParams.get("error");
     if (connected === "google-ads") {
-      setMessage({ type: "success", text: "Google Ads conectado com sucesso." });
+      setMessage({
+        type: "success",
+        text: "Google Ads conectado. Abra Ver contas no card para escolher a conta padrão e vincular cada conta ao cliente.",
+      });
       setSearchParams((p) => {
         p.delete("connected");
         p.delete("error");
@@ -766,28 +772,84 @@ export function Integrations() {
         : def.slug === "meta" && !connected && !connectingState
           ? handleConnectMetaAds
           : undefined;
-    const clientFooter =
+    const googleMetaFooter =
       connected && connectedId && (def.slug === "google-ads" || def.slug === "meta") ? (
-        <label className="flex flex-col gap-1.5 font-medium text-foreground">
-          <span className="text-muted-foreground">Cliente comercial vinculado</span>
-          <select
-            aria-label="Cliente comercial vinculado ? integra??o"
-            className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground"
-            value={connected.clientAccountId ?? ""}
-            onChange={(ev) => {
-              const v = ev.target.value;
-              void handleClientLink(connectedId, v === "" ? null : v);
-            }}
-          >
-            <option value="">Nenhum</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1.5 font-medium text-foreground">
+            <span className="text-muted-foreground">Contexto comercial (workspace)</span>
+            <select
+              aria-label="Cliente comercial vinculado integração"
+              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground"
+              value={connected.clientAccountId ?? ""}
+              onChange={(ev) => {
+                const v = ev.target.value;
+                void handleClientLink(connectedId, v === "" ? null : v);
+              }}
+            >
+              <option value="">Nenhum — visão da organização</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <span className="text-[11px] font-normal text-muted-foreground">
+              Com um cliente selecionado, o painel de marketing usa a conta Google Ads vinculada a esse cliente (em
+              Integrações → Ver contas). Sem cliente, usa a conta padrão da organização.
+            </span>
+          </label>
+          {def.slug === "google-ads" ? (
+            <div className="rounded-lg border border-border/50 bg-muted/15 px-3 py-2 text-xs">
+              <p className="text-muted-foreground">
+                Conta Google:{" "}
+                <span className="font-medium text-foreground">{connected.googleUserEmail ?? "—"}</span>
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                Contas Ads acessíveis:{" "}
+                <strong className="text-foreground">{connected.googleAdsAccessibleCount ?? 0}</strong>
+                {" · "}
+                Vinculadas a clientes:{" "}
+                <strong className="text-foreground">{connected.googleAdsAssignmentCount ?? 0}</strong>
+              </p>
+              {connected.googleAdsDefaultCustomerId ? (
+                <p className="mt-1 font-mono text-[11px] text-foreground/90">
+                  Padrão org.: {connected.googleAdsDefaultCustomerId}
+                </p>
+              ) : (
+                <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-200">
+                  Defina uma conta padrão em Ver contas para o painel Ads funcionar sem cliente no contexto.
+                </p>
+              )}
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="h-8"
+                  onClick={() => {
+                    setGoogleAdsAccountsIntegrationId(connectedId);
+                    setGoogleAdsAccountsOpen(true);
+                  }}
+                >
+                  Ver contas
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8"
+                  disabled={connectingState}
+                  onClick={() => void handleConnectGoogleAds()}
+                >
+                  Reconectar
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
       ) : undefined;
+
+    const clientFooter = googleMetaFooter;
 
     const clientName = connected?.clientAccountId
       ? (clients.find((c) => c.id === connected.clientAccountId)?.name ?? null)
@@ -846,6 +908,18 @@ export function Integrations() {
 
   return (
     <div className="min-w-0 max-w-full space-y-6">
+      {googleAdsAccountsIntegrationId ? (
+        <GoogleAdsAccountsDialog
+          open={googleAdsAccountsOpen}
+          onOpenChange={(o) => {
+            setGoogleAdsAccountsOpen(o);
+            if (!o) setGoogleAdsAccountsIntegrationId(null);
+          }}
+          integrationId={googleAdsAccountsIntegrationId}
+          clients={clients}
+          onUpdated={() => void refetchIntegrations()}
+        />
+      ) : null}
       <AnalyticsPageHeader
         eyebrow={IX.eyebrowConexoes}
         title={IX.pageTitle}
@@ -959,6 +1033,18 @@ export function Integrations() {
                             {connected && row.platform ? (
                               <p className="mt-1 text-[11px] text-muted-foreground">
                                 Conta na API: <span className="font-medium text-foreground/80">{row.platform}</span>
+                              </p>
+                            ) : null}
+                            {connected && slug === "google-ads" ? (
+                              <p className="mt-1 text-[11px] text-muted-foreground">
+                                {row.googleUserEmail ? (
+                                  <>
+                                    Google: <span className="font-medium text-foreground/85">{row.googleUserEmail}</span>
+                                    {" · "}
+                                  </>
+                                ) : null}
+                                Ads acessíveis: {row.googleAdsAccessibleCount ?? 0} · Vínculos:{" "}
+                                {row.googleAdsAssignmentCount ?? 0}
                               </p>
                             ) : null}
                           </div>
