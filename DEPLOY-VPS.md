@@ -264,10 +264,13 @@ server {
 
     location ^~ /assets/ {
         add_header Cache-Control "public, max-age=31536000, immutable" always;
-        try_files $uri =404;
+        access_log off;
     }
 
+    # Precisa servir o ficheiro (alias); só add_header pode causar 500 no try_files → /index.html
     location = /index.html {
+        alias /ativadash/frontend/dist/index.html;
+        default_type text/html;
         add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" always;
         add_header Pragma "no-cache" always;
     }
@@ -423,7 +426,7 @@ Exemplo de config mínima versionada no repositório: `deploy/nginx-app-spa.exam
 
 ### Ainda parece “cache” após deploy
 
-1. **Nginx:** o `index.html` não pode ir com `Cache-Control` longo. Use os blocos `location = /index.html` e `location ^~ /assets/` do exemplo acima no **HTTP e no HTTPS** (após o Certbot, o bloco `443` costuma ser outro — edite os dois).
+1. **Nginx:** o `index.html` não pode ir com `Cache-Control` longo. Use os blocos `location = /index.html` (com **`alias`** para o ficheiro, como no exemplo) e `location ^~ /assets/` no **HTTP e no HTTPS**. Sem `alias`/`root` no bloco do `index.html`, é comum **500** nas rotas da SPA.
 2. **Cloudflare** (se `app.ativadash.com` estiver “laranja”): **Caching → Purge Cache → Purge Everything** (ou purge só em `https://app.ativadash.com/` e `.../index.html`). Opcional: *Page Rule* ou *Cache Rule* com **Cache Level: Bypass** para `app.ativadash.com/index.html` (ou para o path `/`).
 3. **Navegador:** teste em aba anônima ou **Ctrl+Shift+R** (recarregar forçado). No DevTools → *Network*, marque **Disable cache** enquanto valida o deploy.
 
