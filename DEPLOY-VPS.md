@@ -261,11 +261,24 @@ server {
     charset utf-8;
     root /ativadash/frontend/dist;
     index index.html;
+
+    location ^~ /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files $uri =404;
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" always;
+        add_header Pragma "no-cache" always;
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
     }
 }
 ```
+
+**Importante (cache):** sem os blocos `index.html` e `/assets/`, o navegador pode guardar o `index.html` antigo e você continua vendo o bundle velho após o deploy. Depois do Certbot, copie os **mesmos** `location` para o bloco `listen 443 ssl` do app. Referência completa: `deploy/nginx-app-spa.example.conf`.
 
 Salve. Ativar os sites e testar o Nginx:
 
@@ -407,6 +420,12 @@ test -f "$ROOT/index.html" && echo "OK: index.html existe" || echo "FALTA index.
 ```
 
 Exemplo de config mínima versionada no repositório: `deploy/nginx-app-spa.example.conf`.
+
+### Ainda parece “cache” após deploy
+
+1. **Nginx:** o `index.html` não pode ir com `Cache-Control` longo. Use os blocos `location = /index.html` e `location ^~ /assets/` do exemplo acima no **HTTP e no HTTPS** (após o Certbot, o bloco `443` costuma ser outro — edite os dois).
+2. **Cloudflare** (se `app.ativadash.com` estiver “laranja”): **Caching → Purge Cache → Purge Everything** (ou purge só em `https://app.ativadash.com/` e `.../index.html`). Opcional: *Page Rule* ou *Cache Rule* com **Cache Level: Bypass** para `app.ativadash.com/index.html` (ou para o path `/`).
+3. **Navegador:** teste em aba anônima ou **Ctrl+Shift+R** (recarregar forçado). No DevTools → *Network*, marque **Disable cache** enquanto valida o deploy.
 
 ---
 
