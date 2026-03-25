@@ -1,75 +1,135 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { differenceInDays, parseISO } from "date-fns";
 import {
-  ArrowRight,
   BarChart3,
   CalendarRange,
-  DollarSign,
-  Eye,
-  MousePointer,
+  Loader2,
   RefreshCw,
   Share2,
-  ShoppingBag,
-  Target,
-  TrendingUp,
-  UserPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/ui/empty-state";
 import { IndeterminateLoadingBar } from "@/components/ui/indeterminate-loading-bar";
 import { ScrollRegion } from "@/components/ui/scroll-region";
 import { MarketingDateRangeDialog } from "@/components/marketing/MarketingDateRangeDialog";
 import { CaptureTrendComposedChart } from "@/components/marketing/CaptureTrendComposedChart";
-import { CaptureDualDonuts } from "@/components/marketing/CaptureDualDonuts";
-import { RevenueDetailModal } from "@/components/marketing/RevenueDetailModal";
-import { AnalyticsSection } from "@/components/analytics/AnalyticsSection";
-import { PageHeaderPremium, KpiCardPremium, DataTablePremium, StatusBadge } from "@/components/premium";
-import { formatCost, formatNumber, formatSpend } from "@/lib/metrics-format";
+import {
+  CockpitSectionTitle,
+  MarketingChannelPanel,
+  MarketingChannelPanelSales,
+  MarketingFunnelStrip,
+  type FunnelStripStep,
+} from "@/components/marketing/MarketingCockpit";
+import { MarketingCampaignsOsTable } from "@/components/marketing/MarketingCampaignsOsTable";
+import { PageHeaderPremium, KpiCardPremium, DataTablePremium, StatusBadge, AnalyticsSection } from "@/components/premium";
+import { formatNumber, formatSpend } from "@/lib/metrics-format";
 import { cn } from "@/lib/utils";
 import { useMarketingFilteredAggregates } from "@/hooks/useMarketingFilteredAggregates";
-import { enrichCampaignsWithGrades, inferPseudoUtmCampaign } from "@/lib/marketing-capture-aggregate";
+import { buildCombinedCampaignOsRows } from "@/lib/ads-os-rows";
+import { deriveChannelPerformanceSignals } from "@/lib/channel-performance-compare";
+import {
+  defaultMarketingGoalContext,
+  goalContextFromSettingsDto,
+} from "@/lib/business-goal-mode";
+import { chartLeadExtrema, deriveAccountHealth } from "@/lib/marketing-strategic-insights";
+import { useAuthStore } from "@/stores/auth-store";
+import { fetchOrganizationContext, type OrganizationContext } from "@/lib/organization-api";
+import {
+  patchMarketingGoogleCampaignStatus,
+  patchMarketingMetaCampaignBudget,
+  patchMarketingMetaCampaignStatus,
+} from "@/lib/marketing-contract-api";
+import { canUserMutateMarketingAds } from "@/lib/marketing-ads-permissions";
 
 export type FunnelVariant = "captacao" | "conversao" | "receita";
 
-const VARIANT_EYEBROW: Record<FunnelVariant, string> = {
-  captacao: "ADS · topo",
-  conversao: "ADS · meio",
-  receita: "ADS · fundo",
+type CampAgg = {
+  channel: "Meta" | "Google";
+  name: string;
+  spend: number;
+  impr: number;
+  clicks: number;
+  leads: number;
+  revenue: number;
+  ctr: number;
+  cpc: number;
+  cpl: number | null;
+  convPct: number;
+  roas: number | null;
 };
 
-const VARIANT_COPY: Record<
-  FunnelVariant,
-  { title: string; subtitle: string; emptyHint: string }
-> = {
-  captacao: {
-    title: "Captação",
-    subtitle: "Topo do funil — tráfego e custo de clique.",
-    emptyHint: "Conecte as integrações para ver aquisição.",
-  },
-  conversao: {
-    title: "Conversão",
-    subtitle: "Meio do funil — lead, CPL e gargalos.",
-    emptyHint: "Conecte as integrações para ver conversão.",
-  },
-  receita: {
-    title: "Receita",
-    subtitle: "Fundo do funil — ROAS e monetização.",
-    emptyHint: "Conecte as integrações para ver receita.",
-  },
+const VARIANT_META: Record<FunnelVariant, { eyebrow: string; title: string; subtitle: string }> = {
+  captacao: { eyebrow: "ADS", title: "Captação", subtitle: "Eficiência de tráfego." },
+  conversao: { eyebrow: "ADS", title: "Conversão", subtitle: "Eficiência de conversão." },
+  receita: { eyebrow: "ADS", title: "Receita", subtitle: "Monetização." },
 };
 
-function relDelta(current: number, prev: number, compareEnabled: boolean): { pct: number } | undefined {
-  if (!compareEnabled || prev <= 0 || !Number.isFinite(current) || !Number.isFinite(prev)) return undefined;
-  return { pct: ((current - prev) / prev) * 100 };
+function trafficChannelStatus(
+  a: number | null,
+  b: number | null
+): { first: "good" | "mid" | "bad"; second: "good" | "mid" | "bad" } {
+  if (a == null || b == null || !Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) {
+    return { first: "mid", second: "mid" };
+  }
+  const rel = Math.abs(a - b) / Math.max(a, b);
+  if (rel < 0.05) return { first: "mid", second: "mid" };
+  return a < b ? { first: "good", second: "bad" } : { first: "bad", second: "good" };
 }
 
-function ScrollTable({
-  minWidth,
-  children,
-}: {
-  minWidth: string;
-  children: ReactNode;
+function ChannelTrafficPanel(props: {
+  name: "Meta" | "Google";
+  status: "good" | "mid" | "bad";
+  spend: number;
+  clicks: number;
+  ctr: number | null;
+  cpc: number | null;
+  mixPct: number | null;
 }) {
+  const { name, status, spend, clicks, ctr, cpc, mixPct } = props;
+  const ring =
+    status === "good"
+      ? "ring-2 ring-emerald-500/40"
+      : status === "bad"
+        ? "ring-2 ring-rose-500/45"
+        : "ring-2 ring-amber-500/35";
+  return (
+    <div className={cn("rounded-2xl border border-border/60 bg-card/80 p-4 backdrop-blur-sm", ring)}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-black uppercase tracking-[0.15em] text-foreground">{name}</p>
+        <span
+          className={cn(
+            "h-2 w-2 rounded-full",
+            status === "good" ? "bg-emerald-500" : status === "bad" ? "bg-rose-500" : "bg-amber-500"
+          )}
+        />
+      </div>
+      <p className="mt-3 text-3xl font-black tabular-nums text-foreground">{formatNumber(Math.round(clicks))}</p>
+      <p className="text-[10px] font-semibold uppercase text-muted-foreground">cliques</p>
+      <div className="mt-3 flex items-end justify-between gap-2 border-t border-border/40 pt-3">
+        <div>
+          <p className="text-[10px] font-bold text-muted-foreground">CPC</p>
+          <p className="text-lg font-bold tabular-nums">{cpc != null && Number.isFinite(cpc) ? formatSpend(cpc) : "—"}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] font-bold text-muted-foreground">Gasto</p>
+          <p className="text-lg font-bold tabular-nums">{formatSpend(spend)}</p>
+          {mixPct != null ? (
+            <p className="text-[10px] font-semibold tabular-nums text-muted-foreground">{mixPct.toFixed(0)}% mix</p>
+          ) : null}
+          <p className="text-[10px] font-semibold tabular-nums text-muted-foreground">
+            CTR {ctr != null ? `${ctr.toFixed(2)}%` : "—"}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScrollTable({ minWidth, children }: { minWidth: string; children: ReactNode }) {
   return (
     <ScrollRegion className="scrollbar-thin">
       <DataTablePremium zebra className={cn("text-[13px]", minWidth)}>
@@ -79,14 +139,24 @@ function ScrollTable({
   );
 }
 
+function RankBlock({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border/50 bg-card/40 shadow-[var(--shadow-surface-sm)]">
+      <p className="border-b border-border/40 bg-muted/20 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+        {title}
+      </p>
+      <div className="p-2">{children}</div>
+    </div>
+  );
+}
+
 export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
   const navigate = useNavigate();
-  const vc = VARIANT_COPY[variant];
+  const vm = VARIANT_META[variant];
   const {
     dateRange,
     dateRangeLabel,
     presetId,
-    compareEnabled,
     pickerOpen,
     setPickerOpen,
     applyDateFilter,
@@ -104,43 +174,379 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
     filteredSpend,
     mergedChartData,
     leadsReais,
-    prevFilteredSpend,
-    prevLeadsReais,
-    prevAttributedRevenue,
     attributedRevenue,
     impressionsT,
     clicksT,
     ctrT,
     cpcT,
-    cpmT,
     cplLeads,
-    unifiedCampaignRows,
-    mqlNumerator,
-    grades,
-    hotCold,
-    googleOnlyHotCold,
-    metaOnlyHotCold,
-    dataHealthy,
-    loadingAny,
     googleCampaignsFiltered,
     metaCampaignsFiltered,
+    dataHealthy,
+    loadingAny,
   } = useMarketingFilteredAggregates();
 
+  const user = useAuthStore((s) => s.user);
+  const memberships = useAuthStore((s) => s.memberships);
+  const [orgCtx, setOrgCtx] = useState<OrganizationContext | null>(null);
   const [shareHint, setShareHint] = useState<string | null>(null);
+  const [adsActionHint, setAdsActionHint] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
+  const [mutatingAdsKey, setMutatingAdsKey] = useState<string | null>(null);
+  const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
+  const [budgetTarget, setBudgetTarget] = useState<{ id: string; name: string } | null>(null);
+  const [budgetInput, setBudgetInput] = useState("");
+  const [budgetSaving, setBudgetSaving] = useState(false);
 
-  const leadResultLabel = settings?.primaryConversionLabel?.trim() || "Leads";
+  const membershipRole = useMemo(() => {
+    if (!user?.organizationId) return null;
+    return memberships?.find((m) => m.organizationId === user.organizationId)?.role ?? null;
+  }, [user?.organizationId, memberships]);
+  const canMutateAds = canUserMutateMarketingAds(membershipRole);
+  const planAllowsCampaignWrite = orgCtx?.enabledFeatures?.campaignWrite !== false;
+  const canMutateCampaigns = canMutateAds && planAllowsCampaignWrite;
 
-  const dataSourceLabel =
-    hasMeta && hasGoogle ? "Meta + Google" : hasMeta ? "Meta" : hasGoogle ? "Google" : "—";
+  useEffect(() => {
+    let c = false;
+    fetchOrganizationContext()
+      .then((ctx) => {
+        if (!c) setOrgCtx(ctx);
+      })
+      .catch(() => {
+        if (!c) setOrgCtx(null);
+      });
+    return () => {
+      c = true;
+    };
+  }, []);
 
-  const revenueLeadSecondary =
-    variant === "receita" &&
-    settings?.businessGoalMode === "LEADS" &&
-    !settings?.showRevenueBlocksInLeadMode;
+  const goalCtx = useMemo(() => {
+    if (!settings) return defaultMarketingGoalContext();
+    return goalContextFromSettingsDto(settings);
+  }, [settings]);
+  const goalMode = goalCtx.businessGoalMode;
 
-  const hasData = metrics?.ok || metaMetrics?.ok;
-  const loadingBlock =
-    (hasGoogle && metricsLoading && !metrics) || (hasMeta && metaMetricsLoading && !metaMetrics);
+  const periodDays = useMemo(() => {
+    const a = parseISO(dateRange.startDate);
+    const b = parseISO(dateRange.endDate);
+    return Math.max(1, differenceInDays(b, a) + 1);
+  }, [dateRange.startDate, dateRange.endDate]);
+
+  const googleSpendAgg = aggG.costMicros / 1_000_000;
+  const metaLeadishAgg = aggM.leads + aggM.messagingConversationsStarted;
+  const metaCplChannel =
+    aggM.spend > 0 && metaLeadishAgg > 0 ? aggM.spend / metaLeadishAgg : null;
+  const metaRoasChannel =
+    aggM.spend > 0 && aggM.purchaseValue > 0 ? aggM.purchaseValue / aggM.spend : null;
+  const googleCplChannel =
+    googleSpendAgg > 0 && aggG.conversions > 0 ? googleSpendAgg / aggG.conversions : null;
+  const googleRoasChannel =
+    googleSpendAgg > 0 && (aggG.conversionsValue ?? 0) > 0
+      ? (aggG.conversionsValue ?? 0) / googleSpendAgg
+      : null;
+
+  const metaCtr = aggM.impressions > 0 ? (aggM.clicks / aggM.impressions) * 100 : null;
+  const googleCtr = aggG.impressions > 0 ? (aggG.clicks / aggG.impressions) * 100 : null;
+  const metaCpcCh = aggM.clicks > 0 ? aggM.spend / aggM.clicks : null;
+  const googleCpcCh = aggG.clicks > 0 ? googleSpendAgg / aggG.clicks : null;
+
+  const trafficSig = useMemo(() => trafficChannelStatus(metaCpcCh, googleCpcCh), [metaCpcCh, googleCpcCh]);
+
+  const channelSignals = useMemo(() => {
+    if (!hasMeta || !hasGoogle) return null;
+    return deriveChannelPerformanceSignals(
+      goalMode,
+      {
+        cpl: metaCplChannel,
+        costPerPurchase:
+          aggM.purchases > 0 && aggM.spend > 0 ? aggM.spend / aggM.purchases : null,
+        roas: metaRoasChannel,
+      },
+      { costPerConv: googleCplChannel, roas: googleRoasChannel }
+    );
+  }, [
+    hasMeta,
+    hasGoogle,
+    goalMode,
+    metaCplChannel,
+    googleCplChannel,
+    metaRoasChannel,
+    googleRoasChannel,
+    aggM.purchases,
+    aggM.spend,
+  ]);
+
+  const roasBlend =
+    filteredSpend > 0 && attributedRevenue > 0 ? attributedRevenue / filteredSpend : null;
+  const cpaTrafego = leadsReais > 0 ? filteredSpend / leadsReais : 0;
+  const totalPurchases = aggM.purchases + aggG.conversions;
+  const ticketMedio =
+    totalPurchases > 0 && attributedRevenue > 0 ? attributedRevenue / totalPurchases : null;
+  const cpaCompra =
+    totalPurchases > 0 && filteredSpend > 0 ? filteredSpend / totalPurchases : null;
+  const convRatePct = clicksT > 0 ? (leadsReais / clicksT) * 100 : null;
+
+  const accountHealth = useMemo(
+    () =>
+      deriveAccountHealth({
+        mode: goalMode,
+        filteredSpend,
+        leadsReais,
+        roasBlend,
+        blendCpl: cpaTrafego,
+        ctrT,
+        targetCpa: settings?.targetCpaBrl ?? null,
+        maxCpa: settings?.maxCpaBrl ?? null,
+        targetRoas: settings?.targetRoas ?? null,
+      }),
+    [
+      goalMode,
+      filteredSpend,
+      leadsReais,
+      roasBlend,
+      cpaTrafego,
+      ctrT,
+      settings?.targetCpaBrl,
+      settings?.maxCpaBrl,
+      settings?.targetRoas,
+    ]
+  );
+
+  const healthLabel =
+    accountHealth === "healthy" ? "OK" : accountHealth === "attention" ? "Atenção" : "Crítico";
+
+  const campaignRows: CampAgg[] = useMemo(() => {
+    const out: CampAgg[] = [];
+    for (const r of metaCampaignsFiltered) {
+      const leads = r.leads + (r.messagingConversationsStarted ?? 0);
+      const impr = r.impressions;
+      const clicks = r.clicks;
+      const spend = r.spend;
+      const revenue = r.purchaseValue ?? 0;
+      out.push({
+        channel: "Meta",
+        name: r.campaignName,
+        spend,
+        impr,
+        clicks,
+        leads,
+        revenue,
+        ctr: impr > 0 ? (clicks / impr) * 100 : 0,
+        cpc: clicks > 0 ? spend / clicks : Number.POSITIVE_INFINITY,
+        cpl: leads > 0 ? spend / leads : null,
+        convPct: clicks > 0 ? (leads / clicks) * 100 : 0,
+        roas: spend > 0 && revenue > 0 ? revenue / spend : null,
+      });
+    }
+    for (const r of googleCampaignsFiltered) {
+      const spend = r.costMicros / 1_000_000;
+      const leads = r.conversions;
+      const impr = r.impressions;
+      const clicks = r.clicks;
+      const revenue = r.conversionsValue ?? 0;
+      out.push({
+        channel: "Google",
+        name: r.campaignName,
+        spend,
+        impr,
+        clicks,
+        leads,
+        revenue,
+        ctr: impr > 0 ? (clicks / impr) * 100 : 0,
+        cpc: clicks > 0 ? spend / clicks : Number.POSITIVE_INFINITY,
+        cpl: leads > 0 ? spend / leads : null,
+        convPct: clicks > 0 ? (leads / clicks) * 100 : 0,
+        roas: spend > 0 && revenue > 0 ? revenue / spend : null,
+      });
+    }
+    return out;
+  }, [metaCampaignsFiltered, googleCampaignsFiltered]);
+
+  const rankCtr = useMemo(
+    () =>
+      [...campaignRows]
+        .filter((r) => r.impr >= 300 && Number.isFinite(r.ctr))
+        .sort((a, b) => b.ctr - a.ctr)
+        .slice(0, 8),
+    [campaignRows]
+  );
+  const rankCpcGood = useMemo(
+    () =>
+      [...campaignRows]
+        .filter((r) => r.clicks >= 20 && Number.isFinite(r.cpc) && r.cpc < Number.POSITIVE_INFINITY)
+        .sort((a, b) => a.cpc - b.cpc)
+        .slice(0, 8),
+    [campaignRows]
+  );
+  const rankCpcBad = useMemo(
+    () =>
+      [...campaignRows]
+        .filter((r) => r.clicks >= 20 && Number.isFinite(r.cpc) && r.cpc < Number.POSITIVE_INFINITY)
+        .sort((a, b) => b.cpc - a.cpc)
+        .slice(0, 8),
+    [campaignRows]
+  );
+  const rankClickVol = useMemo(
+    () => [...campaignRows].filter((r) => r.clicks > 0).sort((a, b) => b.clicks - a.clicks).slice(0, 8),
+    [campaignRows]
+  );
+
+  const rankConv = useMemo(
+    () =>
+      [...campaignRows]
+        .filter((r) => r.clicks >= 30)
+        .sort((a, b) => b.convPct - a.convPct)
+        .slice(0, 8),
+    [campaignRows]
+  );
+  const rankCplWorst = useMemo(
+    () =>
+      [...campaignRows]
+        .filter((r) => r.leads > 0 && r.cpl != null)
+        .sort((a, b) => (b.cpl ?? 0) - (a.cpl ?? 0))
+        .slice(0, 8),
+    [campaignRows]
+  );
+  const rankClickWaste = useMemo(
+    () =>
+      [...campaignRows]
+        .filter((r) => r.leads === 0 && r.clicks >= 30)
+        .sort((a, b) => b.clicks - a.clicks)
+        .slice(0, 8),
+    [campaignRows]
+  );
+
+  const rankRevenue = useMemo(
+    () => [...campaignRows].filter((r) => r.revenue > 0).sort((a, b) => b.revenue - a.revenue).slice(0, 8),
+    [campaignRows]
+  );
+  const rankRoasWorst = useMemo(
+    () =>
+      [...campaignRows]
+        .filter((r) => r.spend > 0 && r.revenue > 0 && r.roas != null)
+        .sort((a, b) => (a.roas ?? 0) - (b.roas ?? 0))
+        .slice(0, 8),
+    [campaignRows]
+  );
+
+  const funnelStripSteps: FunnelStripStep[] = useMemo(() => {
+    const lpv = aggM.landingPageViews;
+    const lpvPerClick = clicksT > 0 ? (lpv / clicksT) * 100 : null;
+    const leadPerClick = clicksT > 0 ? (leadsReais / clicksT) * 100 : null;
+    return [
+      { key: "impr", title: "Impressões", volume: impressionsT, ratePct: null },
+      { key: "clk", title: "Cliques", volume: clicksT, ratePct: ctrT },
+      { key: "lpv", title: "LPV", volume: lpv, ratePct: lpvPerClick },
+      { key: "lead", title: "Leads", volume: leadsReais, ratePct: leadPerClick },
+    ];
+  }, [impressionsT, clicksT, ctrT, aggM.landingPageViews, leadsReais]);
+
+  const funnelWorstKey = useMemo(() => {
+    const lpv = aggM.landingPageViews;
+    const ctrS = ctrT == null ? 1 : ctrT >= 1 ? 3 : ctrT >= 0.5 ? 2 : 0;
+    const lpvS =
+      clicksT < 10 ? 2 : lpv / Math.max(1, clicksT) >= 0.28 ? 3 : lpv / Math.max(1, clicksT) >= 0.12 ? 2 : 0;
+    const leadS =
+      clicksT < 10
+        ? 2
+        : leadsReais / Math.max(1, clicksT) >= 0.04
+          ? 3
+          : leadsReais / Math.max(1, clicksT) >= 0.015
+            ? 2
+            : 0;
+    const ranked = [
+      { key: "clk" as const, s: ctrS },
+      { key: "lpv" as const, s: lpvS },
+      { key: "lead" as const, s: leadS },
+    ];
+    ranked.sort((a, b) => a.s - b.s);
+    return ranked[0].s < 2 ? ranked[0].key : null;
+  }, [ctrT, clicksT, aggM.landingPageViews, leadsReais]);
+
+  const chartDayInsights = useMemo(() => chartLeadExtrema(mergedChartData), [mergedChartData]);
+
+  const osRows = useMemo(
+    () => buildCombinedCampaignOsRows(metaCampaignsFiltered, googleCampaignsFiltered),
+    [metaCampaignsFiltered, googleCampaignsFiltered]
+  );
+
+  const runMetaStatus = useCallback(
+    async (id: string, status: "PAUSED" | "ACTIVE") => {
+      const key = `meta:${id}:${status}`;
+      setMutatingAdsKey(key);
+      setAdsActionHint(null);
+      try {
+        await patchMarketingMetaCampaignStatus(id, status);
+        setAdsActionHint({
+          tone: "ok",
+          text: status === "PAUSED" ? "Campanha Meta pausada." : "Campanha Meta ativada.",
+        });
+        refreshAll();
+      } catch (e) {
+        setAdsActionHint({
+          tone: "err",
+          text: e instanceof Error ? e.message : "Não foi possível alterar a campanha na Meta.",
+        });
+      } finally {
+        setMutatingAdsKey(null);
+      }
+    },
+    [refreshAll]
+  );
+
+  const runGoogleStatus = useCallback(
+    async (id: string, status: "ENABLED" | "PAUSED") => {
+      setMutatingAdsKey(`google:${id}:${status}`);
+      setAdsActionHint(null);
+      try {
+        await patchMarketingGoogleCampaignStatus(id, status);
+        setAdsActionHint({
+          tone: "ok",
+          text: status === "PAUSED" ? "Campanha Google pausada." : "Campanha Google ativada.",
+        });
+        refreshAll();
+      } catch (e) {
+        setAdsActionHint({
+          tone: "err",
+          text: e instanceof Error ? e.message : "Não foi possível alterar a campanha no Google.",
+        });
+      } finally {
+        setMutatingAdsKey(null);
+      }
+    },
+    [refreshAll]
+  );
+
+  const openBudgetDialog = useCallback((id: string, name: string) => {
+    setBudgetTarget({ id, name });
+    setBudgetInput("");
+    setBudgetDialogOpen(true);
+    setAdsActionHint(null);
+  }, []);
+
+  const submitMetaBudget = useCallback(async () => {
+    if (!budgetTarget) return;
+    const v = parseFloat(budgetInput.replace(",", "."));
+    if (!Number.isFinite(v) || v <= 0) {
+      setAdsActionHint({ tone: "err", text: "Informe um valor diário maior que zero." });
+      return;
+    }
+    setBudgetSaving(true);
+    setAdsActionHint(null);
+    try {
+      await patchMarketingMetaCampaignBudget(budgetTarget.id, v);
+      setAdsActionHint({ tone: "ok", text: "Orçamento diário da campanha Meta atualizado." });
+      setBudgetDialogOpen(false);
+      setBudgetTarget(null);
+      refreshAll();
+    } catch (e) {
+      setAdsActionHint({
+        tone: "err",
+        text: e instanceof Error ? e.message : "Não foi possível atualizar o orçamento.",
+      });
+    } finally {
+      setBudgetSaving(false);
+    }
+  }, [budgetTarget, budgetInput, refreshAll]);
 
   const handleShare = useCallback(async () => {
     try {
@@ -152,123 +558,31 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
     setTimeout(() => setShareHint(null), 2200);
   }, []);
 
-  const gradedCampaigns = useMemo(
-    () => enrichCampaignsWithGrades(googleCampaignsFiltered, metaCampaignsFiltered),
-    [googleCampaignsFiltered, metaCampaignsFiltered]
-  );
+  const hasData = metrics?.ok || metaMetrics?.ok;
+  const leadLabel = settings?.primaryConversionLabel?.trim() || "Leads";
 
-  const gradeSummary = useMemo(() => {
-    const b = {
-      A: { n: 0, spend: 0, leads: 0, sales: 0, revenue: 0 },
-      B: { n: 0, spend: 0, leads: 0, sales: 0, revenue: 0 },
-      C: { n: 0, spend: 0, leads: 0, sales: 0, revenue: 0 },
-      D: { n: 0, spend: 0, leads: 0, sales: 0, revenue: 0 },
-    };
-    for (const r of gradedCampaigns) {
-      const x = b[r.grade];
-      x.n += 1;
-      x.spend += r.spend;
-      x.leads += r.leads;
-      x.sales += r.sales;
-      x.revenue += r.revenue;
-    }
-    return b;
-  }, [gradedCampaigns]);
-
-  const utmRollup = useMemo(() => {
-    const m = new Map<string, { spend: number; leads: number; sales: number; revenue: number }>();
-    for (const r of unifiedCampaignRows) {
-      const k = inferPseudoUtmCampaign(r.campaignName);
-      const cur = m.get(k) ?? { spend: 0, leads: 0, sales: 0, revenue: 0 };
-      cur.spend += r.spend;
-      cur.leads += r.leads;
-      cur.sales += r.sales;
-      cur.revenue += r.revenue;
-      m.set(k, cur);
-    }
-    return [...m.entries()]
-      .map(([utm, v]) => ({ utm, ...v }))
-      .sort((a, b) => b.spend - a.spend);
-  }, [unifiedCampaignRows]);
-
-  const originRollup = useMemo(() => {
-    const gSpend = aggG.costMicros / 1_000_000;
-    const mSpend = aggM.spend;
-    return [
-      {
-        origem: "Google Ads",
-        spend: gSpend,
-        impr: aggG.impressions,
-        clk: aggG.clicks,
-        leads: aggG.conversions,
-        rev: aggG.conversionsValue,
-      },
-      {
-        origem: "Meta Ads",
-        spend: mSpend,
-        impr: aggM.impressions,
-        clk: aggM.clicks,
-        leads: aggM.leads,
-        rev: aggM.purchaseValue,
-      },
-    ].filter((o) => o.spend > 0 || o.impr > 0 || o.leads > 0);
-  }, [aggG, aggM]);
-
-  const deepFunnel = useMemo(() => {
-    const withValue = gradedCampaigns.filter((r) => r.revenue > 0 || r.sales > 0);
-    const topOnly = gradedCampaigns.filter((r) => !(r.revenue > 0 || r.sales > 0));
-    const sum = (rows: typeof gradedCampaigns) =>
-      rows.reduce(
-        (a, r) => ({
-          spend: a.spend + r.spend,
-          leads: a.leads + r.leads,
-          sales: a.sales + r.sales,
-        }),
-        { spend: 0, leads: 0, sales: 0 }
-      );
-    return { withValue, topOnly, deepAgg: sum(withValue), topAgg: sum(topOnly) };
-  }, [gradedCampaigns]);
-
-  const roas = filteredSpend > 0 && attributedRevenue > 0 ? attributedRevenue / filteredSpend : null;
-  const ticketMedio = aggM.purchases > 0 ? attributedRevenue / aggM.purchases : null;
-  const prevRoas =
-    prevFilteredSpend > 0 && prevAttributedRevenue > 0 ? prevAttributedRevenue / prevFilteredSpend : null;
-
-  const revenueModalRows = useMemo(() => {
-    const g = aggG.conversionsValue;
-    const m = aggM.purchaseValue;
-    const t = g + m;
-    if (t <= 0) return [];
-    const bump = m > 0 ? Math.min(m * 0.14, t * 0.22) : Math.min(g * 0.1, t * 0.15);
-    const principal = Math.max(0, t - bump);
-    return [
-      { label: "Oferta principal (est.)", valor: principal, percentual: (principal / t) * 100 },
-      { label: "Order bump / complementos (est.)", valor: bump, percentual: (bump / t) * 100 },
-      { label: "Google — valor de conversão", valor: g, percentual: (g / t) * 100 },
-      { label: "Meta — valor de compra", valor: m, percentual: (m / t) * 100 },
-    ];
-  }, [aggG.conversionsValue, aggM.purchaseValue]);
+  const kpiLoading = loadingAny && !hasData;
 
   return (
-    <div className="w-full space-y-6">
+    <div className="w-full space-y-5">
       <PageHeaderPremium
-        eyebrow={VARIANT_EYEBROW[variant]}
-        breadcrumbs={[{ label: "Painel ADS", href: "/marketing" }, { label: vc.title }]}
-        title={vc.title}
-        subtitle={vc.subtitle}
+        eyebrow={vm.eyebrow}
+        title={vm.title}
+        subtitle={vm.subtitle}
         meta={
           <>
             {lastUpdated ? (
               <span className="text-xs text-muted-foreground">
-                Sync{" "}
-                <span className="font-medium text-foreground">
-                  {lastUpdated.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
-                </span>
+                <span className="font-medium text-foreground">{dateRangeLabel}</span>
+                {" · "}
+                {lastUpdated.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
               </span>
-            ) : null}
+            ) : (
+              <span className="text-xs text-muted-foreground">{dateRangeLabel}</span>
+            )}
             {hasGoogle || hasMeta ? (
               <StatusBadge tone={dataHealthy && !loadingAny ? "healthy" : "alert"} dot>
-                {loadingAny ? "…" : dataHealthy ? "OK" : "Integrações"}
+                {loadingAny ? "…" : dataHealthy ? healthLabel : "Integrações"}
               </StatusBadge>
             ) : null}
           </>
@@ -276,7 +590,7 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
         actions={
           hasGoogle || hasMeta ? (
             <div className="flex flex-col gap-2 sm:items-end">
-              <div className="flex flex-wrap justify-end gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <Button
                   type="button"
                   variant="outline"
@@ -304,20 +618,11 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                   onClick={() => refreshAll()}
                 >
                   <RefreshCw
-                    className={cn(
-                      "mr-1.5 h-3.5 w-3.5",
-                      metricsLoading || metaMetricsLoading ? "animate-spin" : ""
-                    )}
+                    className={`mr-1.5 h-3.5 w-3.5 ${metricsLoading || metaMetricsLoading ? "animate-spin" : ""}`}
                   />
                   Atualizar
                 </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="h-9 rounded-lg shadow-sm"
-                  type="button"
-                  onClick={handleShare}
-                >
+                <Button size="sm" className="h-9 rounded-lg shadow-sm" variant="secondary" type="button" onClick={handleShare}>
                   <Share2 className="mr-1.5 h-3.5 w-3.5" />
                   Compartilhar
                 </Button>
@@ -331,724 +636,565 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
         }
       />
 
+      {adsActionHint ? (
+        <div
+          className={cn(
+            "rounded-xl border px-4 py-3 text-sm",
+            adsActionHint.tone === "ok"
+              ? "border-emerald-500/35 bg-emerald-500/[0.08] text-foreground"
+              : "border-destructive/40 bg-destructive/10 text-destructive"
+          )}
+          role="status"
+        >
+          {adsActionHint.text}
+        </div>
+      ) : null}
+
+      {canMutateAds && orgCtx != null && orgCtx.enabledFeatures.campaignWrite === false ? (
+        <div
+          className="rounded-xl border border-amber-500/35 bg-amber-500/[0.08] px-4 py-3 text-sm text-foreground"
+          role="status"
+        >
+          Plano sem edição de campanhas nas redes.
+        </div>
+      ) : null}
+
+      {(hasGoogle || hasMeta) && loadingAny && (
+        <div className="rounded-xl border border-primary/25 bg-primary/[0.07] px-4 py-3 shadow-[var(--shadow-surface-sm)]">
+          <IndeterminateLoadingBar label="Carregando métricas…" />
+        </div>
+      )}
+
       {!hasGoogle && !hasMeta ? (
         <EmptyState
           icon={BarChart3}
           title="Sem integrações"
-          description={vc.emptyHint}
-          actionLabel="Abrir integrações"
+          description="Conecte Google ou Meta nas Integrações."
+          actionLabel="Integrações"
           onAction={() => navigate("/marketing/integracoes")}
           className="min-h-[280px]"
         />
-      ) : loadingBlock ? (
-        <div className="rounded-xl border border-border/70 bg-card px-6 py-10">
-          <IndeterminateLoadingBar label="Carregando métricas…" />
-        </div>
-      ) : !hasData ? (
-        <div className="rounded-xl border border-border/70 bg-card p-6 text-sm text-muted-foreground">
-          Sem dados no período. Ajuste o intervalo ou revise{" "}
-          <Link to="/marketing" className="font-medium text-primary underline-offset-4 hover:underline">
-            Marketing
-          </Link>
-          .
-        </div>
-      ) : variant === "captacao" ? (
-        <div className="space-y-6">
-          <AnalyticsSection
-            eyebrow="Faixa executiva"
-            title="KPIs de tráfego e aquisição"
-            description="Consolidado filtrado · CPL usa leads totais (Google conversões + Meta leads)."
-            dense
-          >
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-              <KpiCardPremium
-                variant="primary"
-                label="Investimento"
-                value={formatSpend(filteredSpend)}
-                icon={DollarSign}
-                source={dataSourceLabel}
-                delta={relDelta(filteredSpend, prevFilteredSpend, compareEnabled)}
-              />
-              <KpiCardPremium
-                variant="primary"
-                label="Impressões"
-                value={formatNumber(impressionsT)}
-                icon={Eye}
-                source={dataSourceLabel}
-              />
-              <KpiCardPremium
-                variant="primary"
-                label="Cliques"
-                value={formatNumber(clicksT)}
-                icon={MousePointer}
-                source={dataSourceLabel}
-              />
-              <KpiCardPremium
-                variant="primary"
-                label="CPL"
-                value={cplLeads != null ? formatSpend(cplLeads) : "—"}
-                icon={DollarSign}
-                source={dataSourceLabel}
-                deltaInvert
-                hint="Investimento ÷ leads totais."
-              />
-              <KpiCardPremium
-                variant="compact"
-                label="Alcance (proxy)"
-                value={formatNumber(impressionsT)}
-                hint="Sem alcance único na API; impressões como proxy."
-                icon={Eye}
-                source={dataSourceLabel}
-              />
-              <KpiCardPremium
-                variant="compact"
-                label="CTR"
-                value={ctrT != null ? `${ctrT.toFixed(2)}%` : "—"}
-                icon={Target}
-                source={dataSourceLabel}
-              />
-              <KpiCardPremium
-                variant="compact"
-                label="CPC"
-                value={cpcT != null ? formatSpend(cpcT) : "—"}
-                icon={MousePointer}
-                source={dataSourceLabel}
-                deltaInvert
-              />
-              <KpiCardPremium
-                variant="compact"
-                label="CPM"
-                value={cpmT != null ? formatSpend(cpmT) : "—"}
-                icon={BarChart3}
-                source={dataSourceLabel}
-                deltaInvert
-              />
-            </div>
-          </AnalyticsSection>
-
-          <div className="grid gap-6 xl:grid-cols-2">
-            <AnalyticsSection title="Meta vs Google (filtrado)" description="Comparativo de investimento e volume." dense>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-xl border border-border/55 bg-gradient-to-br from-card to-muted/30 p-5 shadow-[var(--shadow-surface-sm)]">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Google Ads</p>
-                    <StatusBadge tone="neutral" dot>
-                      Canal
-                    </StatusBadge>
-                  </div>
-                  <p className="mt-3 text-2xl font-bold tabular-nums tracking-tight">{formatCost(aggG.costMicros)}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {formatNumber(aggG.impressions)} impr. · {formatNumber(aggG.clicks)} cliques ·{" "}
-                    {formatNumber(aggG.conversions)} conv.
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border/55 bg-gradient-to-br from-card to-primary/[0.05] p-5 shadow-[var(--shadow-surface-sm)]">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-primary">Meta Ads</p>
-                    <StatusBadge tone="connected" dot>
-                      Canal
-                    </StatusBadge>
-                  </div>
-                  <p className="mt-3 text-2xl font-bold tabular-nums tracking-tight">{formatSpend(aggM.spend)}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {formatNumber(aggM.impressions)} impr. · {formatNumber(aggM.clicks)} cliques ·{" "}
-                    {formatNumber(aggM.leads)} leads
-                  </p>
-                </div>
-              </div>
-            </AnalyticsSection>
-            <AnalyticsSection title="Funil clique → lead" description="Volume relativo no período filtrado." dense>
-              <div className="space-y-4">
-                <div>
-                  <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-                    <span>Cliques</span>
-                    <span>{formatNumber(clicksT)}</span>
-                  </div>
-                  <div className="h-3 overflow-hidden rounded-full bg-muted">
-                    <div className="h-full w-full rounded-full bg-primary/80" />
-                  </div>
-                </div>
-                <div>
-                  <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-                    <span>Leads (conv. Google + leads Meta)</span>
-                    <span>{formatNumber(leadsReais)}</span>
-                  </div>
-                  <div className="h-3 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full bg-primary"
-                      style={{
-                        width: `${clicksT > 0 ? Math.min(100, (leadsReais / clicksT) * 100) : 0}%`,
-                        minWidth: leadsReais > 0 ? "6px" : undefined,
-                      }}
-                    />
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Taxa clique → lead:{" "}
-                  <span className="font-medium text-foreground">
-                    {clicksT > 0 ? `${((leadsReais / clicksT) * 100).toFixed(2)}%` : "—"}
-                  </span>
-                </p>
-              </div>
-            </AnalyticsSection>
+      ) : hasData ? (
+        <div className="space-y-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {variant === "captacao" && (
+              <>
+                <KpiCardPremium variant="primary" label="Investimento" value={formatSpend(filteredSpend)} hideSource loading={kpiLoading} />
+                <KpiCardPremium variant="secondary" label="Impressões" value={formatNumber(Math.round(impressionsT))} hideSource loading={kpiLoading} />
+                <KpiCardPremium variant="secondary" label="Cliques" value={formatNumber(Math.round(clicksT))} hideSource loading={kpiLoading} />
+                <KpiCardPremium
+                  variant="secondary"
+                  label="CTR"
+                  value={ctrT != null ? `${ctrT.toFixed(2)}%` : "—"}
+                  hideSource
+                  loading={kpiLoading}
+                />
+                <KpiCardPremium
+                  variant="secondary"
+                  label="CPC"
+                  value={cpcT != null ? formatSpend(cpcT) : "—"}
+                  hideSource
+                  loading={kpiLoading}
+                />
+              </>
+            )}
+            {variant === "conversao" && (
+              <>
+                <KpiCardPremium variant="primary" label={leadLabel} value={formatNumber(Math.round(leadsReais))} hideSource loading={kpiLoading} />
+                <KpiCardPremium
+                  variant="secondary"
+                  label="CPL"
+                  value={cplLeads != null ? formatSpend(cplLeads) : "—"}
+                  hideSource
+                  loading={kpiLoading}
+                />
+                <KpiCardPremium
+                  variant="secondary"
+                  label="Taxa conv."
+                  value={convRatePct != null ? `${convRatePct.toFixed(2)}%` : "—"}
+                  hideSource
+                  loading={kpiLoading}
+                />
+                <KpiCardPremium
+                  variant="secondary"
+                  label="LPV"
+                  value={formatNumber(Math.round(aggM.landingPageViews))}
+                  hideSource
+                  loading={kpiLoading}
+                />
+                <KpiCardPremium variant="secondary" label="Investimento" value={formatSpend(filteredSpend)} hideSource loading={kpiLoading} />
+              </>
+            )}
+            {variant === "receita" && (
+              <>
+                <KpiCardPremium
+                  variant="primary"
+                  label="Receita"
+                  value={attributedRevenue > 0 ? formatSpend(attributedRevenue) : "—"}
+                  hideSource
+                  loading={kpiLoading}
+                />
+                <KpiCardPremium
+                  variant="secondary"
+                  label="ROAS"
+                  value={roasBlend != null ? `${roasBlend.toFixed(2)}x` : "—"}
+                  hideSource
+                  loading={kpiLoading}
+                />
+                <KpiCardPremium
+                  variant="secondary"
+                  label="Ticket médio"
+                  value={ticketMedio != null ? formatSpend(ticketMedio) : "—"}
+                  hideSource
+                  loading={kpiLoading}
+                />
+                <KpiCardPremium
+                  variant="secondary"
+                  label="CPA"
+                  value={cpaCompra != null ? formatSpend(cpaCompra) : "—"}
+                  hideSource
+                  loading={kpiLoading}
+                />
+                <KpiCardPremium variant="secondary" label="Investimento" value={formatSpend(filteredSpend)} hideSource loading={kpiLoading} />
+              </>
+            )}
           </div>
 
-          <AnalyticsSection
-            eyebrow="Série temporal"
-            title="Evolução diária"
-            description="Gasto, leads e CPA consolidados no período filtrado."
-            dense
-          >
+          {variant === "receita" && attributedRevenue <= 0 ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-muted/20 px-4 py-3">
+              <StatusBadge tone="alert" dot>
+                Sem receita no período
+              </StatusBadge>
+            </div>
+          ) : null}
+
+          <div>
+            <CockpitSectionTitle kicker="Canais">Meta · Google</CockpitSectionTitle>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {variant === "captacao" && (
+                <>
+                  {hasMeta && metaMetrics?.ok ? (
+                    <ChannelTrafficPanel
+                      name="Meta"
+                      status={hasGoogle ? trafficSig.first : "mid"}
+                      spend={aggM.spend}
+                      clicks={aggM.clicks}
+                      ctr={metaCtr}
+                      cpc={metaCpcCh}
+                      mixPct={filteredSpend > 0 ? (aggM.spend / filteredSpend) * 100 : null}
+                    />
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">Meta</div>
+                  )}
+                  {hasGoogle && metrics?.ok ? (
+                    <ChannelTrafficPanel
+                      name="Google"
+                      status={hasMeta ? trafficSig.second : "mid"}
+                      spend={googleSpendAgg}
+                      clicks={aggG.clicks}
+                      ctr={googleCtr}
+                      cpc={googleCpcCh}
+                      mixPct={filteredSpend > 0 ? (googleSpendAgg / filteredSpend) * 100 : null}
+                    />
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">Google</div>
+                  )}
+                </>
+              )}
+              {variant === "conversao" && (
+                <>
+                  {hasMeta && metaMetrics?.ok ? (
+                    <MarketingChannelPanel
+                      name="Meta"
+                      status={
+                        channelSignals
+                          ? channelSignals.meta === "best"
+                            ? "good"
+                            : channelSignals.meta === "attention"
+                              ? "bad"
+                              : "mid"
+                          : "mid"
+                      }
+                      leads={metaLeadishAgg}
+                      cpl={metaCplChannel}
+                      spend={aggM.spend}
+                      mixPct={filteredSpend > 0 ? (aggM.spend / filteredSpend) * 100 : null}
+                    />
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">Meta</div>
+                  )}
+                  {hasGoogle && metrics?.ok ? (
+                    <MarketingChannelPanel
+                      name="Google"
+                      status={
+                        channelSignals
+                          ? channelSignals.google === "best"
+                            ? "good"
+                            : channelSignals.google === "attention"
+                              ? "bad"
+                              : "mid"
+                          : "mid"
+                      }
+                      leads={aggG.conversions}
+                      cpl={googleCplChannel}
+                      spend={googleSpendAgg}
+                      mixPct={filteredSpend > 0 ? (googleSpendAgg / filteredSpend) * 100 : null}
+                    />
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">Google</div>
+                  )}
+                </>
+              )}
+              {variant === "receita" && (
+                <>
+                  {hasMeta && metaMetrics?.ok ? (
+                    <MarketingChannelPanelSales
+                      name="Meta"
+                      status={
+                        channelSignals
+                          ? channelSignals.meta === "best"
+                            ? "good"
+                            : channelSignals.meta === "attention"
+                              ? "bad"
+                              : "mid"
+                          : "mid"
+                      }
+                      revenue={aggM.purchaseValue}
+                      roas={metaRoasChannel}
+                      spend={aggM.spend}
+                      mixPct={filteredSpend > 0 ? (aggM.spend / filteredSpend) * 100 : null}
+                    />
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">Meta</div>
+                  )}
+                  {hasGoogle && metrics?.ok ? (
+                    <MarketingChannelPanelSales
+                      name="Google"
+                      status={
+                        channelSignals
+                          ? channelSignals.google === "best"
+                            ? "good"
+                            : channelSignals.google === "attention"
+                              ? "bad"
+                              : "mid"
+                          : "mid"
+                      }
+                      revenue={aggG.conversionsValue ?? 0}
+                      roas={googleRoasChannel}
+                      spend={googleSpendAgg}
+                      mixPct={filteredSpend > 0 ? (googleSpendAgg / filteredSpend) * 100 : null}
+                    />
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">Google</div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          {variant === "conversao" ? (
+            <div>
+              <CockpitSectionTitle kicker="Funil">Etapas</CockpitSectionTitle>
+              <MarketingFunnelStrip steps={funnelStripSteps} worstKey={funnelWorstKey} />
+            </div>
+          ) : null}
+
+          <div className="overflow-hidden rounded-2xl border border-border/50 bg-card/40 shadow-[var(--shadow-surface-sm)]">
             <CaptureTrendComposedChart
               embedded
               data={mergedChartData}
-              description="Barras: gasto · linhas: CPA e leads."
+              description=""
+              barHighlight={{
+                bestIndex: chartDayInsights.best?.index ?? null,
+                worstIndex: chartDayInsights.worst?.index ?? null,
+              }}
+              footer={null}
             />
-          </AnalyticsSection>
-
-          <AnalyticsSection title="Por origem (canal)" dense>
-            <ScrollTable minWidth="min-w-[720px]">
-              <thead>
-                <tr className="border-b text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  <th className="pb-2 pr-3">Origem</th>
-                  <th className="pb-2 pr-3 text-right">Investimento</th>
-                  <th className="pb-2 pr-3 text-right">Impressões</th>
-                  <th className="pb-2 pr-3 text-right">Cliques</th>
-                  <th className="pb-2 pr-3 text-right">CTR</th>
-                  <th className="pb-2 pr-3 text-right">CPC</th>
-                  <th className="pb-2 pr-3 text-right">Leads / conv.</th>
-                  <th className="pb-2 text-right">Receita atrib.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {originRollup.map((o) => {
-                  const ctr = o.impr > 0 ? (o.clk / o.impr) * 100 : null;
-                  const cpc = o.clk > 0 ? o.spend / o.clk : null;
-                  return (
-                    <tr key={o.origem} className="border-b border-border/40 hover:bg-muted/20">
-                      <td className="py-2.5 pr-3 font-medium">{o.origem}</td>
-                      <td className="py-2.5 pr-3 text-right tabular-nums">{formatSpend(o.spend)}</td>
-                      <td className="py-2.5 pr-3 text-right tabular-nums">{formatNumber(o.impr)}</td>
-                      <td className="py-2.5 pr-3 text-right tabular-nums">{formatNumber(o.clk)}</td>
-                      <td className="py-2.5 pr-3 text-right tabular-nums">{ctr != null ? `${ctr.toFixed(2)}%` : "—"}</td>
-                      <td className="py-2.5 pr-3 text-right tabular-nums">{cpc != null ? formatSpend(cpc) : "—"}</td>
-                      <td className="py-2.5 pr-3 text-right tabular-nums">{formatNumber(o.leads)}</td>
-                      <td className="py-2.5 text-right tabular-nums">{formatSpend(o.rev)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </ScrollTable>
-          </AnalyticsSection>
-
-          <AnalyticsSection
-            title="Agrupamento tipo UTM (heurística)"
-            description="Deriva do nome da campanha (segmentos). Para UTMs reais, integre dados de landing/CRM."
-            dense
-          >
-            <ScrollTable minWidth="min-w-[640px]">
-              <thead>
-                <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
-                  <th className="pb-2 pr-3">Campanha / grupo</th>
-                  <th className="pb-2 pr-3 text-right">Investimento</th>
-                  <th className="pb-2 pr-3 text-right">Leads</th>
-                  <th className="pb-2 pr-3 text-right">Vendas</th>
-                  <th className="pb-2 text-right">Receita</th>
-                </tr>
-              </thead>
-              <tbody>
-                {utmRollup.slice(0, 40).map((u) => (
-                  <tr key={u.utm} className="border-b border-border/40 hover:bg-muted/20">
-                    <td className="max-w-[280px] truncate py-2.5 pr-3 font-medium" title={u.utm}>
-                      {u.utm}
-                    </td>
-                    <td className="py-2.5 pr-3 text-right tabular-nums">{formatSpend(u.spend)}</td>
-                    <td className="py-2.5 pr-3 text-right tabular-nums">{formatNumber(u.leads)}</td>
-                    <td className="py-2.5 pr-3 text-right tabular-nums">{formatNumber(u.sales)}</td>
-                    <td className="py-2.5 text-right tabular-nums">{formatSpend(u.revenue)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </ScrollTable>
-          </AnalyticsSection>
-
-          <AnalyticsSection title="Campanhas (top investimento)" dense>
-            <ScrollTable minWidth="min-w-[800px]">
-              <thead>
-                <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
-                  <th className="pb-2 pr-3">Canal</th>
-                  <th className="pb-2 pr-3">Campanha</th>
-                  <th className="pb-2 pr-3 text-right">Investimento</th>
-                  <th className="pb-2 pr-3 text-right">CTR</th>
-                  <th className="pb-2 pr-3 text-right">CPC</th>
-                  <th className="pb-2 pr-3 text-right">Leads</th>
-                  <th className="pb-2 text-right">CPL</th>
-                </tr>
-              </thead>
-              <tbody>
-                {unifiedCampaignRows.slice(0, 35).map((r, i) => {
-                  const ctr = r.impressions > 0 ? (r.clicks / r.impressions) * 100 : null;
-                  const cpc = r.clicks > 0 ? r.spend / r.clicks : null;
-                  const cpl = r.leads > 0 ? r.spend / r.leads : null;
-                  return (
-                    <tr key={`${r.channel}-${i}`} className="border-b border-border/40 hover:bg-muted/20">
-                      <td className="py-2.5 pr-3 text-xs font-semibold text-muted-foreground">{r.channel}</td>
-                      <td className="max-w-[240px] truncate py-2.5 pr-3 font-medium" title={r.campaignName}>
-                        {r.campaignName}
-                      </td>
-                      <td className="py-2.5 pr-3 text-right tabular-nums">{formatSpend(r.spend)}</td>
-                      <td className="py-2.5 pr-3 text-right tabular-nums">{ctr != null ? `${ctr.toFixed(2)}%` : "—"}</td>
-                      <td className="py-2.5 pr-3 text-right tabular-nums">{cpc != null ? formatSpend(cpc) : "—"}</td>
-                      <td className="py-2.5 pr-3 text-right tabular-nums">{formatNumber(r.leads)}</td>
-                      <td className="py-2.5 text-right tabular-nums">{cpl != null ? formatSpend(cpl) : "—"}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </ScrollTable>
-          </AnalyticsSection>
-        </div>
-      ) : variant === "conversao" ? (
-        <div className="space-y-6">
-          <AnalyticsSection
-            eyebrow="Faixa executiva"
-            title="Resultados totais"
-            description="Volume e custo no filtro atual — topo e fundo de funil em um só olhar."
-            dense
-          >
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-              <KpiCardPremium
-                variant="primary"
-                label={leadResultLabel}
-                value={formatNumber(leadsReais)}
-                icon={UserPlus}
-                source={dataSourceLabel}
-              />
-              <KpiCardPremium
-                variant="primary"
-                label="Qualificados (est.)"
-                value={formatNumber(Math.round(mqlNumerator))}
-                icon={Target}
-                hint="Conv. Google + vendas Meta."
-                source={dataSourceLabel}
-              />
-              <KpiCardPremium
-                variant="primary"
-                label="Investimento"
-                value={formatSpend(filteredSpend)}
-                icon={DollarSign}
-                source={dataSourceLabel}
-              />
-              <KpiCardPremium
-                variant="primary"
-                label="CPA tráfego"
-                value={leadsReais > 0 ? formatSpend(filteredSpend / leadsReais) : "—"}
-                icon={DollarSign}
-                deltaInvert
-                source={dataSourceLabel}
-              />
-              <KpiCardPremium
-                variant="compact"
-                label="Vendas Meta"
-                value={formatNumber(aggM.purchases)}
-                icon={ShoppingBag}
-                source="Meta"
-              />
-              <KpiCardPremium
-                variant="compact"
-                label="Custo / qualif."
-                value={
-                  mqlNumerator > 0
-                    ? formatSpend(filteredSpend / mqlNumerator)
-                    : leadsReais > 0
-                      ? formatSpend(filteredSpend / leadsReais)
-                      : "—"
-                }
-                icon={DollarSign}
-                deltaInvert
-              />
-              <KpiCardPremium
-                variant="compact"
-                label="Conv. lead → venda"
-                value={aggM.leads > 0 ? `${((aggM.purchases / aggM.leads) * 100).toFixed(2)}%` : "—"}
-                icon={TrendingUp}
-                source="Meta"
-              />
-              <KpiCardPremium
-                variant="compact"
-                label="Peso faixa A"
-                value={`${grades.A.toFixed(0)}%`}
-                icon={BarChart3}
-                hint="Participação em CTR ponderado."
-              />
-            </div>
-          </AnalyticsSection>
-
-          <div className="grid gap-6 lg:grid-cols-2">
-            <AnalyticsSection title="Quente × frio (resultados)" description="Leads e gasto por heurística de nome." dense>
-              <CaptureDualDonuts
-                embedded
-                hotLeads={hotCold.hotLeads}
-                coldLeads={hotCold.coldLeads}
-                hotSpend={hotCold.hotSpend}
-                coldSpend={hotCold.coldSpend}
-              />
-            </AnalyticsSection>
-            <AnalyticsSection title="Temperatura por plataforma" description="Mesma lógica, separada por rede." dense>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-xl border border-border/55 bg-gradient-to-br from-card to-muted/25 p-4 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Google</p>
-                    <StatusBadge tone="neutral" dot>
-                      Ads
-                    </StatusBadge>
-                  </div>
-                  <p className="mt-3 text-sm text-muted-foreground">
-                    <span className="font-semibold text-foreground">Quente:</span>{" "}
-                    {formatNumber(googleOnlyHotCold.hotLeads)} leads · {formatSpend(googleOnlyHotCold.hotSpend)}
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    <span className="font-semibold text-foreground">Frio:</span>{" "}
-                    {formatNumber(googleOnlyHotCold.coldLeads)} · {formatSpend(googleOnlyHotCold.coldSpend)}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border/55 bg-gradient-to-br from-card to-primary/[0.04] p-4 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[11px] font-bold uppercase tracking-wide text-primary">Meta</p>
-                    <StatusBadge tone="connected" dot>
-                      Ads
-                    </StatusBadge>
-                  </div>
-                  <p className="mt-3 text-sm text-muted-foreground">
-                    <span className="font-semibold text-foreground">Quente:</span>{" "}
-                    {formatNumber(metaOnlyHotCold.hotLeads)} · {formatSpend(metaOnlyHotCold.hotSpend)}
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    <span className="font-semibold text-foreground">Frio:</span>{" "}
-                    {formatNumber(metaOnlyHotCold.coldLeads)} · {formatSpend(metaOnlyHotCold.coldSpend)}
-                  </p>
-                </div>
-              </div>
-            </AnalyticsSection>
           </div>
 
-          <AnalyticsSection title="Agregado por faixa de score (CTR)" dense>
-            <ScrollTable minWidth="min-w-[640px]">
-              <thead>
-                <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
-                  <th className="pb-2 pr-3">Faixa</th>
-                  <th className="pb-2 pr-3 text-right">Campanhas</th>
-                  <th className="pb-2 pr-3 text-right">Investimento</th>
-                  <th className="pb-2 pr-3 text-right">Leads</th>
-                  <th className="pb-2 pr-3 text-right">Vendas</th>
-                  <th className="pb-2 text-right">Receita</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(["A", "B", "C", "D"] as const).map((g) => {
-                  const x = gradeSummary[g];
-                  return (
-                    <tr key={g} className="border-b border-border/40 hover:bg-muted/20">
-                      <td className="py-2.5 pr-3 font-semibold">{g}</td>
-                      <td className="py-2.5 pr-3 text-right tabular-nums">{formatNumber(x.n)}</td>
-                      <td className="py-2.5 pr-3 text-right tabular-nums">{formatSpend(x.spend)}</td>
-                      <td className="py-2.5 pr-3 text-right tabular-nums">{formatNumber(x.leads)}</td>
-                      <td className="py-2.5 pr-3 text-right tabular-nums">{formatNumber(x.sales)}</td>
-                      <td className="py-2.5 text-right tabular-nums">{formatSpend(x.revenue)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </ScrollTable>
-          </AnalyticsSection>
-
-          <AnalyticsSection
-            title="Profundo (receita/venda) × topo de funil"
-            description="Profundo: campanhas com receita ou venda Meta. Topo: demais."
-            dense
+          <div
+            className={cn(
+              "grid gap-3",
+              variant === "captacao" ? "lg:grid-cols-2 xl:grid-cols-4" : "lg:grid-cols-3"
+            )}
           >
-            <div className="mb-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.08] to-card p-5 shadow-[var(--shadow-surface-sm)]">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-800 dark:text-emerald-300">
-                  Fundo de funil · valor / venda
-                </p>
-                <p className="mt-3 text-2xl font-bold tabular-nums tracking-tight">{formatSpend(deepFunnel.deepAgg.spend)}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {formatNumber(deepFunnel.withValue.length)} campanhas · {formatNumber(deepFunnel.deepAgg.leads)} conv.
-                  leads · {formatNumber(deepFunnel.deepAgg.sales)} vendas
-                </p>
-              </div>
-              <div className="rounded-xl border border-border/55 bg-gradient-to-br from-muted/30 to-card p-5 shadow-[var(--shadow-surface-sm)]">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Topo de funil</p>
-                <p className="mt-3 text-2xl font-bold tabular-nums tracking-tight">{formatSpend(deepFunnel.topAgg.spend)}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {formatNumber(deepFunnel.topOnly.length)} campanhas · {formatNumber(deepFunnel.topAgg.leads)} leads
-                </p>
-              </div>
-            </div>
-            <ScrollTable minWidth="min-w-[900px]">
-              <thead>
-                <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
-                  <th className="pb-2 pr-3">Canal</th>
-                  <th className="pb-2 pr-3">Campanha</th>
-                  <th className="pb-2 pr-3">Faixa</th>
-                  <th className="pb-2 pr-3 text-right">Investimento</th>
-                  <th className="pb-2 pr-3 text-right">Leads</th>
-                  <th className="pb-2 pr-3 text-right">Vendas</th>
-                  <th className="pb-2 text-right">Receita</th>
-                </tr>
-              </thead>
-              <tbody>
-                {gradedCampaigns.slice(0, 45).map((r, i) => (
-                  <tr key={`${r.channel}-${i}`} className="border-b border-border/40 hover:bg-muted/20">
-                    <td className="py-2.5 pr-3 text-xs font-medium text-muted-foreground">{r.channel}</td>
-                    <td className="max-w-[220px] truncate py-2.5 pr-3 font-medium" title={r.campaignName}>
-                      {r.campaignName}
-                    </td>
-                    <td className="py-2.5 pr-3 font-semibold">{r.grade}</td>
-                    <td className="py-2.5 pr-3 text-right tabular-nums">{formatSpend(r.spend)}</td>
-                    <td className="py-2.5 pr-3 text-right tabular-nums">{formatNumber(r.leads)}</td>
-                    <td className="py-2.5 pr-3 text-right tabular-nums">{formatNumber(r.sales)}</td>
-                    <td className="py-2.5 text-right tabular-nums">{formatSpend(r.revenue)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </ScrollTable>
+            {variant === "captacao" && (
+              <>
+                <RankBlock title="Melhor CTR">
+                  <ScrollTable minWidth="min-w-[360px]">
+                    <thead>
+                      <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
+                        <th className="pb-2 pr-2">Campanha</th>
+                        <th className="pb-2 pr-2 text-right">CTR</th>
+                        <th className="pb-2 text-right">Cliques</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rankCtr.map((r, i) => (
+                        <tr key={i} className="border-b border-border/40 hover:bg-muted/20">
+                          <td className="max-w-[200px] truncate py-2 pr-2 text-sm" title={r.name}>
+                            <span className="mr-1 text-[10px] text-muted-foreground">{r.channel}</span>
+                            {r.name}
+                          </td>
+                          <td className="py-2 pr-2 text-right tabular-nums">{r.ctr.toFixed(2)}%</td>
+                          <td className="py-2 text-right tabular-nums">{formatNumber(r.clicks)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </ScrollTable>
+                </RankBlock>
+                <RankBlock title="Melhor CPC">
+                  <ScrollTable minWidth="min-w-[360px]">
+                    <thead>
+                      <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
+                        <th className="pb-2 pr-2">Campanha</th>
+                        <th className="pb-2 pr-2 text-right">CPC</th>
+                        <th className="pb-2 text-right">Cliques</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rankCpcGood.map((r, i) => (
+                        <tr key={i} className="border-b border-border/40 hover:bg-muted/20">
+                          <td className="max-w-[200px] truncate py-2 pr-2 text-sm" title={r.name}>
+                            <span className="mr-1 text-[10px] text-muted-foreground">{r.channel}</span>
+                            {r.name}
+                          </td>
+                          <td className="py-2 pr-2 text-right tabular-nums">{formatSpend(r.cpc)}</td>
+                          <td className="py-2 text-right tabular-nums">{formatNumber(r.clicks)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </ScrollTable>
+                </RankBlock>
+                <RankBlock title="Pior CPC · tráfego">
+                  <ScrollTable minWidth="min-w-[360px]">
+                    <thead>
+                      <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
+                        <th className="pb-2 pr-2">Campanha</th>
+                        <th className="pb-2 pr-2 text-right">CPC</th>
+                        <th className="pb-2 text-right">Cliques</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rankCpcBad.map((r, i) => (
+                        <tr key={i} className="border-b border-border/40 hover:bg-muted/20">
+                          <td className="max-w-[200px] truncate py-2 pr-2 text-sm" title={r.name}>
+                            <span className="mr-1 text-[10px] text-muted-foreground">{r.channel}</span>
+                            {r.name}
+                          </td>
+                          <td className="py-2 pr-2 text-right tabular-nums">{formatSpend(r.cpc)}</td>
+                          <td className="py-2 text-right tabular-nums">{formatNumber(r.clicks)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </ScrollTable>
+                </RankBlock>
+                <RankBlock title="Volume de clique">
+                  <ScrollTable minWidth="min-w-[360px]">
+                    <thead>
+                      <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
+                        <th className="pb-2 pr-2">Campanha</th>
+                        <th className="pb-2 text-right">Cliques</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rankClickVol.map((r, i) => (
+                        <tr key={i} className="border-b border-border/40 hover:bg-muted/20">
+                          <td className="max-w-[200px] truncate py-2 pr-2 text-sm" title={r.name}>
+                            <span className="mr-1 text-[10px] text-muted-foreground">{r.channel}</span>
+                            {r.name}
+                          </td>
+                          <td className="py-2 text-right tabular-nums">{formatNumber(r.clicks)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </ScrollTable>
+                </RankBlock>
+              </>
+            )}
+            {variant === "conversao" && (
+              <>
+                <RankBlock title="Maior taxa de conversão">
+                  <ScrollTable minWidth="min-w-[400px]">
+                    <thead>
+                      <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
+                        <th className="pb-2 pr-2">Campanha</th>
+                        <th className="pb-2 pr-2 text-right">Conv.</th>
+                        <th className="pb-2 text-right">{leadLabel}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rankConv.map((r, i) => (
+                        <tr key={i} className="border-b border-border/40 hover:bg-muted/20">
+                          <td className="max-w-[200px] truncate py-2 pr-2 text-sm" title={r.name}>
+                            <span className="mr-1 text-[10px] text-muted-foreground">{r.channel}</span>
+                            {r.name}
+                          </td>
+                          <td className="py-2 pr-2 text-right tabular-nums">{r.convPct.toFixed(2)}%</td>
+                          <td className="py-2 text-right tabular-nums">{formatNumber(r.leads)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </ScrollTable>
+                </RankBlock>
+                <RankBlock title="Piores CPL">
+                  <ScrollTable minWidth="min-w-[400px]">
+                    <thead>
+                      <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
+                        <th className="pb-2 pr-2">Campanha</th>
+                        <th className="pb-2 pr-2 text-right">CPL</th>
+                        <th className="pb-2 text-right">{leadLabel}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rankCplWorst.map((r, i) => (
+                        <tr key={i} className="border-b border-border/40 hover:bg-muted/20">
+                          <td className="max-w-[200px] truncate py-2 pr-2 text-sm" title={r.name}>
+                            <span className="mr-1 text-[10px] text-muted-foreground">{r.channel}</span>
+                            {r.name}
+                          </td>
+                          <td className="py-2 pr-2 text-right tabular-nums">{r.cpl != null ? formatSpend(r.cpl) : "—"}</td>
+                          <td className="py-2 text-right tabular-nums">{formatNumber(r.leads)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </ScrollTable>
+                </RankBlock>
+                <RankBlock title="Desperdício de clique">
+                  <ScrollTable minWidth="min-w-[400px]">
+                    <thead>
+                      <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
+                        <th className="pb-2 pr-2">Campanha</th>
+                        <th className="pb-2 text-right">Cliques · 0 {leadLabel}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rankClickWaste.map((r, i) => (
+                        <tr key={i} className="border-b border-border/40 hover:bg-muted/20">
+                          <td className="max-w-[200px] truncate py-2 pr-2 text-sm" title={r.name}>
+                            <span className="mr-1 text-[10px] text-muted-foreground">{r.channel}</span>
+                            {r.name}
+                          </td>
+                          <td className="py-2 text-right tabular-nums">{formatNumber(r.clicks)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </ScrollTable>
+                </RankBlock>
+              </>
+            )}
+            {variant === "receita" && (
+              <>
+                <RankBlock title="Maior receita">
+                  <ScrollTable minWidth="min-w-[380px]">
+                    <thead>
+                      <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
+                        <th className="pb-2 pr-2">Campanha</th>
+                        <th className="pb-2 pr-2 text-right">Receita</th>
+                        <th className="pb-2 text-right">Gasto</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rankRevenue.map((r, i) => (
+                        <tr key={i} className="border-b border-border/40 hover:bg-muted/20">
+                          <td className="max-w-[200px] truncate py-2 pr-2 text-sm" title={r.name}>
+                            <span className="mr-1 text-[10px] text-muted-foreground">{r.channel}</span>
+                            {r.name}
+                          </td>
+                          <td className="py-2 pr-2 text-right tabular-nums">{formatSpend(r.revenue)}</td>
+                          <td className="py-2 text-right tabular-nums">{formatSpend(r.spend)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </ScrollTable>
+                </RankBlock>
+                <RankBlock title="Pior ROAS">
+                  <ScrollTable minWidth="min-w-[380px]">
+                    <thead>
+                      <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
+                        <th className="pb-2 pr-2">Campanha</th>
+                        <th className="pb-2 pr-2 text-right">ROAS</th>
+                        <th className="pb-2 text-right">Receita</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rankRoasWorst.map((r, i) => (
+                        <tr key={i} className="border-b border-border/40 hover:bg-muted/20">
+                          <td className="max-w-[200px] truncate py-2 pr-2 text-sm" title={r.name}>
+                            <span className="mr-1 text-[10px] text-muted-foreground">{r.channel}</span>
+                            {r.name}
+                          </td>
+                          <td className="py-2 pr-2 text-right tabular-nums">{r.roas != null ? `${r.roas.toFixed(2)}x` : "—"}</td>
+                          <td className="py-2 text-right tabular-nums">{formatSpend(r.revenue)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </ScrollTable>
+                </RankBlock>
+              </>
+            )}
+          </div>
+
+          <AnalyticsSection eyebrow="Operação" title="Central de controle" dense>
+            {osRows.length > 0 ? (
+              <MarketingCampaignsOsTable
+                rows={osRows}
+                goalMode={goalMode}
+                targetCplBrl={settings?.targetCpaBrl ?? null}
+                maxCplBrl={settings?.maxCpaBrl ?? null}
+                targetRoas={settings?.targetRoas ?? null}
+                periodDays={periodDays}
+                canMutateCampaigns={canMutateCampaigns}
+                mutatingAdsKey={mutatingAdsKey}
+                runMetaStatus={(id, s) => void runMetaStatus(id, s)}
+                runGoogleStatus={(id, s) => void runGoogleStatus(id, s)}
+                openBudgetDialog={openBudgetDialog}
+                onAfterMutation={() => void refreshAll()}
+                combinedCampaignMode
+                hasMeta={hasMeta}
+                hasGoogle={hasGoogle}
+              />
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">Sem linhas no período.</p>
+            )}
           </AnalyticsSection>
         </div>
       ) : (
-        <div
-          className={cn(
-            "space-y-6",
-            revenueLeadSecondary &&
-              "rounded-2xl border border-dashed border-muted-foreground/20 bg-muted/[0.08] p-4 sm:p-5"
-          )}
-        >
-          {revenueLeadSecondary ? (
-            <div
-              className="rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-4 py-3 text-sm leading-relaxed text-muted-foreground dark:bg-amber-950/20"
-              role="status"
-            >
-              <p className="font-semibold text-foreground">Receita em segundo plano</p>
-              <p className="mt-1 text-xs">
-                Objetivo da conta configurado para leads — os KPIs abaixo permanecem acessíveis, com menos destaque visual.
-                Ajuste em{" "}
-                <Link
-                  to="/marketing/configuracoes"
-                  className="font-medium text-primary underline-offset-4 hover:underline"
-                >
-                  Metas e alertas
-                </Link>{" "}
-                ou ative a opção de mostrar monetização em modo lead.
-              </p>
-            </div>
-          ) : null}
-          <AnalyticsSection
-            eyebrow="Monetização"
-            title="KPIs de receita atribuída"
-            description="Valores enviados pelas APIs (Google conversões · Meta compras). Zero não é falha do painel — pode ser ausência de valor na conta ou período sem venda rastreada."
-            dense
-          >
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-              <KpiCardPremium
-                variant="primary"
-                label="Valor atribuído"
-                value={formatSpend(attributedRevenue)}
-                icon={TrendingUp}
-                source={dataSourceLabel}
-                delta={relDelta(attributedRevenue, prevAttributedRevenue, compareEnabled)}
-              />
-              <KpiCardPremium
-                variant="primary"
-                label="ROAS"
-                value={roas != null ? `${roas.toFixed(2)}x` : "—"}
-                icon={BarChart3}
-                source={dataSourceLabel}
-                delta={roas != null && prevRoas != null ? relDelta(roas, prevRoas, compareEnabled) : undefined}
-              />
-              <KpiCardPremium
-                variant="primary"
-                label="Investimento"
-                value={formatSpend(filteredSpend)}
-                icon={DollarSign}
-                source={dataSourceLabel}
-              />
-              <KpiCardPremium
-                variant="primary"
-                label="Ticket médio"
-                value={ticketMedio != null ? formatSpend(ticketMedio) : "—"}
-                hint={aggM.purchases === 0 ? "Sem vendas Meta no filtro." : undefined}
-                icon={ShoppingBag}
-                source="Meta"
-              />
-              <KpiCardPremium
-                variant="compact"
-                label="Google — valor conv."
-                value={formatSpend(aggG.conversionsValue)}
-                icon={Target}
-              />
-              <KpiCardPremium
-                variant="compact"
-                label="Meta — compras"
-                value={formatSpend(aggM.purchaseValue)}
-                icon={ShoppingBag}
-              />
-              <KpiCardPremium variant="compact" label="Vendas Meta" value={formatNumber(aggM.purchases)} icon={UserPlus} />
-              <KpiCardPremium
-                variant="compact"
-                label="Leads (funil)"
-                value={formatNumber(leadsReais)}
-                icon={UserPlus}
-                source={dataSourceLabel}
-                delta={relDelta(leadsReais, prevLeadsReais, compareEnabled)}
-              />
-            </div>
-            {attributedRevenue <= 0 && (
-              <div className="mt-4 grid gap-3 lg:grid-cols-2" role="status">
-                <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] p-4 text-sm leading-relaxed text-muted-foreground dark:bg-emerald-950/15">
-                  <p className="font-semibold text-foreground">Zero real no período</p>
-                  <p className="mt-2">
-                    Quando Google e Meta respondem com sucesso e a soma de valores atribuídos é R$&nbsp;0,00, o painel está
-                    coerente: não houve valor de conversão rastreado neste recorte (ou as contas não enviam valor nas
-                    conversões).
-                  </p>
-                </div>
-                <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.07] p-4 text-sm leading-relaxed text-muted-foreground dark:bg-amber-950/20">
-                  <p className="font-semibold text-foreground">Indisponível ≠ zero</p>
-                  <div className="mt-2 space-y-2">
-                    {hasGoogle && !metricsLoading && metrics?.ok !== true ? (
-                      <p>
-                        · <strong className="text-foreground">Google Ads:</strong> sem métricas válidas neste momento — a
-                        receita desse canal não entra no total até a API responder ou a integração for corrigida.
-                      </p>
-                    ) : null}
-                    {hasMeta && !metaMetricsLoading && metaMetrics?.ok !== true ? (
-                      <p>
-                        · <strong className="text-foreground">Meta Ads:</strong> sem métricas válidas — compras e valor
-                        podem ficar em branco mesmo com gasto.
-                      </p>
-                    ) : null}
-                    {!(
-                      (hasGoogle && !metricsLoading && metrics?.ok !== true) ||
-                      (hasMeta && !metaMetricsLoading && metaMetrics?.ok !== true)
-                    ) ? (
-                      <p>
-                        Nenhuma indisponibilidade detectada para os canais conectados. Use{" "}
-                        <Link
-                          to="/marketing/conversao"
-                          className="font-medium text-primary underline-offset-4 hover:underline"
-                        >
-                          Conversão
-                        </Link>{" "}
-                        para volume de leads/vendas e confira pixel e valores de conversão nas contas.
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            )}
-            {attributedRevenue > 0 && (
-              <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border/50 pt-4">
-                <RevenueDetailModal
-                  total={attributedRevenue}
-                  rows={revenueModalRows}
-                  trigger={
-                    <Button type="button" variant="outline" size="sm" className="rounded-lg border-border/70 shadow-sm">
-                      Composição do faturamento (est.)
-                    </Button>
-                  }
-                />
-                <p className="max-w-xl text-xs text-muted-foreground">
-                  Estimativa ilustrativa de principal vs bump; refine com checkout integrado quando disponível.
-                </p>
-              </div>
-            )}
-          </AnalyticsSection>
+        <div className="rounded-xl border border-border/80 bg-card p-6">
+          <p className="text-sm text-muted-foreground">Sem dados no período.</p>
+        </div>
+      )}
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <AnalyticsSection title="Receita por canal" dense>
-              <ScrollTable minWidth="min-w-[480px]">
-                <thead>
-                  <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
-                    <th className="pb-2 pr-3">Canal</th>
-                    <th className="pb-2 pr-3 text-right">Investimento</th>
-                    <th className="pb-2 pr-3 text-right">Receita</th>
-                    <th className="pb-2 text-right">ROAS</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    {
-                      nome: "Google Ads",
-                      sp: aggG.costMicros / 1_000_000,
-                      rev: aggG.conversionsValue,
-                    },
-                    { nome: "Meta Ads", sp: aggM.spend, rev: aggM.purchaseValue },
-                  ].map((row) => {
-                    const r = row.sp > 0 && row.rev > 0 ? row.rev / row.sp : null;
-                    return (
-                      <tr key={row.nome} className="border-b border-border/40 hover:bg-muted/20">
-                        <td className="py-2.5 pr-3 font-medium">{row.nome}</td>
-                        <td className="py-2.5 pr-3 text-right tabular-nums">{formatSpend(row.sp)}</td>
-                        <td className="py-2.5 pr-3 text-right tabular-nums">{formatSpend(row.rev)}</td>
-                        <td className="py-2.5 text-right tabular-nums">{r != null ? `${r.toFixed(2)}x` : "—"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </ScrollTable>
-            </AnalyticsSection>
-            <AnalyticsSection title="Top campanhas por receita" dense>
-              <ScrollTable minWidth="min-w-[520px]">
-                <thead>
-                  <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
-                    <th className="pb-2 pr-3">Campanha</th>
-                    <th className="pb-2 pr-3 text-right">Investimento</th>
-                    <th className="pb-2 text-right">Receita</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...unifiedCampaignRows]
-                    .sort((a, b) => b.revenue - a.revenue)
-                    .slice(0, 12)
-                    .map((r, i) => (
-                      <tr key={i} className="border-b border-border/40 hover:bg-muted/20">
-                        <td className="max-w-[240px] truncate py-2.5 pr-3 text-sm font-medium" title={r.campaignName}>
-                          <span className="mr-2 text-[10px] text-muted-foreground">{r.channel}</span>
-                          {r.campaignName}
-                        </td>
-                        <td className="py-2.5 pr-3 text-right tabular-nums">{formatSpend(r.spend)}</td>
-                        <td className="py-2.5 text-right tabular-nums">{formatSpend(r.revenue)}</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </ScrollTable>
-            </AnalyticsSection>
-          </div>
-
-          <AnalyticsSection eyebrow="Série temporal" title="Gasto e resultados no período" dense>
-            <CaptureTrendComposedChart
-              embedded
-              data={mergedChartData}
-              description="Mesma série da visão Marketing — útil para cruzar picos de gasto com leads e CPA."
+      <Dialog
+        open={budgetDialogOpen}
+        onOpenChange={(open) => {
+          setBudgetDialogOpen(open);
+          if (!open) setBudgetTarget(null);
+        }}
+      >
+        <DialogContent title="Orçamento diário · Meta" showClose alignTop>
+          {budgetTarget?.name ? <p className="text-sm text-muted-foreground">{budgetTarget.name}</p> : null}
+          <div className="space-y-2 py-2">
+            <Label htmlFor="funnel-meta-budget">Valor diário</Label>
+            <Input
+              id="funnel-meta-budget"
+              inputMode="decimal"
+              placeholder="Ex.: 120,50"
+              value={budgetInput}
+              onChange={(e) => setBudgetInput(e.target.value)}
             />
-          </AnalyticsSection>
-        </div>
-      )}
-
-      {hasData && (
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-dashed border-primary/25 bg-gradient-to-r from-primary/[0.04] via-muted/15 to-transparent px-5 py-5 shadow-[var(--shadow-surface-sm)]">
-          <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
-            Relatórios avançados, tabela consolidada Meta + Google e abas por plataforma estão na visão principal de Marketing.
-          </p>
-          <Button className="shrink-0 rounded-xl shadow-sm" asChild>
-            <Link to="/marketing" className="gap-2">
-              Abrir Marketing
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </Button>
-        </div>
-      )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setBudgetDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="button" disabled={budgetSaving} onClick={() => void submitMetaBudget()}>
+              {budgetSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

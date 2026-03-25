@@ -13,6 +13,7 @@ import {
 import { mergePlanFeaturesWithOverrides } from "../utils/plan-features.js";
 import { syncSubscriptionFromOrgPlan } from "./platform.service.js";
 import { appendAuditLog } from "./audit-log.service.js";
+import { rollupMarketing30dForChildren, type ChildMarketingRollup30d } from "./child-workspace-marketing-rollup.service.js";
 
 export async function getOrganizationContext(organizationId: string, userId: string) {
   const allowed = await userHasEffectiveAccess(userId, organizationId);
@@ -625,6 +626,9 @@ export async function listChildOrganizationsOperationsDashboard(
     staleActivity: boolean;
     neverAccessed: boolean;
     needsAttention: boolean;
+    metaAdsConnected: boolean;
+    googleAdsConnected: boolean;
+    marketing30d: ChildMarketingRollup30d | null;
   }>;
   summary: {
     totalWorkspaces: number;
@@ -712,9 +716,63 @@ export async function listChildOrganizationsOperationsDashboard(
         dashboardsTotalAcrossChildren: 0,
         childSlotsUsed: planContext.usage.childOrganizations,
         childSlotsCap: cap,
+        childrenWithActiveLaunches: 0,
+        totalProjectsAcrossChildren: 0,
+        totalLaunchesAcrossChildren: 0,
       },
       alerts: [],
     };
+  }
+
+  const [clientAccGroups, projectGroups, projectsForLaunches] = await Promise.all([
+    prisma.clientAccount.groupBy({
+      by: ["organizationId"],
+      where: { organizationId: { in: childIds }, deletedAt: null },
+      _count: { _all: true },
+    }),
+    prisma.project.groupBy({
+      by: ["organizationId"],
+      where: { organizationId: { in: childIds }, deletedAt: null },
+      _count: { _all: true },
+    }),
+    prisma.project.findMany({
+      where: { organizationId: { in: childIds }, deletedAt: null },
+      select: { id: true, organizationId: true },
+    }),
+  ]);
+
+  const projectIds = projectsForLaunches.map((p) => p.id);
+  const launchRowsForAgg =
+    projectIds.length === 0
+      ? []
+      : await prisma.launch.findMany({
+          where: { deletedAt: null, projectId: { in: projectIds } },
+          select: { projectId: true, startDate: true, endDate: true },
+        });
+
+  const clientAccCountMap = new Map(clientAccGroups.map((g) => [g.organizationId, g._count._all]));
+  const projectCountMap = new Map(projectGroups.map((g) => [g.organizationId, g._count._all]));
+  const projToOrgId = new Map(projectsForLaunches.map((p) => [p.id, p.organizationId]));
+
+  const launchCountByOrg = new Map<string, number>();
+  const activeLaunchCountByOrg = new Map<string, number>();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+  function launchWindowActive(startDate: Date | null, endDate: Date | null): boolean {
+    if (!startDate && !endDate) return true;
+    if (startDate && todayEnd < startDate) return false;
+    if (endDate && todayStart > endDate) return false;
+    return true;
+  }
+
+  for (const l of launchRowsForAgg) {
+    const oid = projToOrgId.get(l.projectId);
+    if (!oid) continue;
+    launchCountByOrg.set(oid, (launchCountByOrg.get(oid) ?? 0) + 1);
+    if (launchWindowActive(l.startDate, l.endDate)) {
+      activeLaunchCountByOrg.set(oid, (activeLaunchCountByOrg.get(oid) ?? 0) + 1);
+    }
   }
 
   const [memberGroups, dashGroups, invRows, invPendingGroups, membershipsForMax] = await Promise.all([
@@ -730,7 +788,7 @@ export async function listChildOrganizationsOperationsDashboard(
     }),
     prisma.integration.findMany({
       where: { organizationId: { in: childIds }, status: "connected" },
-      select: { organizationId: true, lastSyncAt: true, updatedAt: true },
+      select: { organizationId: true, slug: true, lastSyncAt: true, updatedAt: true },
     }),
     prisma.invitation.groupBy({
       by: ["organizationId"],
@@ -765,6 +823,13 @@ export async function listChildOrganizationsOperationsDashboard(
     if (r.lastSyncAt && (!cur.lastSync || r.lastSyncAt > cur.lastSync)) cur.lastSync = r.lastSyncAt;
     if (!cur.lastIntUpdated || r.updatedAt > cur.lastIntUpdated) cur.lastIntUpdated = r.updatedAt;
     intAgg.set(r.organizationId, cur);
+  }
+
+  const slugByOrg = new Map<string, Set<string>>();
+  for (const r of invRows) {
+    const s = slugByOrg.get(r.organizationId) ?? new Set<string>();
+    s.add(r.slug);
+    slugByOrg.set(r.organizationId, s);
   }
 
   const alerts: ChildOrganizationOperationsAlert[] = [];
@@ -848,6 +913,10 @@ export async function listChildOrganizationsOperationsDashboard(
       (c.workspaceStatus === "ACTIVE" &&
         (agg.count === 0 || m === 0 || stale || neverAccessed));
 
+    const slugs = slugByOrg.get(c.id) ?? new Set<string>();
+    const metaAdsConnected = slugs.has("meta");
+    const googleAdsConnected = slugs.has("google-ads");
+
     return {
       id: c.id,
       name: c.name,
@@ -880,8 +949,27 @@ export async function listChildOrganizationsOperationsDashboard(
       staleActivity: stale,
       neverAccessed,
       needsAttention,
+      metaAdsConnected,
+      googleAdsConnected,
+      clientAccountCount: clientAccCountMap.get(c.id) ?? 0,
+      projectCount: projectCountMap.get(c.id) ?? 0,
+      launchCount: launchCountByOrg.get(c.id) ?? 0,
+      activeLaunchCount: activeLaunchCountByOrg.get(c.id) ?? 0,
     };
   });
+
+  const rollupMap = await rollupMarketing30dForChildren(
+    organizations.map((o) => ({
+      id: o.id,
+      workspaceStatus: o.workspaceStatus,
+      metaAdsConnected: o.metaAdsConnected,
+      googleAdsConnected: o.googleAdsConnected,
+    }))
+  );
+  const organizationsOut = organizations.map((o) => ({
+    ...o,
+    marketing30d: rollupMap.get(o.id) ?? null,
+  }));
 
   const maxChild = planContext.limits.maxChildOrganizations;
   const usedChild = planContext.usage.childOrganizations;
@@ -908,16 +996,19 @@ export async function listChildOrganizationsOperationsDashboard(
     activeWorkspaces: children.filter((c) => c.workspaceStatus === "ACTIVE").length,
     pausedWorkspaces: children.filter((c) => c.workspaceStatus === "PAUSED").length,
     archivedWorkspaces: children.filter((c) => c.workspaceStatus === "ARCHIVED").length,
-    withoutIntegration: organizations.filter(
+    withoutIntegration: organizationsOut.filter(
       (o) => o.connectedIntegrations === 0 && o.workspaceStatus === "ACTIVE"
     ).length,
-    withoutMembers: organizations.filter((o) => o.memberCount === 0 && o.workspaceStatus === "ACTIVE").length,
-    staleActivityCount: organizations.filter((o) => o.staleActivity && o.workspaceStatus === "ACTIVE").length,
-    integrationsTotalAcrossChildren: organizations.reduce((s, o) => s + o.connectedIntegrations, 0),
-    usersTotalAcrossChildren: organizations.reduce((s, o) => s + o.memberCount, 0),
-    dashboardsTotalAcrossChildren: organizations.reduce((s, o) => s + o.dashboardCount, 0),
+    withoutMembers: organizationsOut.filter((o) => o.memberCount === 0 && o.workspaceStatus === "ACTIVE").length,
+    staleActivityCount: organizationsOut.filter((o) => o.staleActivity && o.workspaceStatus === "ACTIVE").length,
+    integrationsTotalAcrossChildren: organizationsOut.reduce((s, o) => s + o.connectedIntegrations, 0),
+    usersTotalAcrossChildren: organizationsOut.reduce((s, o) => s + o.memberCount, 0),
+    dashboardsTotalAcrossChildren: organizationsOut.reduce((s, o) => s + o.dashboardCount, 0),
     childSlotsUsed: usedChild,
     childSlotsCap: maxChild,
+    childrenWithActiveLaunches: organizationsOut.filter((o) => o.activeLaunchCount > 0).length,
+    totalProjectsAcrossChildren: organizationsOut.reduce((s, o) => s + o.projectCount, 0),
+    totalLaunchesAcrossChildren: organizationsOut.reduce((s, o) => s + o.launchCount, 0),
   };
 
   return {
@@ -928,7 +1019,7 @@ export async function listChildOrganizationsOperationsDashboard(
       limitsHaveOverrides: planContext.limitsHaveOverrides,
       usage: planContext.usage,
     },
-    organizations,
+    organizations: organizationsOut,
     summary,
     alerts,
   };

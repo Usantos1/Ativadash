@@ -61,6 +61,7 @@ export function MarketingCampaignsOsTable({
   onLevelChange,
   hasMeta,
   hasGoogle,
+  combinedCampaignMode,
 }: {
   rows: OsCampaignRow[];
   goalMode: AccountObjective;
@@ -80,6 +81,8 @@ export function MarketingCampaignsOsTable({
   onLevelChange?: (l: "campaign" | "adset" | "ad") => void;
   hasMeta?: boolean;
   hasGoogle?: boolean;
+  /** Meta + Google na mesma lista — oculta alternância de plataforma/nível. */
+  combinedCampaignMode?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -262,6 +265,7 @@ export function MarketingCampaignsOsTable({
   }
 
   const showOsToolbar =
+    !combinedCampaignMode &&
     platform != null &&
     onPlatformChange != null &&
     level != null &&

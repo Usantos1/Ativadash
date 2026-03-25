@@ -1,103 +1,135 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { Building2, Plus, Pencil, Search, Trash2 } from "lucide-react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { useNavigate } from "react-router-dom";
+import {
+  AlertTriangle,
+  Building2,
+  ChevronDown,
+  Eye,
+  Loader2,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Search,
+  Settings,
+  TrendingUp,
+  UserCog,
+  LogIn,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
-import { ScrollRegion } from "@/components/ui/scroll-region";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AnalyticsPageHeader } from "@/components/analytics/AnalyticsPageHeader";
-import { AnalyticsSection } from "@/components/analytics/AnalyticsSection";
-import { KpiCardPremium } from "@/components/premium";
+import { PageHeaderPremium, KpiCardPremium, StatusBadge } from "@/components/premium";
+import { formatNumber, formatSpend } from "@/lib/metrics-format";
+import { cn } from "@/lib/utils";
 import {
-  fetchClients,
-  fetchProjects,
-  createClient,
-  updateClient,
-  deleteClient,
-  type ClientAccount,
-} from "@/lib/workspace-api";
-import {
-  fetchOrganizationContext,
+  createManagedOrganization,
+  fetchChildrenOperationsDashboard,
   formatPlanCap,
-  type OrganizationContext,
+  patchChildWorkspace,
+  setActiveOrganization,
+  type ChildWorkspaceOperationsRow,
+  type WorkspaceStatus,
 } from "@/lib/organization-api";
+import { getWorkspaceHealth } from "@/lib/revenda-workspace-metrics";
+import { OperationsModuleNav } from "@/components/operations/operations-module-nav";
+import { ClientDetailDialog } from "@/components/operations/client-detail-dialog";
+import { useAuthStore } from "@/stores/auth-store";
+import { AGENCY_WORKSPACE_ROLE_LABEL, AGENCY_WORKSPACE_ROLE_ORDER } from "@/lib/agency-workspace-roles";
+import { ApiClientError } from "@/lib/api";
+
+function displayClientStatus(row: ChildWorkspaceOperationsRow): {
+  label: string;
+  tone: "healthy" | "alert" | "disconnected";
+  critical: boolean;
+} {
+  const h = getWorkspaceHealth(row);
+  if (h === "INATIVO") {
+    return {
+      label: row.workspaceStatus === "PAUSED" ? "Pausado" : "Arquivado",
+      tone: "disconnected",
+      critical: row.workspaceStatus === "ARCHIVED",
+    };
+  }
+  if (h === "CRITICO") return { label: "Crítico", tone: "disconnected", critical: true };
+  if (h === "ATENCAO") return { label: "Atenção", tone: "alert", critical: false };
+  if (h === "OK") {
+    const m = row.marketing30d;
+    const hasSignal =
+      row.metaAdsConnected ||
+      row.googleAdsConnected ||
+      (m != null && (m.spend > 0 || m.leads > 0));
+    if (!hasSignal) return { label: "Sem dados", tone: "healthy", critical: false };
+    return { label: "Ativo", tone: "healthy", critical: false };
+  }
+  return { label: "Atenção", tone: "alert", critical: false };
+}
+
+function formatShortDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  } catch {
+    return "—";
+  }
+}
 
 export function ClientsPage() {
-  const [rows, setRows] = useState<ClientAccount[]>([]);
-  const [projectCountByClient, setProjectCountByClient] = useState<Record<string, number>>({});
-  const [orgCtx, setOrgCtx] = useState<OrganizationContext | null>(null);
+  const navigate = useNavigate();
+  const setAuth = useAuthStore((s) => s.setAuth);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<ClientAccount | null>(null);
-  const [name, setName] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [forbidden, setForbidden] = useState(false);
+  const [dashboard, setDashboard] = useState<Awaited<ReturnType<typeof fetchChildrenOperationsDashboard>> | null>(
+    null
+  );
   const [search, setSearch] = useState("");
+  const [openCreate, setOpenCreate] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [switchingId, setSwitchingId] = useState<string | null>(null);
+  const [rolesOpen, setRolesOpen] = useState(false);
+  const [detailRow, setDetailRow] = useState<ChildWorkspaceOperationsRow | null>(null);
+  const [editRow, setEditRow] = useState<ChildWorkspaceOperationsRow | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editStatus, setEditStatus] = useState<WorkspaceStatus>("ACTIVE");
+  const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
+    setForbidden(false);
+    setLoading(true);
     try {
-      const [list, ctx, projects] = await Promise.all([
-        fetchClients(),
-        fetchOrganizationContext(),
-        fetchProjects(),
-      ]);
-      setRows(list);
-      setOrgCtx(ctx);
-      const map: Record<string, number> = {};
-      for (const p of projects) {
-        if (p.clientAccountId) {
-          map[p.clientAccountId] = (map[p.clientAccountId] ?? 0) + 1;
-        }
-      }
-      setProjectCountByClient(map);
+      const data = await fetchChildrenOperationsDashboard();
+      setDashboard(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro ao carregar");
+      if (e instanceof ApiClientError && e.status === 403) {
+        setForbidden(true);
+      } else {
+        setError(e instanceof Error ? e.message : "Erro ao carregar");
+      }
+      setDashboard(null);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
-  function openCreate() {
-    setEditing(null);
-    setName("");
-    setOpen(true);
-  }
-
-  function openEdit(row: ClientAccount) {
-    setEditing(row);
-    setName(row.name);
-    setOpen(true);
-  }
-
-  async function handleSave() {
-    const n = name.trim();
-    if (!n) return;
-    setSaving(true);
-    try {
-      if (editing) {
-        await updateClient(editing.id, n);
-      } else {
-        await createClient(n);
-      }
-      setOpen(false);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro ao salvar");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const maxClients = orgCtx?.limits.maxClientAccounts;
-  const atClientLimit =
-    maxClients != null && rows.length >= maxClients;
+  const rows = dashboard?.organizations ?? [];
+  const summary = dashboard?.summary;
+  const parent = dashboard?.parent;
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -105,47 +137,129 @@ export function ClientsPage() {
     return rows.filter((r) => r.name.toLowerCase().includes(q));
   }, [rows, search]);
 
-  const totalProjectsOnClients = useMemo(
-    () => Object.values(projectCountByClient).reduce((a, n) => a + n, 0),
-    [projectCountByClient]
+  const clientsWithAlert = useMemo(
+    () =>
+      rows.filter(
+        (r) =>
+          r.workspaceStatus !== "ACTIVE" ||
+          r.needsAttention ||
+          getWorkspaceHealth(r) === "CRITICO" ||
+          getWorkspaceHealth(r) === "ATENCAO"
+      ).length,
+    [rows]
   );
 
-  async function handleDelete(row: ClientAccount) {
-    if (!confirm(`Remover o cliente "${row.name}"? Projetos vinculados ficam sem cliente.`)) return;
+  const atChildLimit =
+    summary?.childSlotsCap != null &&
+    summary.childSlotsCap > 0 &&
+    summary.childSlotsUsed >= summary.childSlotsCap;
+
+  async function switchToClient(organizationId: string, thenPath: string) {
+    setSwitchingId(organizationId);
+    setError(null);
     try {
-      await deleteClient(row.id);
-      await load();
+      const res = await setActiveOrganization(organizationId);
+      setAuth(
+        { ...res.user, organization: res.user.organization },
+        res.accessToken,
+        res.refreshToken,
+        {
+          memberships: res.memberships,
+          managedOrganizations: res.managedOrganizations ?? [],
+        }
+      );
+      navigate(thenPath, { replace: true });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro ao remover");
+      setError(e instanceof Error ? e.message : "Não foi possível entrar no cliente.");
+    } finally {
+      setSwitchingId(null);
     }
   }
 
+  function openEditWorkspace(row: ChildWorkspaceOperationsRow) {
+    setEditRow(row);
+    setEditName(row.name);
+    setEditStatus(row.workspaceStatus);
+  }
+
+  async function handleSaveWorkspace() {
+    if (!editRow) return;
+    const n = editName.trim();
+    if (n.length < 2) return;
+    setEditSaving(true);
+    setError(null);
+    try {
+      await patchChildWorkspace(editRow.id, { name: n, workspaceStatus: editStatus });
+      setEditRow(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao salvar conta.");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function handleCreate() {
+    const n = newName.trim();
+    if (n.length < 2) return;
+    setCreating(true);
+    setError(null);
+    try {
+      await createManagedOrganization(n, { inheritPlanFromParent: true });
+      setOpenCreate(false);
+      setNewName("");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao criar workspace.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  if (forbidden && !loading) {
+    return (
+      <div className="w-full space-y-6">
+        <PageHeaderPremium
+          eyebrow="Operação"
+          title="Clientes"
+          subtitle="Central de contas da agência: workspaces isolados, acessos e estrutura operacional."
+        />
+        <div className="rounded-2xl border border-border/50 bg-card/40 p-8 text-center shadow-[var(--shadow-surface-sm)]">
+          <p className="text-sm text-muted-foreground">
+            Central de contas disponível para administradores da organização matriz.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="w-full space-y-6">
-      <AnalyticsPageHeader
-        eyebrow="Carteira"
-        title="Clientes comerciais"
-        subtitle="Contas ou marcas que você atende nesta organização. Agrupam projetos, lançamentos e vínculos de mídia. Não confundir com usuários da equipe."
-        meta={
-          <Link
-            to="/configuracoes#como-funciona-conta"
-            className="font-medium text-primary underline-offset-4 hover:underline"
-          >
-            Modelo de conta em Configurações
-          </Link>
-        }
+    <div className="w-full space-y-6 pb-16">
+      <PageHeaderPremium
+        eyebrow="Operação"
+        title="Clientes"
+        subtitle="Gerencie as contas da agência, workspaces, acessos e vínculo com projetos e lançamentos."
+        meta={<OperationsModuleNav />}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-0 flex-1 sm:max-w-xs">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
+            <div className="relative min-w-0 sm:w-56">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Buscar por nome…"
+                placeholder="Buscar por nome"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="rounded-full pl-9"
+                className="h-9 rounded-lg border-border/60 pl-9"
               />
             </div>
-            <Button onClick={openCreate} disabled={atClientLimit} title={atClientLimit ? "Limite do plano atingido" : undefined}>
+            <Button
+              className="h-9 rounded-lg"
+              onClick={() => {
+                setNewName("");
+                setOpenCreate(true);
+              }}
+              disabled={atChildLimit}
+              title={atChildLimit ? "Limite de workspaces do plano" : undefined}
+            >
               <Plus className="mr-2 h-4 w-4" />
               Novo cliente
             </Button>
@@ -153,130 +267,336 @@ export function ClientsPage() {
         }
       />
 
-      {!loading && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <KpiCardPremium variant="primary" label="Clientes cadastrados" value={String(rows.length)} icon={Building2} />
+      {error ? (
+        <div className="rounded-xl border border-destructive/35 bg-destructive/[0.08] px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
+
+      {!loading && summary && (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCardPremium
             variant="primary"
+            label="Clientes ativos"
+            value={String(summary.activeWorkspaces)}
+            hideSource
+            icon={Building2}
+          />
+          <KpiCardPremium
+            variant="secondary"
             label="Uso do plano"
-            value={orgCtx ? `${rows.length} / ${formatPlanCap(orgCtx.limits.maxClientAccounts)}` : "—"}
-            hint={orgCtx ? `Plano ${orgCtx.plan?.name ?? "—"}` : undefined}
-            icon={Building2}
+            value={`${summary.childSlotsUsed} / ${formatPlanCap(summary.childSlotsCap)}`}
+            hideSource
+            hint={parent?.plan?.name ?? undefined}
+            icon={TrendingUp}
           />
           <KpiCardPremium
-            variant="compact"
-            label="Projetos com cliente"
-            value={String(totalProjectsOnClients)}
-            hint="Projetos vinculados a algum cliente."
-            icon={Building2}
+            variant="secondary"
+            label="Com alerta"
+            value={String(clientsWithAlert)}
+            hideSource
+            icon={AlertTriangle}
           />
           <KpiCardPremium
-            variant="compact"
-            label="Resultado da busca"
-            value={String(filteredRows.length)}
-            hint={search.trim() ? `Filtro: “${search.trim()}”` : "Sem filtro de texto."}
-            icon={Search}
+            variant="secondary"
+            label="Contas c/ lanç. ativos"
+            value={String(summary.childrenWithActiveLaunches ?? 0)}
+            hideSource
+            hint="Workspaces com pelo menos um lançamento na janela atual."
+            icon={TrendingUp}
           />
         </div>
       )}
 
-      {atClientLimit && (
-        <p className="text-sm text-amber-800 dark:text-amber-200" role="status">
-          Limite de clientes comerciais do plano atingido. Remova um cliente ou fale com vendas para ampliar.
-        </p>
-      )}
-
-      {error && (
-        <p className="text-sm text-destructive" role="alert">
-          {error}
-        </p>
-      )}
-
-      <AnalyticsSection
-        title="Carteira"
-        description={
-          loading
-            ? "Carregando…"
-            : orgCtx
-              ? `${rows.length} / ${formatPlanCap(orgCtx.limits.maxClientAccounts)} no plano · ${orgCtx.plan?.name ?? "—"}`
-              : `${rows.length} cliente(s)`
-        }
-        dense
-      >
-        {loading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </div>
-        ) : rows.length === 0 ? (
+      {loading ? (
+        <div className="grid gap-4">
+          <Skeleton className="h-40 rounded-2xl" />
+          <Skeleton className="h-40 rounded-2xl" />
+          <Skeleton className="h-40 rounded-2xl" />
+        </div>
+      ) : filteredRows.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border/60 bg-muted/15 px-6 py-14 text-center">
           <p className="text-sm text-muted-foreground">
-            Nenhum cliente ainda. Crie o primeiro para associar projetos.
+            {search.trim() ? "Nenhum resultado." : "Nenhum workspace filho ainda."}
           </p>
-        ) : (
-          <ScrollRegion className="scrollbar-thin">
-            <table className="w-full min-w-[520px] text-sm">
-              <thead>
-                <tr className="border-b text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  <th className="pb-2 pr-4 font-medium">Cliente</th>
-                  <th className="pb-2 pr-4 font-medium text-right">Projetos</th>
-                  <th className="pb-2 pr-4 font-medium">Status</th>
-                  <th className="pb-2 font-medium">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRows.map((row) => (
-                  <tr key={row.id} className="border-b border-border/50 transition-colors hover:bg-muted/30">
-                    <td className="py-3 pr-4 font-medium">{row.name}</td>
-                    <td className="py-3 pr-4 text-right tabular-nums text-muted-foreground">
-                      {projectCountByClient[row.id] ?? 0}
-                    </td>
-                    <td className="py-3 pr-4">
-                      <span className="rounded-full bg-emerald-500/12 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:text-emerald-300">
-                        Ativo
-                      </span>
-                    </td>
-                    <td className="py-3">
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" aria-label="Editar" onClick={() => openEdit(row)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive"
-                          aria-label="Remover"
-                          onClick={() => handleDelete(row)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+          {!search.trim() ? (
+            <Button className="mt-4 rounded-lg" onClick={() => setOpenCreate(true)} disabled={atChildLimit}>
+              <Plus className="mr-2 h-4 w-4" />
+              Criar primeiro cliente
+            </Button>
+          ) : null}
+        </div>
+      ) : (
+        <ul className="grid gap-4">
+          {filteredRows.map((row) => {
+            const st = displayClientStatus(row);
+            const busy = switchingId === row.id;
+            const m = row.marketing30d;
+            const pc = row.projectCount ?? 0;
+            const lc = row.launchCount ?? 0;
+            const lac = row.activeLaunchCount ?? 0;
+            const cc = row.clientAccountCount ?? 0;
+            return (
+              <li
+                key={row.id}
+                className={cn(
+                  "overflow-hidden rounded-2xl border border-border/50 bg-card/40 shadow-[var(--shadow-surface-sm)] transition-shadow hover:shadow-[var(--shadow-surface)]",
+                  st.critical && "border-rose-500/35 ring-1 ring-rose-500/15"
+                )}
+              >
+                <div className="flex flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="min-w-0 flex-1 space-y-3">
+                    <div className="space-y-0.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="truncate text-lg font-black tracking-tight text-foreground">{row.name}</h2>
+                        {st.critical ? (
+                          <span className="shrink-0 rounded-md border border-rose-500/40 bg-rose-500/[0.12] px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-rose-900 dark:text-rose-100">
+                            {st.label}
+                          </span>
+                        ) : (
+                          <StatusBadge tone={st.tone} dot>
+                            {st.label}
+                          </StatusBadge>
+                        )}
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </ScrollRegion>
-        )}
-      </AnalyticsSection>
+                      <p className="font-mono text-xs text-muted-foreground">/{row.slug}</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-4">
+                      <div className="rounded-xl border border-border/40 bg-muted/15 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Projetos</p>
+                        <p className="mt-0.5 text-sm font-bold tabular-nums">{pc}</p>
+                      </div>
+                      <div className="rounded-xl border border-border/40 bg-muted/15 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Lanç. ativos</p>
+                        <p className="mt-0.5 text-sm font-bold tabular-nums">{lac}</p>
+                      </div>
+                      <div className="rounded-xl border border-border/40 bg-muted/15 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Lanç. total</p>
+                        <p className="mt-0.5 text-sm font-bold tabular-nums">{lc}</p>
+                      </div>
+                      <div className="rounded-xl border border-border/40 bg-muted/15 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Contas comerciais</p>
+                        <p className="mt-0.5 text-sm font-bold tabular-nums">{cc}</p>
+                      </div>
+                      <div className="rounded-xl border border-border/40 bg-muted/15 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Leads · 30d</p>
+                        <p className="mt-0.5 text-sm font-bold tabular-nums">
+                          {m ? formatNumber(Math.round(m.leads)) : "—"}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border/40 bg-muted/15 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">CPL</p>
+                        <p className="mt-0.5 text-sm font-bold tabular-nums">
+                          {m?.cpl != null ? formatSpend(m.cpl) : "—"}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border/40 bg-muted/15 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Invest. · 30d</p>
+                        <p className="mt-0.5 text-sm font-bold tabular-nums">
+                          {m ? formatSpend(m.spend) : "—"}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border/40 bg-muted/15 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Última atividade</p>
+                        <p className="mt-0.5 text-xs font-semibold leading-snug text-foreground">
+                          {formatShortDate(row.lastActivityAt ?? row.lastIntegrationSyncAt)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Plataformas</span>
+                      {row.metaAdsConnected ? (
+                        <span className="rounded-md border border-border/50 bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">
+                          Meta
+                        </span>
+                      ) : null}
+                      {row.googleAdsConnected ? (
+                        <span className="rounded-md border border-border/50 bg-sky-500/10 px-2 py-0.5 text-[11px] font-bold text-sky-800 dark:text-sky-200">
+                          Google
+                        </span>
+                      ) : null}
+                      {!row.metaAdsConnected && !row.googleAdsConnected ? (
+                        <span className="text-xs text-muted-foreground">Nenhuma</span>
+                      ) : null}
+                      <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
+                        {row.memberCount} com acesso
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
+                    <Button
+                      className="h-10 rounded-xl"
+                      disabled={busy}
+                      onClick={() => void switchToClient(row.id, "/marketing")}
+                    >
+                      {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogIn className="mr-2 h-4 w-4" />}
+                      Entrar no cliente
+                    </Button>
+                    <DropdownMenu.Root>
+                      <DropdownMenu.Trigger asChild>
+                        <Button variant="outline" className="h-10 rounded-xl" disabled={busy} type="button">
+                          <MoreHorizontal className="mr-2 h-4 w-4" />
+                          Ações
+                          <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-60" />
+                        </Button>
+                      </DropdownMenu.Trigger>
+                      <DropdownMenu.Portal>
+                        <DropdownMenu.Content
+                          className="z-50 min-w-[14rem] rounded-xl border border-border/60 bg-popover p-1 shadow-lg"
+                          sideOffset={6}
+                          align="end"
+                        >
+                          <DropdownMenu.Item
+                            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
+                            onSelect={() => setDetailRow(row)}
+                          >
+                            <Eye className="h-4 w-4 opacity-70" />
+                            Ver detalhes
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
+                            onSelect={() => void switchToClient(row.id, "/usuarios")}
+                          >
+                            <UserCog className="h-4 w-4 opacity-70" />
+                            Gerenciar acessos
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
+                            onSelect={() => openEditWorkspace(row)}
+                          >
+                            <Pencil className="h-4 w-4 opacity-70" />
+                            Editar conta
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
+                            onSelect={() => void switchToClient(row.id, "/marketing/configuracoes")}
+                          >
+                            <Settings className="h-4 w-4 opacity-70" />
+                            Integrações e ajustes
+                          </DropdownMenu.Item>
+                        </DropdownMenu.Content>
+                      </DropdownMenu.Portal>
+                    </DropdownMenu.Root>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent title={editing ? "Editar cliente" : "Novo cliente"}>
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/40 bg-muted/10 px-4 py-3">
+        <p className="text-xs text-muted-foreground">Papéis por workspace (evolução)</p>
+        <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setRolesOpen(true)}>
+          Ver papéis
+        </Button>
+      </div>
+
+      <Dialog open={openCreate} onOpenChange={setOpenCreate}>
+        <DialogContent title="Novo cliente" showClose>
           <div className="space-y-2 py-2">
-            <Label htmlFor="client-name">Nome</Label>
+            <Label htmlFor="new-client-name">Nome do workspace</Label>
             <Input
-              id="client-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ex.: Agência XYZ"
+              id="new-client-name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Ex.: Marca do cliente"
+              className="rounded-xl"
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
+            <Button variant="outline" type="button" onClick={() => setOpenCreate(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleSave} disabled={saving || !name.trim()}>
-              {saving ? "Salvando…" : "Salvar"}
+            <Button type="button" disabled={creating || newName.trim().length < 2} onClick={() => void handleCreate()}>
+              {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Criar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={rolesOpen} onOpenChange={setRolesOpen}>
+        <DialogContent title="Papéis no cliente" showClose>
+          <p className="text-sm text-muted-foreground">
+            Modelo previsto para permissões por workspace. Hoje a equipe é gerida em{" "}
+            <strong className="text-foreground">Usuários</strong> após entrar no cliente.
+          </p>
+          <ul className="space-y-2 py-2 text-sm">
+            {AGENCY_WORKSPACE_ROLE_ORDER.map((k) => (
+              <li key={k} className="flex justify-between rounded-lg border border-border/50 px-3 py-2">
+                <span className="font-medium">{AGENCY_WORKSPACE_ROLE_LABEL[k]}</span>
+                <span className="text-xs text-muted-foreground">{k}</span>
+              </li>
+            ))}
+          </ul>
+          <DialogFooter>
+            <Button type="button" variant="secondary" className="rounded-lg" onClick={() => setRolesOpen(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {detailRow ? (
+        <ClientDetailDialog
+          open={!!detailRow}
+          onOpenChange={(v) => {
+            if (!v) setDetailRow(null);
+          }}
+          row={detailRow}
+          statusLabel={displayClientStatus(detailRow).label}
+          statusTone={displayClientStatus(detailRow).tone}
+          statusCritical={displayClientStatus(detailRow).critical}
+          onEnterClient={(id) => void switchToClient(id, "/marketing")}
+          onManageAccess={(id) => void switchToClient(id, "/usuarios")}
+          entering={switchingId === detailRow.id}
+          formatDate={formatShortDate}
+        />
+      ) : null}
+
+      <Dialog
+        open={!!editRow}
+        onOpenChange={(v) => {
+          if (!v) setEditRow(null);
+        }}
+      >
+        <DialogContent title="Editar conta" showClose>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="edit-ws-name">Nome do workspace</Label>
+              <Input
+                id="edit-ws-name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Status operacional</Label>
+              <Select value={editStatus} onValueChange={(v) => setEditStatus(v as WorkspaceStatus)}>
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ACTIVE">Ativo</SelectItem>
+                  <SelectItem value="PAUSED">Pausado</SelectItem>
+                  <SelectItem value="ARCHIVED">Arquivado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={() => setEditRow(null)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={editSaving || editName.trim().length < 2}
+              onClick={() => void handleSaveWorkspace()}
+            >
+              {editSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Salvar
             </Button>
           </DialogFooter>
         </DialogContent>

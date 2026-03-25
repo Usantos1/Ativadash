@@ -3,21 +3,16 @@ import { Link } from "react-router-dom";
 import {
   ArrowLeft,
   BarChart3,
-  Bell,
   ChevronRight,
   LayoutDashboard,
-  ListPlus,
   Loader2,
   MessageCircle,
   Plus,
   Save,
-  Signpost,
-  SlidersHorizontal,
-  Target,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -91,6 +86,12 @@ function formatBrlPreview(n: number | null | undefined): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
 }
 
+const GOAL_LABEL: Record<BusinessGoalMode, string> = {
+  LEADS: "Leads",
+  SALES: "Vendas",
+  HYBRID: "Híbrido",
+};
+
 function MoneyInput({
   id,
   label,
@@ -110,7 +111,7 @@ function MoneyInput({
 }) {
   return (
     <div className="space-y-2">
-      <Label htmlFor={id} className="text-sm font-medium">
+      <Label htmlFor={id} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
       </Label>
       <div className="relative">
@@ -124,47 +125,44 @@ function MoneyInput({
           value={value}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
-          className="h-11 rounded-xl border-border/70 pl-10 shadow-[var(--shadow-surface-sm)] transition-shadow focus-visible:border-primary/40"
+          className="h-11 rounded-xl border-border/60 bg-background/80 pl-10 shadow-sm focus-visible:border-primary/40"
         />
       </div>
-      {hint ? <p className="text-xs leading-relaxed text-muted-foreground">{hint}</p> : null}
+      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
 
-function SectionShell({
-  icon: Icon,
+/** Bloco alinhado ao Painel ADS — borda suave, cabeçalho tipo cockpit. */
+function AdsSettingsSection({
+  kicker = "ADS",
   title,
-  description,
   children,
   className,
+  headerRight,
 }: {
-  icon: typeof Target;
+  kicker?: string;
   title: string;
-  description: string;
   children: React.ReactNode;
   className?: string;
+  headerRight?: React.ReactNode;
 }) {
   return (
-    <Card
+    <section
       className={cn(
-        "overflow-hidden rounded-2xl border-border/60 bg-card shadow-[var(--shadow-surface-sm)] transition-shadow hover:shadow-[var(--shadow-surface)]",
+        "overflow-hidden rounded-2xl border border-border/50 bg-card/40 shadow-[var(--shadow-surface-sm)]",
         className
       )}
     >
-      <CardHeader className="space-y-3 border-b border-border/40 bg-gradient-to-br from-card to-primary/[0.03] pb-5">
-        <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary">
-            <Icon className="h-5 w-5" aria-hidden />
-          </div>
-          <div className="min-w-0 space-y-1">
-            <CardTitle className="text-lg font-semibold tracking-tight">{title}</CardTitle>
-            <CardDescription className="text-sm leading-relaxed">{description}</CardDescription>
-          </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/40 bg-muted/15 px-4 py-3 sm:px-5">
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">{kicker}</p>
+          <h2 className="text-base font-black tracking-tight text-foreground">{title}</h2>
         </div>
-      </CardHeader>
-      <CardContent className="p-5 sm:p-6">{children}</CardContent>
-    </Card>
+        {headerRight}
+      </div>
+      <div className="p-4 sm:p-6">{children}</div>
+    </section>
   );
 }
 
@@ -178,7 +176,7 @@ function AlertRuleRow({
 }: {
   id: string;
   title: string;
-  subtitle: string;
+  subtitle?: string;
   checked: boolean;
   onChange: (v: boolean) => void;
   disabled?: boolean;
@@ -186,15 +184,15 @@ function AlertRuleRow({
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-4 rounded-xl border border-border/55 bg-muted/[0.35] px-4 py-3.5 transition-colors",
-        disabled && "opacity-50"
+        "flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 px-4 py-3",
+        disabled && "opacity-45"
       )}
     >
       <div className="min-w-0 space-y-0.5">
         <p id={`${id}-label`} className="text-sm font-medium text-foreground">
           {title}
         </p>
-        <p className="text-xs text-muted-foreground">{subtitle}</p>
+        {subtitle ? <p className="text-xs text-muted-foreground">{subtitle}</p> : null}
       </div>
       <Switch
         id={id}
@@ -275,28 +273,17 @@ function CustomAlertRulesPanel() {
 
   if (pack === null) {
     return (
-      <SectionShell
-        icon={ListPlus}
-        title="Regras de alerta customizadas"
-        description="Carregando…"
-      >
-        <Skeleton className="h-24 w-full rounded-xl" />
-      </SectionShell>
+      <AdsSettingsSection title="Regras customizadas" kicker="Avançado">
+        <Skeleton className="h-32 w-full rounded-xl" />
+      </AdsSettingsSection>
     );
   }
 
   if (!pack.performanceAlerts) {
     return (
-      <SectionShell
-        icon={ListPlus}
-        title="Regras de alerta customizadas"
-        description="Defina limites adicionais por métrica. A avaliação ocorre no painel de marketing e ao disparar a avaliação de insights (com persistência de ocorrências conforme o fluxo)."
-      >
-        <p className="text-sm text-muted-foreground">
-          Este recurso exige o módulo <strong className="font-medium text-foreground">alertas de performance</strong> no
-          plano da empresa. Fale com a matriz ou com o suporte para habilitar.
-        </p>
-      </SectionShell>
+      <AdsSettingsSection title="Regras customizadas" kicker="Avançado">
+        <p className="text-sm text-muted-foreground">Não disponível no plano atual.</p>
+      </AdsSettingsSection>
     );
   }
 
@@ -327,7 +314,7 @@ function CustomAlertRulesPanel() {
       const a = Number.parseInt(nMuteA.trim(), 10);
       const b = Number.parseInt(nMuteB.trim(), 10);
       if (!Number.isFinite(a) || !Number.isFinite(b) || a < 0 || a > 23 || b < 0 || b > 23) {
-        setPanelErr("Horas de silêncio: use inteiros de 0 a 23 (UTC do servidor) ou deixe os dois vazios.");
+        setPanelErr("Silêncio: horas 0–23 (UTC) ou vazio.");
         return;
       }
       muteStartHour = a;
@@ -390,11 +377,7 @@ function CustomAlertRulesPanel() {
   }
 
   return (
-    <SectionShell
-      icon={ListPlus}
-      title="Regras de alerta customizadas"
-      description="Limites por métrica (CPA, ROAS, gasto, CTR) avaliados no painel de marketing e em POST /insights/evaluate; ocorrências são registradas quando a avaliação persiste disparos (dedupe ~4h por regra)."
-    >
+    <AdsSettingsSection title="Regras customizadas" kicker="Avançado">
       {loadErr ? <p className="mb-3 text-sm text-destructive">{loadErr}</p> : null}
       {panelErr ? (
         <p className="mb-3 rounded-lg border border-destructive/35 bg-destructive/[0.08] px-3 py-2 text-sm text-destructive">
@@ -407,22 +390,15 @@ function CustomAlertRulesPanel() {
         </p>
       ) : null}
 
-      <div className="space-y-3">
-        <div className="space-y-2 rounded-2xl border border-border/60 bg-muted/20 p-4 shadow-inner">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Histórico de alertas (API)</p>
-          <p className="text-xs text-muted-foreground">
-            Disparos persistidos pela avaliação de performance (dedupe ~4h por regra). Útil para provar ao cliente o que já
-            foi sinalizado.
-          </p>
+      <div className="grid gap-6 xl:grid-cols-2">
+        <div className="rounded-xl border border-border/50 bg-muted/15 p-4">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Disparos recentes</p>
           {occurrences.length === 0 ? (
-            <p className="pt-1 text-sm text-muted-foreground">Nenhum disparo registrado ainda.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Nenhum ainda.</p>
           ) : (
-            <ul className="mt-3 max-h-64 space-y-2 overflow-y-auto text-sm">
+            <ul className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1 text-sm">
               {occurrences.map((o) => (
-                <li
-                  key={o.id}
-                  className="rounded-xl border border-border/55 bg-card px-3 py-2.5 shadow-[var(--shadow-surface-sm)]"
-                >
+                <li key={o.id} className="rounded-lg border border-border/50 bg-card/80 px-3 py-2">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <span className="font-medium text-foreground">{o.ruleName}</span>
                     <time className="text-xs text-muted-foreground" dateTime={o.createdAt}>
@@ -436,75 +412,76 @@ function CustomAlertRulesPanel() {
           )}
         </div>
 
-        <Separator className="my-4" />
-
-        {pack.items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nenhuma regra customizada ainda.</p>
-        ) : (
-          pack.items.map((rule) => (
-            <div
-              key={rule.id}
-              className="flex flex-col gap-3 rounded-xl border border-border/55 bg-muted/[0.25] p-4 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div className="min-w-0 space-y-1">
-                <p className="font-medium text-foreground">{rule.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {METRIC_LABEL[rule.metric as AlertRuleMetric] ?? rule.metric} {OP_LABEL[rule.operator as AlertRuleOperator] ?? rule.operator}{" "}
-                  <span className="font-mono font-semibold text-foreground">{rule.threshold}</span>
-                  {" · "}
-                  <span className="capitalize">{rule.severity}</span>
-                  {rule.muteStartHour != null && rule.muteEndHour != null ? (
-                    <span>
-                      {" "}
-                      · silêncio {rule.muteStartHour}h–{rule.muteEndHour}h UTC
-                    </span>
-                  ) : null}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {canEdit ? (
-                  <>
-                    <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-background/80 px-3 py-1.5">
-                      <span className="text-xs text-muted-foreground">Ativa</span>
-                      <Switch
-                        checked={rule.active}
+        <div className="space-y-3">
+          {pack.items.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhuma regra customizada.</p>
+          ) : (
+            pack.items.map((rule) => (
+              <div
+                key={rule.id}
+                className="flex flex-col gap-3 rounded-xl border border-border/50 bg-muted/15 p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0 space-y-1">
+                  <p className="font-medium text-foreground">{rule.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {METRIC_LABEL[rule.metric as AlertRuleMetric] ?? rule.metric}{" "}
+                    {OP_LABEL[rule.operator as AlertRuleOperator] ?? rule.operator}{" "}
+                    <span className="font-mono font-semibold text-foreground">{rule.threshold}</span>
+                    {" · "}
+                    <span className="capitalize">{rule.severity}</span>
+                    {rule.muteStartHour != null && rule.muteEndHour != null ? (
+                      <span>
+                        {" "}
+                        · silêncio {rule.muteStartHour}h–{rule.muteEndHour}h UTC
+                      </span>
+                    ) : null}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {canEdit ? (
+                    <>
+                      <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-background/80 px-3 py-1.5">
+                        <span className="text-xs text-muted-foreground">Ativa</span>
+                        <Switch
+                          checked={rule.active}
+                          disabled={busy === rule.id}
+                          onCheckedChange={() => void handleToggleActive(rule)}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 text-destructive hover:text-destructive"
+                        title="Excluir"
                         disabled={busy === rule.id}
-                        onCheckedChange={() => void handleToggleActive(rule)}
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-9 w-9 text-destructive hover:text-destructive"
-                      title="Excluir"
-                      disabled={busy === rule.id}
-                      onClick={() => void handleDelete(rule.id)}
-                    >
-                      {busy === rule.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                    </Button>
-                  </>
-                ) : (
-                  <span className="text-xs text-muted-foreground">Somente leitura</span>
-                )}
+                        onClick={() => void handleDelete(rule.id)}
+                      >
+                        {busy === rule.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      </Button>
+                    </>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Somente leitura</span>
+                  )}
+                </div>
               </div>
-            </div>
-          ))
-        )}
+            ))
+          )}
+        </div>
       </div>
 
       {canEdit ? (
         <>
-          <Separator className="my-6 bg-border/60" />
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nova regra</p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2 sm:col-span-2">
+          <Separator className="my-6 bg-border/50" />
+          <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Nova regra</p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="space-y-2 sm:col-span-2 lg:col-span-3">
               <Label htmlFor="ar-name">Nome</Label>
               <Input
                 id="ar-name"
                 value={nName}
                 onChange={(e) => setNName(e.target.value)}
-                placeholder="Ex.: CPA crítico lançamento X"
+                placeholder="Ex.: CPA crítico campanha X"
                 className="h-11 rounded-xl"
               />
             </div>
@@ -562,24 +539,24 @@ function CustomAlertRulesPanel() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ar-mute-a">Silêncio UTC — início (0–23)</Label>
+              <Label htmlFor="ar-mute-a">Silêncio UTC · início</Label>
               <Input
                 id="ar-mute-a"
                 inputMode="numeric"
                 value={nMuteA}
                 onChange={(e) => setNMuteA(e.target.value)}
-                placeholder="vazio = sem janela"
+                placeholder="0–23"
                 className="h-11 rounded-xl font-mono"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ar-mute-b">Silêncio UTC — fim (0–23)</Label>
+              <Label htmlFor="ar-mute-b">Silêncio UTC · fim</Label>
               <Input
                 id="ar-mute-b"
                 inputMode="numeric"
                 value={nMuteB}
                 onChange={(e) => setNMuteB(e.target.value)}
-                placeholder="vazio = sem janela"
+                placeholder="0–23"
                 className="h-11 rounded-xl font-mono"
               />
             </div>
@@ -595,9 +572,18 @@ function CustomAlertRulesPanel() {
           </Button>
         </>
       ) : (
-        <p className="mt-4 text-xs text-muted-foreground">Apenas administradores do workspace podem criar ou editar regras.</p>
+        <p className="mt-4 text-xs text-muted-foreground">Apenas admins podem editar regras.</p>
       )}
-    </SectionShell>
+    </AdsSettingsSection>
+  );
+}
+
+function PreviewMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-border/50 bg-muted/15 px-3 py-2.5">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-0.5 text-sm font-bold tabular-nums text-foreground">{value}</p>
+    </div>
   );
 }
 
@@ -735,7 +721,7 @@ export function MarketingSettings() {
         alertCpaAboveTarget,
         alertRoasBelowTarget,
       });
-      setSavedMsg("Alterações aplicadas com sucesso.");
+      setSavedMsg("Salvo.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao salvar.");
     } finally {
@@ -745,31 +731,47 @@ export function MarketingSettings() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-6xl space-y-8 pb-16">
+      <div className="w-full space-y-6 pb-12">
         <div className="space-y-3">
-          <Skeleton className="h-3 w-24 rounded-md" />
-          <Skeleton className="h-9 w-2/3 max-w-md rounded-lg" />
-          <Skeleton className="h-4 w-full max-w-xl rounded-md" />
+          <Skeleton className="h-3 w-28 rounded-md" />
+          <Skeleton className="h-10 w-full max-w-xl rounded-lg" />
+          <Skeleton className="h-4 w-full rounded-md" />
         </div>
-        <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-          <div className="space-y-6">
+        <div className="grid gap-6 xl:grid-cols-12">
+          <div className="space-y-6 xl:col-span-8 2xl:col-span-9">
+            <Skeleton className="h-16 w-full rounded-2xl" />
+            <Skeleton className="h-56 rounded-2xl" />
+            <Skeleton className="h-64 rounded-2xl" />
             <Skeleton className="h-72 rounded-2xl" />
-            <Skeleton className="h-96 rounded-2xl" />
           </div>
-          <Skeleton className="h-64 rounded-2xl lg:h-auto" />
+          <Skeleton className="h-80 rounded-2xl xl:col-span-4 2xl:col-span-3" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8 pb-28">
-      <Button variant="ghost" size="sm" className="-ml-2 h-9 gap-1.5 text-muted-foreground hover:text-foreground" asChild>
-        <Link to="/marketing">
-          <ArrowLeft className="h-4 w-4" />
-          Marketing
-        </Link>
-      </Button>
+    <div className="w-full space-y-6 pb-28">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="ghost" size="sm" className="h-9 gap-1.5 text-muted-foreground hover:text-foreground" asChild>
+          <Link to="/marketing">
+            <ArrowLeft className="h-4 w-4" />
+            Painel ADS
+          </Link>
+        </Button>
+        <span className="hidden text-border sm:inline">|</span>
+        <div className="flex flex-wrap gap-1.5">
+          <Button variant="ghost" size="sm" className="h-9 rounded-lg text-xs" asChild>
+            <Link to="/marketing/captacao">Captação</Link>
+          </Button>
+          <Button variant="ghost" size="sm" className="h-9 rounded-lg text-xs" asChild>
+            <Link to="/marketing/conversao">Conversão</Link>
+          </Button>
+          <Button variant="ghost" size="sm" className="h-9 rounded-lg text-xs" asChild>
+            <Link to="/marketing/receita">Receita</Link>
+          </Button>
+        </div>
+      </div>
 
       <PageHeaderPremium
         eyebrow="ADS"
@@ -777,18 +779,17 @@ export function MarketingSettings() {
           { label: "Painel ADS", href: "/marketing" },
           { label: "Metas e alertas" },
         ]}
-        title="Metas e alertas de performance"
-        subtitle="Defina CPA, ROAS e regras de sensibilidade. Os alertas alimentam o dashboard e as visões de campanha quando os dados do período estiverem disponíveis."
+        title="Metas e alertas"
+        subtitle="O mesmo conjunto de metas alimenta o Painel ADS, Captação, Conversão e Receita."
         meta={
-          <span className="inline-flex flex-wrap items-center gap-x-4 gap-y-1">
-            <span className="inline-flex items-center gap-1.5">
+          <span className="inline-flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-border/50 bg-muted/30 px-2 py-1">
               <BarChart3 className="h-3.5 w-3.5 text-primary" aria-hidden />
-              CPA = investimento ÷ resultados (Google + Meta)
+              Modo · {GOAL_LABEL[businessGoalMode]}
             </span>
-            <span className="inline-flex items-center gap-1.5">
-              <Target className="h-3.5 w-3.5 text-primary" aria-hidden />
-              ROAS = valor atribuído ÷ investimento
-            </span>
+            <StatusBadge tone={alertsEnabled ? "healthy" : "neutral"} dot>
+              Alertas {alertsEnabled ? "on" : "off"}
+            </StatusBadge>
           </span>
         }
         actions={
@@ -802,186 +803,127 @@ export function MarketingSettings() {
             <Button size="sm" className="rounded-lg" asChild>
               <Link to="/marketing">
                 <LayoutDashboard className="mr-1.5 h-3.5 w-3.5 opacity-90" />
-                Visão geral
+                Painel ADS
               </Link>
             </Button>
           </div>
         }
-        className="border-b border-border/45 pb-6"
+        className="border-b border-border/45 pb-5"
       />
 
-      <div className="grid gap-8 lg:grid-cols-[1fr_minmax(280px,320px)] lg:items-start">
-        <div className="min-w-0 space-y-8">
-        <form onSubmit={handleSubmit} className="space-y-8">
-          {error ? (
-            <div className="rounded-xl border border-destructive/35 bg-destructive/[0.08] px-4 py-3 text-sm text-destructive">
-              {error}
-            </div>
-          ) : null}
-          {savedMsg ? (
-            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] px-4 py-3 text-sm font-medium text-emerald-900 dark:text-emerald-200">
-              {savedMsg}
-            </div>
-          ) : null}
+      {error ? (
+        <div className="rounded-xl border border-destructive/35 bg-destructive/[0.08] px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
+      {savedMsg ? (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] px-4 py-3 text-sm font-medium text-emerald-900 dark:text-emerald-200">
+          {savedMsg}
+        </div>
+      ) : null}
 
-          <Card className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.05] to-card shadow-[var(--shadow-surface-sm)]">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Presets de metas</CardTitle>
-              <CardDescription className="text-xs leading-relaxed">
-                Preenche CPA, ROAS e gasto mínimo com cenários típicos de agência. Nada é gravado até você usar{" "}
-                <span className="font-medium text-foreground">Salvar configurações</span>. A pré-visualização à direita
-                atualiza na hora.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" size="sm" className="rounded-lg" onClick={() => applyMetasPreset("performance")}>
-                Performance apertado
-              </Button>
-              <Button type="button" variant="secondary" size="sm" className="rounded-lg" onClick={() => applyMetasPreset("escala")}>
-                Escala / volume
-              </Button>
-              <Button type="button" variant="secondary" size="sm" className="rounded-lg" onClick={() => applyMetasPreset("marca")}>
-                Marca / awareness
-              </Button>
-            </CardContent>
-          </Card>
+      <div className="flex flex-col gap-4 rounded-2xl border border-border/50 bg-muted/15 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Atalhos</p>
+          <p className="text-sm font-semibold text-foreground">Presets de metas</p>
+          <p className="text-xs text-muted-foreground">Ajusta campos · confirme com Salvar abaixo.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="secondary" size="sm" className="rounded-lg" onClick={() => applyMetasPreset("performance")}>
+            Performance
+          </Button>
+          <Button type="button" variant="secondary" size="sm" className="rounded-lg" onClick={() => applyMetasPreset("escala")}>
+            Escala
+          </Button>
+          <Button type="button" variant="secondary" size="sm" className="rounded-lg" onClick={() => applyMetasPreset("marca")}>
+            Marca
+          </Button>
+        </div>
+      </div>
 
-          <SectionShell
-            icon={Signpost}
-            title="Objetivo principal da conta"
-            description="Define a leitura executiva do dashboard, a ordem dos KPIs, o funil Meta e os insights rápidos. Contas antigas permanecem em Híbrido até você alterar."
-          >
-            <div className="space-y-5">
-              <div className="space-y-2">
-                <Label htmlFor="business-goal-mode" className="text-sm font-medium">
-                  Modo de operação
-                </Label>
-                <Select
-                  value={businessGoalMode}
-                  onValueChange={(v) => setBusinessGoalMode(v as BusinessGoalMode)}
-                >
-                  <SelectTrigger id="business-goal-mode" className="h-11 max-w-md rounded-xl border-border/70 shadow-sm">
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="LEADS">Leads — captação e CPL</SelectItem>
-                    <SelectItem value="SALES">Vendas — receita e ROAS</SelectItem>
-                    <SelectItem value="HYBRID">Híbrido — topo e fundo do funil</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Afeta o painel <span className="font-medium text-foreground">Visão geral</span>, funil e peso de receita
-                  nas telas de marketing.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="primary-conv-label" className="text-sm font-medium">
-                  Nome do resultado principal (opcional)
-                </Label>
-                <Input
-                  id="primary-conv-label"
-                  value={primaryConversionLabel}
-                  onChange={(e) => setPrimaryConversionLabel(e.target.value)}
-                  placeholder="Ex.: Oportunidade, Agendamento, Lead"
-                  maxLength={80}
-                  className="h-11 max-w-lg rounded-xl border-border/70 shadow-sm"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Substitui o rótulo &quot;Leads&quot; nos KPIs e na etapa final do funil quando preenchido.
-                </p>
-              </div>
-              <div className="rounded-xl border border-border/50 bg-muted/25 px-4 py-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-foreground">
-                      Mostrar monetização mesmo em contas focadas em lead
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Quando o modo é Leads, o bloco de receita no dashboard volta a ter destaque normal.
-                    </p>
-                  </div>
-                  <Switch
-                    checked={showRevenueBlocksInLeadMode}
-                    onCheckedChange={setShowRevenueBlocksInLeadMode}
-                    id="show-revenue-lead-mode"
+      <div className="grid gap-6 xl:grid-cols-12 xl:items-start">
+        <div className="min-w-0 space-y-6 xl:col-span-8 2xl:col-span-9">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <AdsSettingsSection title="Objetivo da conta" kicker="Conta">
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="business-goal-mode" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Modo
+                  </Label>
+                  <Select value={businessGoalMode} onValueChange={(v) => setBusinessGoalMode(v as BusinessGoalMode)}>
+                    <SelectTrigger id="business-goal-mode" className="h-11 rounded-xl border-border/60">
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="LEADS">Leads — CPL</SelectItem>
+                      <SelectItem value="SALES">Vendas — ROAS</SelectItem>
+                      <SelectItem value="HYBRID">Híbrido</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="primary-conv-label" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Rótulo do resultado (opcional)
+                  </Label>
+                  <Input
+                    id="primary-conv-label"
+                    value={primaryConversionLabel}
+                    onChange={(e) => setPrimaryConversionLabel(e.target.value)}
+                    placeholder="Ex.: Oportunidade, Lead"
+                    maxLength={80}
+                    className="h-11 rounded-xl border-border/60"
                   />
                 </div>
               </div>
-            </div>
-          </SectionShell>
-
-          <SectionShell
-            icon={Target}
-            title="Metas numéricas"
-            description="Valores usados para comparar o desempenho do período selecionado. Deixe em branco o que ainda não quiser monitorar."
-          >
-            <div className="grid gap-6 sm:grid-cols-2">
-              <MoneyInput
-                id="targetCpa"
-                label="CPA alvo"
-                hint="Custo desejado por resultado."
-                placeholder="45"
-                value={targetCpaBrl}
-                onChange={setTargetCpaBrl}
-              />
-              <MoneyInput
-                id="maxCpa"
-                label="CPA máximo"
-                hint="Teto crítico — prioridade alta nos alertas."
-                placeholder="80"
-                value={maxCpaBrl}
-                onChange={setMaxCpaBrl}
-              />
-            </div>
-            <Separator className="my-6 bg-border/60" />
-            <div className="max-w-md space-y-2">
-              <Label htmlFor="targetRoas" className="text-sm font-medium">
-                ROAS mínimo desejado
-              </Label>
-              <div className="relative">
-                <Input
-                  id="targetRoas"
-                  inputMode="decimal"
-                  placeholder="3"
-                  value={targetRoas}
-                  onChange={(e) => setTargetRoas(e.target.value)}
-                  className="h-11 rounded-xl border-border/70 pr-12 shadow-[var(--shadow-surface-sm)]"
+              <div className="mt-6 flex flex-col gap-3 rounded-xl border border-border/50 bg-muted/15 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm font-medium text-foreground">Receita visível no modo Leads</p>
+                <Switch
+                  checked={showRevenueBlocksInLeadMode}
+                  onCheckedChange={setShowRevenueBlocksInLeadMode}
+                  id="show-revenue-lead-mode"
                 />
-                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground">
-                  ×
-                </span>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Ex.: 3 significa R$ 3 em valor atribuído para cada R$ 1 investido.
-              </p>
-            </div>
-          </SectionShell>
+            </AdsSettingsSection>
 
-          <SectionShell
-            icon={Bell}
-            title="Alertas e amostra mínima"
-            description="Controle quais situações geram aviso e exija volume mínimo para não poluir com dados frágeis."
-          >
-            <div className="rounded-xl border border-border/50 bg-muted/25 px-4 py-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">Alertas de performance</p>
-                  <p className="text-xs text-muted-foreground">Liga ou desliga todo o bloco de avisos por metas.</p>
+            <AdsSettingsSection title="Metas numéricas" kicker="Período">
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                <MoneyInput id="targetCpa" label="CPL / CPA alvo" placeholder="45" value={targetCpaBrl} onChange={setTargetCpaBrl} />
+                <MoneyInput id="maxCpa" label="CPL / CPA máximo" placeholder="80" value={maxCpaBrl} onChange={setMaxCpaBrl} />
+                <div className="space-y-2">
+                  <Label htmlFor="targetRoas" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    ROAS mínimo
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="targetRoas"
+                      inputMode="decimal"
+                      placeholder="3"
+                      value={targetRoas}
+                      onChange={(e) => setTargetRoas(e.target.value)}
+                      className="h-11 rounded-xl border-border/60 pr-10"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground">
+                      ×
+                    </span>
+                  </div>
                 </div>
-                <Switch checked={alertsEnabled} onCheckedChange={setAlertsEnabled} id="alerts-master" />
               </div>
-            </div>
+            </AdsSettingsSection>
 
-            <div className="mt-5 space-y-3">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <SlidersHorizontal className="h-3.5 w-3.5" />
-                Regras
-              </div>
-              <div className="grid gap-2.5 sm:grid-cols-1">
+            <AdsSettingsSection
+              title="Alertas automáticos"
+              kicker="Sensibilidade"
+              headerRight={
+                <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-background/80 px-3 py-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">Ativos</span>
+                  <Switch checked={alertsEnabled} onCheckedChange={setAlertsEnabled} id="alerts-master" />
+                </div>
+              }
+            >
+              <div className="grid gap-3 md:grid-cols-3">
                 <AlertRuleRow
                   id="rule-max"
                   title="CPA acima do máximo"
-                  subtitle="Alerta crítico quando o CPA ultrapassar o teto."
                   checked={alertCpaAboveMax}
                   onChange={setAlertCpaAboveMax}
                   disabled={!alertsEnabled}
@@ -989,7 +931,6 @@ export function MarketingSettings() {
                 <AlertRuleRow
                   id="rule-target"
                   title="CPA acima da meta"
-                  subtitle="Atenção quando estiver pior que o CPA alvo."
                   checked={alertCpaAboveTarget}
                   onChange={setAlertCpaAboveTarget}
                   disabled={!alertsEnabled}
@@ -997,47 +938,47 @@ export function MarketingSettings() {
                 <AlertRuleRow
                   id="rule-roas"
                   title="ROAS abaixo da meta"
-                  subtitle="Quando houver investimento e valor atribuído para calcular."
                   checked={alertRoasBelowTarget}
                   onChange={setAlertRoasBelowTarget}
                   disabled={!alertsEnabled}
                 />
               </div>
-            </div>
 
-            <Separator className="my-6 bg-border/60" />
+              <Separator className="my-6 bg-border/50" />
 
-            <div className="grid gap-6 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="minRes" className="text-sm font-medium">
-                  Mínimo de resultados para CPA
-                </Label>
-                <Input
-                  id="minRes"
-                  inputMode="numeric"
-                  value={minResultsForCpa}
-                  onChange={(e) => setMinResultsForCpa(e.target.value)}
-                  className="h-11 rounded-xl border-border/70 font-mono tabular-nums shadow-[var(--shadow-surface-sm)]"
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="minRes" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Mín. resultados p/ CPA
+                  </Label>
+                  <Input
+                    id="minRes"
+                    inputMode="numeric"
+                    value={minResultsForCpa}
+                    onChange={(e) => setMinResultsForCpa(e.target.value)}
+                    className="h-11 rounded-xl border-border/60 font-mono tabular-nums"
+                  />
+                </div>
+                <MoneyInput
+                  id="minSpend"
+                  label="Gasto mínimo (alertas)"
+                  placeholder="Opcional"
+                  value={minSpendForAlertsBrl}
+                  onChange={setMinSpendForAlertsBrl}
                 />
-                <p className="text-xs text-muted-foreground">Evita alertas com poucos eventos.</p>
               </div>
-              <MoneyInput
-                id="minSpend"
-                label="Gasto mínimo no período"
-                hint="Opcional. Só avalia depois deste valor em mídia."
-                placeholder="Opcional"
-                value={minSpendForAlertsBrl}
-                onChange={setMinSpendForAlertsBrl}
-              />
-            </div>
-          </SectionShell>
+            </AdsSettingsSection>
 
-          <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border/60 bg-background/90 px-4 py-3 shadow-[0_-8px_30px_-12px_hsl(224_20%_14%/0.12)] backdrop-blur-md supports-[backdrop-filter]:bg-background/75 lg:static lg:z-0 lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none lg:backdrop-blur-none">
-            <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
-              <p className="hidden text-xs text-muted-foreground sm:block">
-                As alterações valem para a empresa ativa no seletor do topo.
+            <div
+              className={cn(
+                "sticky bottom-3 z-20 flex flex-col gap-3 rounded-2xl border border-border/50 bg-background/95 px-4 py-4 shadow-[var(--shadow-surface)] backdrop-blur-md supports-[backdrop-filter]:bg-background/85 sm:flex-row sm:items-center sm:justify-between sm:px-5",
+                "xl:static xl:bottom-auto xl:border-border/50 xl:bg-card/50 xl:shadow-[var(--shadow-surface-sm)]"
+              )}
+            >
+              <p className="text-xs text-muted-foreground">
+                Metas aplicadas nas tabelas e nos chips de status do módulo ADS.
               </p>
-              <Button type="submit" size="lg" className="w-full rounded-xl sm:w-auto" disabled={saving}>
+              <Button type="submit" size="lg" className="w-full shrink-0 rounded-xl sm:w-auto" disabled={saving}>
                 {saving ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1046,86 +987,63 @@ export function MarketingSettings() {
                 ) : (
                   <>
                     <Save className="mr-2 h-4 w-4" />
-                    Salvar configurações
+                    Salvar alterações
                   </>
                 )}
               </Button>
             </div>
-          </div>
-        </form>
+          </form>
 
-        <CustomAlertRulesPanel />
+          <CustomAlertRulesPanel />
         </div>
 
-        <aside className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-4">
-          <Card className="rounded-2xl border-border/60 shadow-[var(--shadow-surface-sm)]">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold">Pré-visualização</CardTitle>
-              <CardDescription className="text-xs">Como as metas aparecem na lógica atual</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div className="flex justify-between gap-2 border-b border-border/50 py-2">
-                <span className="text-muted-foreground">CPA alvo</span>
-                <span className="font-medium tabular-nums">{formatBrlPreview(preview.target)}</span>
-              </div>
-              <div className="flex justify-between gap-2 border-b border-border/50 py-2">
-                <span className="text-muted-foreground">CPA máx.</span>
-                <span className="font-medium tabular-nums">{formatBrlPreview(preview.max)}</span>
-              </div>
-              <div className="flex justify-between gap-2 border-b border-border/50 py-2">
-                <span className="text-muted-foreground">ROAS mín.</span>
-                <span className="font-medium tabular-nums">
-                  {preview.roas != null ? `${preview.roas}×` : "—"}
-                </span>
-              </div>
-              <div className="flex justify-between gap-2 py-2">
-                <span className="text-muted-foreground">Gasto mín.</span>
-                <span className="font-medium tabular-nums">{formatBrlPreview(preview.minSpend)}</span>
-              </div>
-            </CardContent>
-          </Card>
+        <aside className="flex min-w-0 flex-col gap-4 xl:col-span-4 2xl:col-span-3 xl:sticky xl:top-4">
+          <section className="overflow-hidden rounded-2xl border border-border/50 bg-card/40 shadow-[var(--shadow-surface-sm)]">
+            <div className="border-b border-border/40 bg-muted/15 px-4 py-3 sm:px-5">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Live</p>
+              <h2 className="text-base font-black tracking-tight">Preview das metas</h2>
+            </div>
+            <div className="grid grid-cols-2 gap-2 p-4 sm:gap-3 sm:p-5">
+              <PreviewMetric label="CPA alvo" value={formatBrlPreview(preview.target)} />
+              <PreviewMetric label="CPA máx." value={formatBrlPreview(preview.max)} />
+              <PreviewMetric
+                label="ROAS mín."
+                value={preview.roas != null ? `${preview.roas}×` : "—"}
+              />
+              <PreviewMetric label="Gasto mín." value={formatBrlPreview(preview.minSpend)} />
+            </div>
+          </section>
 
-          <Card className="rounded-2xl border-border/60 shadow-[var(--shadow-surface-sm)]">
-            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
+          <Card className="rounded-2xl border-border/50 shadow-[var(--shadow-surface-sm)]">
+            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
               <div className="flex items-center gap-2">
                 <MessageCircle className="h-4 w-4 text-primary" />
-                <CardTitle className="text-sm font-semibold">WhatsApp (CRM)</CardTitle>
+                <CardTitle className="text-sm font-bold">WhatsApp</CardTitle>
               </div>
               <StatusBadge tone={crmToken ? "connected" : "disconnected"} dot>
-                {crmToken ? "Token" : "Off"}
+                {crmToken ? "OK" : "Off"}
               </StatusBadge>
             </CardHeader>
-            <CardContent className="space-y-3 text-xs text-muted-foreground">
-              <p>
-                Envio dos mesmos alertas no WhatsApp é configurado em{" "}
-                <Link to="/marketing/integracoes" className="font-medium text-primary underline-offset-4 hover:underline">
-                  Integrações
-                </Link>
-                .
-              </p>
-              {crmPhone ? (
-                <p className="font-mono text-[11px] text-foreground/80">{crmPhone}</p>
-              ) : (
-                <p>Nenhum número de destino definido.</p>
-              )}
-              {crmToken && (
+            <CardContent className="space-y-2 text-xs text-muted-foreground">
+              <Link
+                to="/marketing/integracoes"
+                className="inline-flex font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Configurar na Integrações
+              </Link>
+              {crmPhone ? <p className="font-mono text-[11px] text-foreground/90">{crmPhone}</p> : null}
+              {crmToken ? (
                 <p className="text-foreground/80">
-                  Alertas CRM:{" "}
-                  <span className="font-medium">{crmAlerts ? "ativos" : "desligados na integração"}</span>
+                  CRM: <span className="font-semibold">{crmAlerts ? "alertas on" : "alertas off"}</span>
                 </p>
-              )}
+              ) : null}
             </CardContent>
           </Card>
 
-          <Card className="rounded-2xl border-dashed border-border/80 bg-muted/20">
-            <CardContent className="pt-5 text-xs leading-relaxed text-muted-foreground">
-              <strong className="font-medium text-foreground">Onde aparecem os alertas</strong>
-              <p className="mt-2">
-                Dashboard de marketing e páginas de visão quando o período tiver métricas suficientes. Integração
-                WhatsApp é independente deste formulário.
-              </p>
-            </CardContent>
-          </Card>
+          <div className="rounded-xl border border-dashed border-border/60 bg-muted/10 px-4 py-3 text-center text-xs text-muted-foreground">
+            Mesmo motor de metas do <Link to="/marketing" className="font-medium text-primary hover:underline">Painel ADS</Link>
+            .
+          </div>
         </aside>
       </div>
     </div>

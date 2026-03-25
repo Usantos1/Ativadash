@@ -153,6 +153,12 @@ export async function fetchChildrenPortfolio(): Promise<{
 
 export type ResellerOrgKind = "AGENCY" | "CLIENT";
 
+export type ChildMarketingRollup30d = {
+  spend: number;
+  leads: number;
+  cpl: number | null;
+};
+
 export type ChildWorkspaceOperationsRow = {
   id: string;
   name: string;
@@ -190,6 +196,14 @@ export type ChildWorkspaceOperationsRow = {
   staleActivity: boolean;
   neverAccessed: boolean;
   needsAttention: boolean;
+  metaAdsConnected: boolean;
+  googleAdsConnected: boolean;
+  marketing30d: ChildMarketingRollup30d | null;
+  /** Agregados por workspace filho (API `/organization/children/operations`). */
+  clientAccountCount?: number;
+  projectCount?: number;
+  launchCount?: number;
+  activeLaunchCount?: number;
 };
 
 export type ChildOperationsAlert = {
@@ -222,6 +236,9 @@ export type ChildrenOperationsDashboard = {
     dashboardsTotalAcrossChildren: number;
     childSlotsUsed: number;
     childSlotsCap: number | null;
+    childrenWithActiveLaunches?: number;
+    totalProjectsAcrossChildren?: number;
+    totalLaunchesAcrossChildren?: number;
   };
   alerts: ChildOperationsAlert[];
 };
@@ -274,4 +291,9 @@ export async function switchWorkspaceOrganization(
   organizationId: string
 ): Promise<SwitchOrganizationResponse> {
   return api.post<SwitchOrganizationResponse>("/auth/switch-organization", { organizationId });
+}
+
+/** Alias canônico — mesmo contrato que `switchWorkspaceOrganization`. */
+export async function setActiveOrganization(organizationId: string): Promise<SwitchOrganizationResponse> {
+  return api.post<SwitchOrganizationResponse>("/auth/me/active-organization", { organizationId });
 }

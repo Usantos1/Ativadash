@@ -1,5 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, Plus, Pencil, Rocket, Search, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import {
+  CalendarDays,
+  ChevronDown,
+  Copy,
+  ExternalLink,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Rocket,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +24,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
-import { ScrollRegion } from "@/components/ui/scroll-region";
+import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeaderPremium, KpiCardPremium, StatusBadge } from "@/components/premium";
 import {
   fetchProjects,
   fetchLaunches,
@@ -21,10 +35,9 @@ import {
   type ProjectRow,
   type LaunchRow,
 } from "@/lib/workspace-api";
-import { Skeleton } from "@/components/ui/skeleton";
-import { AnalyticsPageHeader } from "@/components/analytics/AnalyticsPageHeader";
-import { AnalyticsSection } from "@/components/analytics/AnalyticsSection";
-import { KpiPremium } from "@/components/analytics/KpiPremium";
+import { OperationsModuleNav } from "@/components/operations/operations-module-nav";
+import { launchWindowKind, launchWindowLabel } from "@/lib/launch-operational";
+import { cn } from "@/lib/utils";
 
 function toDateInput(iso: string | null): string {
   if (!iso) return "";
@@ -38,10 +51,14 @@ function fromDateInput(s: string): string | undefined {
   return new Date(`${s}T12:00:00`).toISOString();
 }
 
+type StatusFilter = "all" | "active" | "future" | "ended";
+
 export function LaunchesPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [projects, setProjects] = useState<ProjectRow[]>([]);
-  const [rows, setRows] = useState<LaunchRow[]>([]);
+  const [allRows, setAllRows] = useState<LaunchRow[]>([]);
   const [filterProjectId, setFilterProjectId] = useState<string>("__all__");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,33 +70,94 @@ export function LaunchesPage() {
   const [endDate, setEndDate] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const load = useCallback(async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const p = await fetchProjects();
+      setProjects(p);
+      const list = await fetchLaunches();
+      setAllRows(list);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao carregar");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const p = await fetchProjects();
-        if (cancelled) return;
-        setProjects(p);
-        const list = await fetchLaunches(filterProjectId === "__all__" ? undefined : filterProjectId);
-        if (cancelled) return;
-        setRows(list);
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Erro ao carregar");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [filterProjectId]);
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    const pid = searchParams.get("project");
+    if (pid && projects.some((p) => p.id === pid)) {
+      setFilterProjectId(pid);
+    }
+  }, [searchParams, projects]);
+
+  const projectById = useMemo(() => {
+    const m = new Map<string, ProjectRow>();
+    for (const p of projects) m.set(p.id, p);
+    return m;
+  }, [projects]);
+
+  const projectScoped = useMemo(() => {
+    if (filterProjectId === "__all__") return allRows;
+    return allRows.filter((r) => r.projectId === filterProjectId);
+  }, [allRows, filterProjectId]);
+
+  const rowsWithKind = useMemo(() => {
+    return projectScoped.map((r) => ({
+      row: r,
+      kind: launchWindowKind(r.startDate, r.endDate),
+    }));
+  }, [projectScoped]);
+
+  const filteredByStatus = useMemo(() => {
+    if (statusFilter === "all") return rowsWithKind;
+    if (statusFilter === "active") {
+      return rowsWithKind.filter((x) => x.kind === "active" || x.kind === "open");
+    }
+    if (statusFilter === "future") return rowsWithKind.filter((x) => x.kind === "future");
+    return rowsWithKind.filter((x) => x.kind === "ended");
+  }, [rowsWithKind, statusFilter]);
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return filteredByStatus;
+    return filteredByStatus.filter(
+      ({ row: r }) =>
+        r.name.toLowerCase().includes(q) ||
+        r.project.name.toLowerCase().includes(q) ||
+        (projectById.get(r.projectId)?.clientAccount?.name ?? "").toLowerCase().includes(q)
+    );
+  }, [filteredByStatus, search, projectById]);
+
+  const activeCount = useMemo(
+    () => rowsWithKind.filter((x) => x.kind === "active" || x.kind === "open").length,
+    [rowsWithKind]
+  );
+  const futureCount = useMemo(() => rowsWithKind.filter((x) => x.kind === "future").length, [rowsWithKind]);
+  const endedCount = useMemo(() => rowsWithKind.filter((x) => x.kind === "ended").length, [rowsWithKind]);
+
+  const projectsWithCalendar = useMemo(() => {
+    const ids = new Set(projectScoped.map((r) => r.projectId));
+    return ids.size;
+  }, [projectScoped]);
+
+  function setProjectFilter(id: string) {
+    setFilterProjectId(id);
+    const next = new URLSearchParams(searchParams);
+    if (id === "__all__") next.delete("project");
+    else next.set("project", id);
+    setSearchParams(next, { replace: true });
+  }
 
   function openCreate() {
     setEditing(null);
     setName("");
-    setProjectId(projects[0]?.id ?? "");
+    setProjectId(filterProjectId !== "__all__" ? filterProjectId : projects[0]?.id ?? "");
     setStartDate("");
     setEndDate("");
     setOpen(true);
@@ -88,6 +166,15 @@ export function LaunchesPage() {
   function openEdit(row: LaunchRow) {
     setEditing(row);
     setName(row.name);
+    setProjectId(row.projectId);
+    setStartDate(toDateInput(row.startDate));
+    setEndDate(toDateInput(row.endDate));
+    setOpen(true);
+  }
+
+  function duplicateFrom(row: LaunchRow) {
+    setEditing(null);
+    setName(`${row.name} (cópia)`);
     setProjectId(row.projectId);
     setStartDate(toDateInput(row.startDate));
     setEndDate(toDateInput(row.endDate));
@@ -121,8 +208,7 @@ export function LaunchesPage() {
         });
       }
       setOpen(false);
-      const list = await fetchLaunches(filterProjectId === "__all__" ? undefined : filterProjectId);
-      setRows(list);
+      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao salvar");
     } finally {
@@ -130,54 +216,42 @@ export function LaunchesPage() {
     }
   }
 
-  const projectById = useMemo(() => {
-    const m = new Map<string, ProjectRow>();
-    for (const p of projects) m.set(p.id, p);
-    return m;
-  }, [projects]);
-
-  const filteredRows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) ||
-        r.project.name.toLowerCase().includes(q) ||
-        (projectById.get(r.projectId)?.clientAccount?.name ?? "").toLowerCase().includes(q)
-    );
-  }, [rows, search, projectById]);
-
-  const withPeriod = useMemo(() => rows.filter((r) => r.startDate || r.endDate).length, [rows]);
-
   async function handleDelete(row: LaunchRow) {
     if (!confirm(`Remover o lançamento "${row.name}"?`)) return;
     try {
       await deleteLaunch(row.id);
-      const list = await fetchLaunches(filterProjectId === "__all__" ? undefined : filterProjectId);
-      setRows(list);
+      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao remover");
     }
   }
 
+  const filterChips: { id: StatusFilter; label: string }[] = [
+    { id: "all", label: "Todos" },
+    { id: "active", label: "Ativos" },
+    { id: "future", label: "Futuros" },
+    { id: "ended", label: "Encerrados" },
+  ];
+
   return (
-    <div className="w-full space-y-6">
-      <AnalyticsPageHeader
+    <div className="w-full space-y-6 pb-12">
+      <PageHeaderPremium
         eyebrow="Operação"
         title="Lançamentos"
-        subtitle="Janelas nomeadas dentro de um projeto — alimentam filtros inteligentes no Marketing quando o título coincide com campanhas."
+        subtitle="Gerencie janelas operacionais por projeto e use esses recortes para filtrar mídia e contexto no ADS."
+        meta={<OperationsModuleNav />}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-0 flex-1 sm:max-w-xs">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
+            <div className="relative min-w-0 sm:w-56">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Buscar lançamento, projeto ou cliente…"
+                placeholder="Buscar lançamento, projeto ou cliente"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="rounded-full pl-9"
+                className="h-9 rounded-lg border-border/60 pl-9"
               />
             </div>
-            <Button onClick={openCreate} disabled={projects.length === 0}>
+            <Button className="h-9 rounded-lg" onClick={openCreate} disabled={projects.length === 0}>
               <Plus className="mr-2 h-4 w-4" />
               Novo lançamento
             </Button>
@@ -185,116 +259,213 @@ export function LaunchesPage() {
         }
       />
 
+      {error ? (
+        <div className="rounded-xl border border-destructive/35 bg-destructive/[0.08] px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
+
       {!loading && projects.length > 0 && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <KpiPremium label="Lançamentos (filtro)" value={String(rows.length)} icon={Rocket} />
-          <KpiPremium label="Com período definido" value={String(withPeriod)} icon={CalendarDays} />
-          <KpiPremium label="Projetos ativos" value={String(projects.length)} icon={Rocket} />
-          <KpiPremium label="Resultado busca" value={String(filteredRows.length)} icon={Search} />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiCardPremium variant="primary" label="Ativos (filtro)" value={String(activeCount)} icon={Rocket} hideSource />
+          <KpiCardPremium variant="secondary" label="Futuros" value={String(futureCount)} icon={CalendarDays} hideSource />
+          <KpiCardPremium variant="secondary" label="Encerrados" value={String(endedCount)} icon={CalendarDays} hideSource />
+          <KpiCardPremium
+            variant="secondary"
+            label="Projetos c/ lançamentos"
+            value={String(projectsWithCalendar)}
+            hideSource
+            hint="No recorte de projeto atual ou global."
+            icon={Rocket}
+          />
         </div>
       )}
 
-      <div className="flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-border/70 bg-card/60 px-3 py-2">
-        <span className="text-sm font-medium text-muted-foreground">Projeto:</span>
-        <Select value={filterProjectId} onValueChange={setFilterProjectId}>
-          <SelectTrigger className="min-w-0 w-full max-w-[min(100%,320px)] sm:w-[240px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__">Todos os projetos</SelectItem>
-            {projects.map((p) => (
-              <SelectItem key={p.id} value={p.id}>
-                {p.name}
-              </SelectItem>
+      <div className="flex flex-col gap-3 rounded-2xl border border-border/50 bg-card/35 p-4 shadow-[var(--shadow-surface-sm)] sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:max-w-xs">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Projeto</span>
+          <Select value={filterProjectId} onValueChange={setProjectFilter}>
+            <SelectTrigger className="h-10 rounded-xl border-border/60">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Todos os projetos</SelectItem>
+              {projects.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-1 flex-col gap-2">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Status da janela</span>
+          <div className="flex flex-wrap gap-2">
+            {filterChips.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setStatusFilter(c.id)}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
+                  statusFilter === c.id
+                    ? "border-primary/45 bg-primary/12 text-primary"
+                    : "border-border/55 bg-muted/20 text-muted-foreground hover:border-border hover:text-foreground"
+                )}
+              >
+                {c.label}
+              </button>
             ))}
-          </SelectContent>
-        </Select>
+          </div>
+        </div>
       </div>
 
-      {error && (
-        <p className="text-sm text-destructive" role="alert">
-          {error}
-        </p>
+      {projects.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border/60 bg-muted/15 px-6 py-12 text-center text-sm text-muted-foreground">
+          Crie um{" "}
+          <Link to="/projetos" className="font-medium text-primary underline-offset-2 hover:underline">
+            projeto
+          </Link>{" "}
+          antes de cadastrar lançamentos.
+        </div>
+      ) : loading ? (
+        <div className="grid gap-4">
+          <Skeleton className="h-32 rounded-2xl" />
+          <Skeleton className="h-32 rounded-2xl" />
+        </div>
+      ) : filteredRows.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border/60 bg-muted/15 px-6 py-12 text-center text-sm text-muted-foreground">
+          Nenhum lançamento neste recorte. Ajuste filtros ou crie uma janela.
+        </div>
+      ) : (
+        <ul className="grid gap-4">
+          {filteredRows.map(({ row, kind }) => {
+            const clientName = projectById.get(row.projectId)?.clientAccount?.name ?? "—";
+            const statusLabel = launchWindowLabel(kind);
+            const tone =
+              kind === "active" || kind === "open"
+                ? ("healthy" as const)
+                : kind === "future"
+                  ? ("alert" as const)
+                  : ("disconnected" as const);
+            return (
+              <li
+                key={row.id}
+                className="overflow-hidden rounded-2xl border border-border/50 bg-card/40 shadow-[var(--shadow-surface-sm)] transition-shadow hover:shadow-[var(--shadow-surface)]"
+              >
+                <div className="flex flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0 flex-1 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-lg font-black tracking-tight text-foreground">{row.name}</h2>
+                      <StatusBadge tone={tone} dot>
+                        {statusLabel}
+                      </StatusBadge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                      <div className="rounded-xl border border-border/40 bg-muted/15 px-3 py-2 lg:col-span-2">
+                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Projeto</p>
+                        <p className="mt-0.5 text-sm font-semibold">{row.project.name}</p>
+                      </div>
+                      <div className="rounded-xl border border-border/40 bg-muted/15 px-3 py-2 lg:col-span-2">
+                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Cliente</p>
+                        <p className="mt-0.5 text-sm font-semibold text-muted-foreground">{clientName}</p>
+                      </div>
+                      <div className="rounded-xl border border-border/40 bg-muted/15 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Início</p>
+                        <p className="mt-0.5 text-sm font-semibold tabular-nums">
+                          {row.startDate ? new Date(row.startDate).toLocaleDateString("pt-BR") : "—"}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border/40 bg-muted/15 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Fim</p>
+                        <p className="mt-0.5 text-sm font-semibold tabular-nums">
+                          {row.endDate ? new Date(row.endDate).toLocaleDateString("pt-BR") : "—"}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border/40 bg-muted/15 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Campanhas</p>
+                        <p className="mt-0.5 text-sm text-muted-foreground">Filtro por nome no ADS</p>
+                      </div>
+                      <div className="rounded-xl border border-border/40 bg-muted/15 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Atualizado</p>
+                        <p className="mt-0.5 text-xs font-semibold">
+                          {new Date(row.updatedAt).toLocaleString("pt-BR", {
+                            dateStyle: "short",
+                            timeStyle: "short",
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col">
+                    <Button className="h-10 rounded-xl" asChild>
+                      <Link to="/marketing">
+                        <ExternalLink className="mr-2 h-4 w-4" />
+                        Abrir contexto
+                      </Link>
+                    </Button>
+                    <DropdownMenu.Root>
+                      <DropdownMenu.Trigger asChild>
+                        <Button variant="outline" className="h-10 rounded-xl" type="button">
+                          <MoreHorizontal className="mr-2 h-4 w-4" />
+                          Ações
+                          <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-60" />
+                        </Button>
+                      </DropdownMenu.Trigger>
+                      <DropdownMenu.Portal>
+                        <DropdownMenu.Content
+                          className="z-50 min-w-[12rem] rounded-xl border border-border/60 bg-popover p-1 shadow-lg"
+                          align="end"
+                          sideOffset={6}
+                        >
+                          <DropdownMenu.Item asChild>
+                            <Link
+                              className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
+                              to={`/projetos`}
+                            >
+                              <Rocket className="h-4 w-4 opacity-70" />
+                              Ver projeto
+                            </Link>
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
+                            onSelect={() => openEdit(row)}
+                          >
+                            <Pencil className="h-4 w-4 opacity-70" />
+                            Editar
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
+                            onSelect={() => duplicateFrom(row)}
+                          >
+                            <Copy className="h-4 w-4 opacity-70" />
+                            Duplicar
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-destructive outline-none hover:bg-muted"
+                            onSelect={() => handleDelete(row)}
+                          >
+                            <Trash2 className="h-4 w-4 opacity-70" />
+                            Remover
+                          </DropdownMenu.Item>
+                        </DropdownMenu.Content>
+                      </DropdownMenu.Portal>
+                    </DropdownMenu.Root>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
 
-      <AnalyticsSection
-        title="Carteira de lançamentos"
-        description={
-          projects.length === 0
-            ? "Crie um projeto para habilitar lançamentos."
-            : loading
-              ? "Carregando…"
-              : `${rows.length} lançamento(s) neste filtro de projeto.`
-        }
-        dense
-      >
-        {projects.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Crie um projeto antes de adicionar lançamentos.</p>
-        ) : loading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </div>
-        ) : rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nenhum lançamento neste filtro.</p>
-        ) : (
-          <ScrollRegion className="scrollbar-thin">
-            <table className="w-full min-w-[720px] text-sm">
-              <thead>
-                <tr className="border-b text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  <th className="pb-2 pr-4 font-medium">Lançamento</th>
-                  <th className="pb-2 pr-4 font-medium">Projeto</th>
-                  <th className="pb-2 pr-4 font-medium">Cliente</th>
-                  <th className="pb-2 pr-4 font-medium">Início</th>
-                  <th className="pb-2 pr-4 font-medium">Fim</th>
-                  <th className="pb-2 font-medium">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRows.map((row) => (
-                  <tr key={row.id} className="border-b border-border/50 transition-colors hover:bg-muted/30">
-                    <td className="py-3 pr-4 font-medium">{row.name}</td>
-                    <td className="py-3 pr-4 text-muted-foreground">{row.project.name}</td>
-                    <td className="py-3 pr-4 text-muted-foreground">
-                      {projectById.get(row.projectId)?.clientAccount?.name ?? "—"}
-                    </td>
-                    <td className="py-3 pr-4 text-muted-foreground">
-                      {row.startDate ? new Date(row.startDate).toLocaleDateString("pt-BR") : "—"}
-                    </td>
-                    <td className="py-3 pr-4 text-muted-foreground">
-                      {row.endDate ? new Date(row.endDate).toLocaleDateString("pt-BR") : "—"}
-                    </td>
-                    <td className="py-3">
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" aria-label="Editar" onClick={() => openEdit(row)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive"
-                          aria-label="Remover"
-                          onClick={() => handleDelete(row)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </ScrollRegion>
-        )}
-      </AnalyticsSection>
-
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent title={editing ? "Editar lançamento" : "Novo lançamento"}>
+        <DialogContent title={editing ? "Editar lançamento" : "Novo lançamento"} showClose>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>Projeto</Label>
               <Select value={projectId} onValueChange={setProjectId} disabled={!!editing}>
-                <SelectTrigger className="min-w-0 w-full">
+                <SelectTrigger className="rounded-xl">
                   <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
                 <SelectContent>
@@ -307,30 +478,31 @@ export function LaunchesPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="launch-name">Nome</Label>
+              <Label htmlFor="launch-name">Nome da janela</Label>
               <Input
                 id="launch-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Ex.: Abertura de carrinho"
+                className="rounded-xl"
               />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="start">Início</Label>
-                <Input id="start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                <Input id="start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="rounded-xl" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="end">Fim</Label>
-                <Input id="end" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                <Input id="end" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="rounded-xl" />
               </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
+            <Button variant="outline" className="rounded-xl" onClick={() => setOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleSave} disabled={saving || !name.trim() || !projectId}>
+            <Button className="rounded-xl" onClick={() => void handleSave()} disabled={saving || !name.trim() || !projectId}>
               {saving ? "Salvando…" : "Salvar"}
             </Button>
           </DialogFooter>
