@@ -357,7 +357,19 @@ rsync -avz --delete ./dist/ root@76.13.175.233:/ativadash/frontend/dist/
 **Opção B — usando scp (no PC):**
 
 ```bash
+cd frontend
 scp -r ./dist root@76.13.175.233:/ativadash/frontend/
+```
+
+**Windows (PowerShell):** o `rsync` normalmente **não existe** no PATH. Usa **scp** (ativar *OpenSSH Client* em Definições → Apps → Funcionalidades opcionais, se pedir). O build está em **`frontend\dist`**, não na raiz do repo:
+
+```powershell
+cd C:\Users\Uander\Documents\GitHub\Ativadash\frontend
+npm ci
+# opcional: $env:VITE_API_URL="https://api.ativadash.com"; npm run build
+npm run build
+ssh root@76.13.175.233 "rm -rf /ativadash/frontend/dist && mkdir -p /ativadash/frontend"
+scp -r .\dist root@76.13.175.233:/ativadash/frontend/
 ```
 
 Na VPS, conferir:
