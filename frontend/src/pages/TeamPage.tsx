@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Users2 } from "lucide-react";
+import { Building2, Loader2, Mail, Users2 } from "lucide-react";
 import { ScrollRegion } from "@/components/ui/scroll-region";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AnalyticsPageHeader } from "@/components/analytics/AnalyticsPageHeader";
-import { AnalyticsSection } from "@/components/analytics/AnalyticsSection";
-import { KpiCardPremium } from "@/components/premium";
+import { PageHeaderPremium, KpiCardPremium, StatusBadge } from "@/components/premium";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   fetchMembers,
   fetchPendingInvitations,
@@ -16,11 +21,14 @@ import {
   revokeInvitation,
   patchMemberRole,
   removeMember,
+  fetchClients,
   type MemberRow,
   type InvitationRow,
 } from "@/lib/workspace-api";
 import { fetchOrganizationContext, formatPlanCap, type OrganizationContext } from "@/lib/organization-api";
 import { useAuthStore } from "@/stores/auth-store";
+import { OperationsModuleNav } from "@/components/operations/operations-module-nav";
+import { MemberDetailDialog } from "@/components/operations/member-detail-dialog";
 
 const roleLabel: Record<string, string> = {
   owner: "Proprietário",
@@ -30,12 +38,21 @@ const roleLabel: Record<string, string> = {
   analyst: "Analista",
 };
 
+function formatMemberDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  } catch {
+    return "—";
+  }
+}
+
 export function TeamPage() {
   const orgName = useAuthStore((s) => s.user?.organization?.name);
   const currentUserId = useAuthStore((s) => s.user?.id);
   const [rows, setRows] = useState<MemberRow[]>([]);
   const [invites, setInvites] = useState<InvitationRow[]>([]);
   const [orgCtx, setOrgCtx] = useState<OrganizationContext | null>(null);
+  const [clientAccountsCount, setClientAccountsCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -43,18 +60,21 @@ export function TeamPage() {
   const [inviteBusy, setInviteBusy] = useState(false);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
+  const [detailMember, setDetailMember] = useState<MemberRow | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [list, ctx, pend] = await Promise.all([
+      const [list, ctx, pend, clients] = await Promise.all([
         fetchMembers(),
         fetchOrganizationContext(),
         fetchPendingInvitations().catch(() => [] as InvitationRow[]),
+        fetchClients().catch(() => []),
       ]);
       setRows(list);
       setOrgCtx(ctx);
       setInvites(pend);
+      setClientAccountsCount(Array.isArray(clients) ? clients.length : 0);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao carregar");
     } finally {
@@ -63,16 +83,14 @@ export function TeamPage() {
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const directCount = rows.filter((r) => r.source === "direct").length;
   const pendingCount = invites.length;
   const maxUsersLabel = orgCtx ? formatPlanCap(orgCtx.limits.maxUsers) : "—";
   const planNote =
-    orgCtx?.planSource === "parent"
-      ? " Limites do plano são os da empresa matriz (herdados)."
-      : "";
+    orgCtx?.planSource === "parent" ? " Limites herdados da organização matriz." : "";
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault();
@@ -123,187 +141,225 @@ export function TeamPage() {
   }
 
   return (
-    <div className="min-w-0 max-w-full space-y-6">
-      <AnalyticsPageHeader
+    <div className="min-w-0 max-w-full space-y-6 pb-12">
+      <PageHeaderPremium
+        eyebrow="Operação"
         title="Equipe"
-        subtitle={`Pessoas com login em ${orgName ?? "esta empresa"}. Diferente de clientes comerciais (cadastro no menu Clientes).`}
+        subtitle="Membros da agência, convites e papéis na organização ativa. Acesso por cliente é feito via workspace em Contas."
         meta={
-          <Link
-            to="/configuracoes#como-funciona-conta"
-            className="font-medium text-primary underline-offset-4 hover:underline"
-          >
-            Ver diferenças com Clientes
-          </Link>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <OperationsModuleNav />
+            <Link
+              to="/clientes"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary underline-offset-4 hover:underline"
+            >
+              <Building2 className="h-3.5 w-3.5" />
+              Ver contas da agência
+            </Link>
+          </div>
         }
       />
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      {actionMsg && <p className="text-sm text-destructive">{actionMsg}</p>}
+      {error ? (
+        <div className="rounded-xl border border-destructive/35 bg-destructive/[0.08] px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
+      {actionMsg ? (
+        <div className="rounded-xl border border-destructive/35 bg-destructive/[0.08] px-4 py-3 text-sm text-destructive">
+          {actionMsg}
+        </div>
+      ) : null}
 
       {!loading && orgCtx && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <KpiCardPremium variant="primary" label="Membros listados" value={String(rows.length)} icon={Users2} />
-          <KpiCardPremium variant="primary" label="Acesso direto" value={String(directCount)} icon={Users2} />
-          <KpiCardPremium variant="compact" label="Convites pendentes" value={String(pendingCount)} icon={Users2} />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCardPremium
-            variant="compact"
+            variant="primary"
+            label="Membros ativos"
+            value={String(rows.length)}
+            hideSource
+            icon={Users2}
+            hint={`Organização: ${orgName ?? "—"}`}
+          />
+          <KpiCardPremium
+            variant="secondary"
+            label="Acesso direto"
+            value={String(directCount)}
+            hideSource
+            icon={Users2}
+          />
+          <KpiCardPremium variant="secondary" label="Convites pendentes" value={String(pendingCount)} hideSource icon={Mail} />
+          <KpiCardPremium
+            variant="secondary"
             label="Limite do plano"
             value={maxUsersLabel}
+            hideSource
             hint={`Usuários diretos + pendentes ≤ ${maxUsersLabel}.${planNote}`}
             icon={Users2}
           />
         </div>
       )}
 
-      <AnalyticsSection
-        eyebrow="Convite"
-        title="Convidar por e-mail"
-        description={`Gera link de cadastro. Limite: membros diretos + convites pendentes (máx. ${maxUsersLabel}).${planNote}`}
-        dense
-      >
-        <div className="rounded-xl border border-border/50 bg-muted/[0.12] p-4 sm:p-5">
-          <form onSubmit={handleInvite} className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-            <div className="min-w-[200px] flex-1 space-y-1.5">
-              <Label htmlFor="invite-email">E-mail</Label>
-              <Input
-                id="invite-email"
-                type="email"
-                value={inviteEmail}
-                onChange={(ev) => setInviteEmail(ev.target.value)}
-                placeholder="colega@empresa.com"
-                required
-              />
-            </div>
-            <div className="w-full space-y-1.5 sm:w-44">
-              <Label htmlFor="invite-role">Papel</Label>
-              <select
-                id="invite-role"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                value={inviteRole}
-                onChange={(ev) => setInviteRole(ev.target.value as typeof inviteRole)}
-              >
-                <option value="member">Membro</option>
-                <option value="analyst">Analista</option>
-                <option value="media_manager">Gestor de mídia</option>
-                <option value="admin">Administrador</option>
-              </select>
-            </div>
-            <Button type="submit" disabled={inviteBusy} className="shrink-0">
-              {inviteBusy ? "Enviando…" : "Gerar convite"}
-            </Button>
-          </form>
-          {inviteLink && (
-            <div
-              className="mt-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm dark:bg-emerald-950/30"
-              role="status"
-            >
-              <p className="font-medium text-emerald-900 dark:text-emerald-100">Convite criado</p>
-              <p className="mt-1 break-all font-mono text-xs text-foreground">{inviteLink}</p>
-              <p className="mt-2 text-xs text-muted-foreground">Encaminhe por WhatsApp ou e-mail.</p>
-            </div>
-          )}
+      <div className="overflow-hidden rounded-2xl border border-border/50 bg-card/40 shadow-[var(--shadow-surface-sm)]">
+        <div className="border-b border-border/45 px-4 py-3 sm:px-5">
+          <h2 className="text-sm font-bold tracking-tight text-foreground">Convidar membro</h2>
+          <p className="text-xs text-muted-foreground">Link único · compartilhe pelo canal que preferir.</p>
         </div>
-      </AnalyticsSection>
+        <form onSubmit={handleInvite} className="flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-end sm:p-5">
+          <div className="min-w-[200px] flex-1 space-y-1.5">
+            <Label htmlFor="invite-email" className="text-xs font-semibold">
+              E-mail
+            </Label>
+            <Input
+              id="invite-email"
+              type="email"
+              value={inviteEmail}
+              onChange={(ev) => setInviteEmail(ev.target.value)}
+              placeholder="colega@empresa.com"
+              required
+              className="h-10 rounded-xl border-border/60"
+            />
+          </div>
+          <div className="w-full space-y-1.5 sm:w-48">
+            <Label className="text-xs font-semibold">Papel global</Label>
+            <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as typeof inviteRole)}>
+              <SelectTrigger className="h-10 rounded-xl border-border/60">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="member">Membro</SelectItem>
+                <SelectItem value="analyst">Analista</SelectItem>
+                <SelectItem value="media_manager">Gestor de mídia</SelectItem>
+                <SelectItem value="admin">Administrador</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button type="submit" disabled={inviteBusy} className="h-10 shrink-0 rounded-xl sm:min-w-[140px]">
+            {inviteBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
+            Gerar convite
+          </Button>
+        </form>
+        {inviteLink ? (
+          <div className="border-t border-border/40 bg-muted/10 px-4 py-3 sm:px-5">
+            <p className="text-xs font-bold uppercase tracking-wide text-emerald-800 dark:text-emerald-200">Link pronto</p>
+            <p className="mt-1 break-all font-mono text-xs text-foreground">{inviteLink}</p>
+          </div>
+        ) : null}
+      </div>
 
       {invites.length > 0 && (
-        <AnalyticsSection title="Convites pendentes" description={`${pendingCount} aguardando aceite`} dense>
-          <div className="space-y-2 text-sm">
+        <div className="rounded-2xl border border-border/50 bg-card/30 px-4 py-3 sm:px-5">
+          <p className="text-sm font-bold text-foreground">Aguardando aceite ({pendingCount})</p>
+          <ul className="mt-2 space-y-2">
             {invites.map((inv) => (
-              <div
+              <li
                 key={inv.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 px-3 py-2"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/45 bg-muted/10 px-3 py-2 text-sm"
               >
-                <div>
-                  <span className="font-medium">{inv.email}</span>{" "}
+                <span>
+                  <span className="font-semibold">{inv.email}</span>{" "}
                   <span className="text-muted-foreground">({roleLabel[inv.role] ?? inv.role})</span>
-                </div>
-                <Button type="button" variant="outline" size="sm" onClick={() => handleRevokeInvite(inv.id)}>
+                </span>
+                <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg" onClick={() => handleRevokeInvite(inv.id)}>
                   Revogar
                 </Button>
-              </div>
+              </li>
             ))}
-          </div>
-        </AnalyticsSection>
+          </ul>
+        </div>
       )}
 
-      <AnalyticsSection
-        title="Membros com acesso"
-        description={
-          loading
-            ? "Carregando…"
-            : orgCtx
-              ? `${directCount} / ${maxUsersLabel} usuários diretos + ${pendingCount} convite(s). Lista: ${rows.length} (inclui acesso por agência).`
-              : `${rows.length} pessoa(s)`
-        }
-        dense
-      >
-          {loading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          ) : rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhum membro listado.</p>
-          ) : (
-            <ScrollRegion className="scrollbar-thin">
-              <table className="w-full min-w-[520px] text-sm">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="pb-2 pr-4 font-medium">Nome</th>
-                    <th className="pb-2 pr-4 font-medium">E-mail</th>
-                    <th className="pb-2 pr-4 font-medium">Papel</th>
-                    <th className="pb-2 font-medium">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => (
-                    <tr key={row.membershipId} className="border-b border-border/60">
-                      <td className="py-3 pr-4 font-medium">{row.name}</td>
-                      <td className="py-3 pr-4 text-muted-foreground">{row.email}</td>
-                      <td className="py-3 pr-4">
-                        <span className="block">{roleLabel[row.role] ?? row.role}</span>
-                        {row.source === "agency" && (
-                          <span className="text-xs text-muted-foreground">Acesso pela agência (revenda)</span>
-                        )}
-                      </td>
-                      <td className="py-3">
-                        {row.source === "direct" &&
-                          row.userId !== currentUserId &&
-                          row.role !== "owner" && (
-                            <div className="flex flex-wrap items-center gap-2">
-                              <select
-                                className="h-8 rounded border border-input bg-background px-2 text-xs"
-                                value={row.role}
-                                onChange={(ev) => handleRoleChange(row.userId, ev.target.value)}
-                              >
-                                <option value="member">Membro</option>
-                                <option value="analyst">Analista</option>
-                                <option value="media_manager">Gestor de mídia</option>
-                                <option value="admin">Administrador</option>
-                              </select>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 text-destructive hover:text-destructive"
-                                onClick={() => handleRemove(row.userId)}
-                              >
-                                Remover
-                              </Button>
-                            </div>
-                          )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </ScrollRegion>
-          )}
-          <p className="mt-4 break-words text-xs text-muted-foreground">
-            Já tem conta? Peça um convite e, após entrar, use <strong className="text-foreground">Aceitar convite</strong>{" "}
-            em Perfil se receber outro link.
-          </p>
-      </AnalyticsSection>
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-black tracking-tight text-foreground">Membros</h2>
+            <p className="text-xs text-muted-foreground">
+              Contas comerciais cadastradas nesta org:{" "}
+              <strong className="text-foreground">{clientAccountsCount ?? "—"}</strong> · vínculo fino por workspace em{" "}
+              <Link to="/clientes" className="font-medium text-primary underline-offset-2 hover:underline">
+                Clientes
+              </Link>
+              .
+            </p>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-24 rounded-2xl" />
+            <Skeleton className="h-24 rounded-2xl" />
+          </div>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum membro listado.</p>
+        ) : (
+          <ScrollRegion className="scrollbar-thin">
+            <ul className="grid gap-3">
+              {rows.map((row) => (
+                <li
+                  key={row.membershipId}
+                  className="flex flex-col gap-3 rounded-2xl border border-border/50 bg-card/40 p-4 shadow-[var(--shadow-surface-sm)] sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 text-left"
+                    onClick={() => setDetailMember(row)}
+                  >
+                    <p className="font-bold text-foreground">{row.name}</p>
+                    <p className="text-sm text-muted-foreground">{row.email}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <StatusBadge tone={row.source === "agency" ? "alert" : "healthy"} dot>
+                        {roleLabel[row.role] ?? row.role}
+                      </StatusBadge>
+                      <span className="text-xs text-muted-foreground">
+                        Clientes (contas na org): <strong className="text-foreground">{clientAccountsCount ?? "—"}</strong>
+                      </span>
+                    </div>
+                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button type="button" variant="secondary" size="sm" className="rounded-xl" onClick={() => setDetailMember(row)}>
+                      Ver detalhes
+                    </Button>
+                    {row.source === "direct" && row.userId !== currentUserId && row.role !== "owner" ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Select value={row.role} onValueChange={(v) => handleRoleChange(row.userId, v)}>
+                          <SelectTrigger className="h-9 w-[140px] rounded-xl text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="member">Membro</SelectItem>
+                            <SelectItem value="analyst">Analista</SelectItem>
+                            <SelectItem value="media_manager">Gestor de mídia</SelectItem>
+                            <SelectItem value="admin">Administrador</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-9 rounded-xl text-destructive hover:text-destructive"
+                          onClick={() => handleRemove(row.userId)}
+                        >
+                          Remover
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </ScrollRegion>
+        )}
+      </div>
+
+      <MemberDetailDialog
+        open={!!detailMember}
+        onOpenChange={(v) => {
+          if (!v) setDetailMember(null);
+        }}
+        member={detailMember}
+        linkedClientsCount={clientAccountsCount}
+        formatDate={formatMemberDate}
+      />
     </div>
   );
 }

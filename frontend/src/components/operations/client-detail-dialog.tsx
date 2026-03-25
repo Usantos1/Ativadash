@@ -106,9 +106,7 @@ export function ClientDetailDialog({
               </div>
 
               <p className="text-xs text-muted-foreground">
-                Use <strong className="text-foreground">Entrar</strong> para trocar o workspace ativo e abrir o Painel ADS
-                deste cliente. Permissões finas por membro ficam em <strong className="text-foreground">Equipe</strong>{" "}
-                dentro do cliente.
+                <strong className="text-foreground">Entrar</strong> define este workspace como ativo e abre o Painel ADS.
               </p>
             </div>
             <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">

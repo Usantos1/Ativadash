@@ -421,7 +421,7 @@ export function LaunchesPage() {
                           <DropdownMenu.Item asChild>
                             <Link
                               className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
-                              to={`/projetos`}
+                              to="/projetos"
                             >
                               <Rocket className="h-4 w-4 opacity-70" />
                               Ver projeto

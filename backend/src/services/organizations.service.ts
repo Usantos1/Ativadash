@@ -629,6 +629,10 @@ export async function listChildOrganizationsOperationsDashboard(
     metaAdsConnected: boolean;
     googleAdsConnected: boolean;
     marketing30d: ChildMarketingRollup30d | null;
+    clientAccountCount: number;
+    projectCount: number;
+    launchCount: number;
+    activeLaunchCount: number;
   }>;
   summary: {
     totalWorkspaces: number;
@@ -643,6 +647,9 @@ export async function listChildOrganizationsOperationsDashboard(
     dashboardsTotalAcrossChildren: number;
     childSlotsUsed: number;
     childSlotsCap: number | null;
+    childrenWithActiveLaunches: number;
+    totalProjectsAcrossChildren: number;
+    totalLaunchesAcrossChildren: number;
   };
   alerts: ChildOrganizationOperationsAlert[];
 }> {
