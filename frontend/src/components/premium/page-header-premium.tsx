@@ -14,6 +14,7 @@ export function PageHeaderPremium({
   meta,
   actions,
   className,
+  variant = "default",
 }: {
   /** Linha muito discreta acima do título (ex.: módulo) */
   eyebrow?: string;
@@ -23,9 +24,12 @@ export function PageHeaderPremium({
   meta?: ReactNode;
   actions?: ReactNode;
   className?: string;
+  /** `dense`: tipografia e espaçamento menores (telas operacionais). */
+  variant?: "default" | "dense";
 }) {
+  const dense = variant === "dense";
   return (
-    <header className={cn("space-y-4 pb-6", className)}>
+    <header className={cn(dense ? "space-y-2 pb-4" : "space-y-4 pb-6", className)}>
       {breadcrumbs?.length ? (
         <nav className="flex flex-wrap items-center gap-1 text-[11px] font-medium text-muted-foreground">
           {breadcrumbs.map((b, i) => (
@@ -43,21 +47,45 @@ export function PageHeaderPremium({
         </nav>
       ) : null}
 
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 flex-1 space-y-2">
+      <div className={cn("flex flex-col lg:flex-row lg:items-start lg:justify-between", dense ? "gap-3" : "gap-5")}>
+        <div className={cn("min-w-0 flex-1", dense ? "space-y-1" : "space-y-2")}>
           {eyebrow ? (
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-primary/80">{eyebrow}</p>
+            <p
+              className={cn(
+                "font-bold uppercase tracking-[0.14em] text-primary/80",
+                dense ? "text-[10px]" : "text-[11px]"
+              )}
+            >
+              {eyebrow}
+            </p>
           ) : null}
-          <h1 className="text-balance text-2xl font-bold tracking-tight text-foreground sm:text-[1.75rem] sm:leading-tight lg:text-[1.85rem]">
+          <h1
+            className={cn(
+              "text-balance font-bold tracking-tight text-foreground",
+              dense
+                ? "text-lg sm:text-xl sm:leading-snug"
+                : "text-2xl sm:text-[1.75rem] sm:leading-tight lg:text-[1.85rem]"
+            )}
+          >
             {title}
           </h1>
           {subtitle ? (
-            <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground sm:text-[0.9375rem]">
+            <p
+              className={cn(
+                "max-w-3xl text-muted-foreground",
+                dense ? "text-xs leading-normal" : "text-sm leading-relaxed sm:text-[0.9375rem]"
+              )}
+            >
               {subtitle}
             </p>
           ) : null}
           {meta ? (
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/50 pt-3 text-xs text-muted-foreground">
+            <div
+              className={cn(
+                "flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/50 text-muted-foreground",
+                dense ? "pt-2 text-[11px]" : "pt-3 text-xs"
+              )}
+            >
               {meta}
             </div>
           ) : null}

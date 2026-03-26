@@ -104,7 +104,14 @@ export function DashboardAlertOccurrences({
             className={cn("rounded-lg border px-3 py-2 text-xs", severityBorder(o.severity))}
           >
             <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
-              <span className="font-semibold text-foreground">{o.ruleName}</span>
+              <span className="flex flex-wrap items-center gap-2 font-semibold text-foreground">
+                {o.ruleName}
+                {o.acknowledgedAt ? (
+                  <span className="rounded-md border border-border/60 bg-background/80 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-muted-foreground">
+                    Visto
+                  </span>
+                ) : null}
+              </span>
               <time className="shrink-0 tabular-nums text-[10px] text-muted-foreground" dateTime={o.createdAt}>
                 {format(new Date(o.createdAt), "d MMM · HH:mm", { locale: ptBR })}
               </time>

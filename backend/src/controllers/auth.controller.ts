@@ -7,6 +7,7 @@ import {
   switchActiveOrganization,
   updateProfile,
   getMeContext,
+  changePasswordForUser,
 } from "../services/auth.service.js";
 import {
   loginSchema,
@@ -16,6 +17,7 @@ import {
   switchOrganizationSchema,
   registerWithInviteSchema,
   acceptInviteTokenSchema,
+  changePasswordSchema,
 } from "../validators/auth.validator.js";
 import {
   getInvitationPreviewByToken,
@@ -163,6 +165,28 @@ export async function patchProfile(req: Request, res: Response) {
     return res.json(user);
   } catch {
     return res.status(500).json({ message: "Erro ao atualizar perfil" });
+  }
+}
+
+export async function patchPassword(req: Request, res: Response) {
+  const jwtUser = (req as Request & { user: { userId: string } }).user;
+  const parsed = changePasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const msg = parsed.error.errors[0]?.message ?? "Dados inválidos";
+    return res.status(400).json({ message: msg });
+  }
+  try {
+    await changePasswordForUser(jwtUser.userId, parsed.data.currentPassword, parsed.data.newPassword);
+    return res.json({ ok: true });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Erro ao alterar senha";
+    if (message === "Senha atual incorreta") {
+      return res.status(400).json({ message });
+    }
+    if (message === "Usuário não encontrado") {
+      return res.status(404).json({ message });
+    }
+    return res.status(500).json({ message: "Erro ao alterar senha" });
   }
 }
 

@@ -30,5 +30,6 @@ router.post("/accept-invite", authMiddleware, requireJwtOrganizationAccess, auth
 router.post("/switch-organization", authMiddleware, authController.switchOrganization);
 router.post("/me/active-organization", authMiddleware, authController.activeOrganization);
 router.patch("/profile", authMiddleware, requireJwtOrganizationAccess, authController.patchProfile);
+router.patch("/password", authMiddleware, requireJwtOrganizationAccess, authController.patchPassword);
 
 export default router;

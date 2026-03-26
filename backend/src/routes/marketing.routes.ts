@@ -21,6 +21,7 @@ import {
   getMarketingDetailCampaignsHandler,
   getMarketingAlertsInsightHandler,
   getMarketingAlertOccurrencesHandler,
+  patchMarketingAlertOccurrenceAckHandler,
   getMarketingSettingsHandler,
   putMarketingSettingsHandler,
   postMarketingInsightsHandler,
@@ -50,6 +51,7 @@ router.get("/funnel", ...authCtx, getMarketingFunnelContractHandler);
 router.get("/detail/campaigns", ...authCtx, getMarketingDetailCampaignsHandler);
 router.get("/alerts/insight", ...authCtx, getMarketingAlertsInsightHandler);
 router.get("/alert-occurrences", ...authCtx, getMarketingAlertOccurrencesHandler);
+router.patch("/alert-occurrences/:id/ack", ...authCtx, patchMarketingAlertOccurrenceAckHandler);
 
 router.get("/alert-rules", ...authCtx, getAlertRulesHandler);
 router.post("/alert-rules", ...authCtx, postAlertRuleHandler);

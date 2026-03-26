@@ -21,6 +21,8 @@ export type AlertRuleDto = {
   active: boolean;
   muteStartHour: number | null;
   muteEndHour: number | null;
+  appliesToChannel: string | null;
+  notifyWhatsapp: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -36,6 +38,8 @@ function toDto(row: AlertRule): AlertRuleDto {
     active: row.active,
     muteStartHour: row.muteStartHour,
     muteEndHour: row.muteEndHour,
+    appliesToChannel: row.appliesToChannel?.trim() ? row.appliesToChannel.trim() : null,
+    notifyWhatsapp: row.notifyWhatsapp !== false,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -78,6 +82,7 @@ export type AlertOccurrenceDto = {
   message: string;
   metricValue: number;
   createdAt: string;
+  acknowledgedAt: string | null;
 };
 
 export async function listAlertOccurrences(
@@ -100,7 +105,24 @@ export async function listAlertOccurrences(
     message: r.message,
     metricValue: decToNumber(r.metricValue),
     createdAt: r.createdAt.toISOString(),
+    acknowledgedAt: r.acknowledgedAt ? r.acknowledgedAt.toISOString() : null,
   }));
+}
+
+export async function acknowledgeAlertOccurrence(
+  organizationId: string,
+  occurrenceId: string
+): Promise<{ ok: true } | { ok: false; code: "not_found" }> {
+  const row = await prisma.alertOccurrence.findFirst({
+    where: { id: occurrenceId, organizationId },
+    select: { id: true },
+  });
+  if (!row) return { ok: false, code: "not_found" };
+  await prisma.alertOccurrence.update({
+    where: { id: occurrenceId },
+    data: { acknowledgedAt: new Date() },
+  });
+  return { ok: true };
 }
 
 export async function listAlertRules(organizationId: string): Promise<AlertRuleDto[]> {
@@ -126,6 +148,13 @@ export async function createAlertRule(
       active: input.active ?? true,
       muteStartHour: input.muteStartHour ?? null,
       muteEndHour: input.muteEndHour ?? null,
+      appliesToChannel:
+        input.appliesToChannel === "meta" || input.appliesToChannel === "google"
+          ? input.appliesToChannel
+          : input.appliesToChannel === "all"
+            ? "all"
+            : null,
+      notifyWhatsapp: input.notifyWhatsapp !== false,
     },
   });
   return toDto(row);
@@ -149,6 +178,15 @@ export async function updateAlertRule(
   if (input.active !== undefined) data.active = input.active;
   if (input.muteStartHour !== undefined) data.muteStartHour = input.muteStartHour;
   if (input.muteEndHour !== undefined) data.muteEndHour = input.muteEndHour;
+  if (input.appliesToChannel !== undefined) {
+    data.appliesToChannel =
+      input.appliesToChannel === "meta" || input.appliesToChannel === "google"
+        ? input.appliesToChannel
+        : input.appliesToChannel === "all"
+          ? "all"
+          : null;
+  }
+  if (input.notifyWhatsapp !== undefined) data.notifyWhatsapp = input.notifyWhatsapp;
   const row = await prisma.alertRule.update({
     where: { id },
     data,

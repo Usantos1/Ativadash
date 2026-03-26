@@ -116,6 +116,18 @@ export function Marketing() {
   const canMutateCampaigns = canMutateAds && planAllowsCampaignWrite;
 
   useEffect(() => {
+    const scrollToActions = () => {
+      if (window.location.hash !== "#painel-acoes-ads") return;
+      requestAnimationFrame(() => {
+        document.getElementById("painel-acoes-ads")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    };
+    scrollToActions();
+    window.addEventListener("hashchange", scrollToActions);
+    return () => window.removeEventListener("hashchange", scrollToActions);
+  }, []);
+
+  useEffect(() => {
     let c = false;
     fetchOrganizationContext()
       .then((ctx) => {
@@ -781,7 +793,7 @@ export function Marketing() {
                   ))}
                 </div>
               ) : null}
-              <div>
+              <div id="painel-acoes-ads" className="scroll-mt-24">
                 <CockpitSectionTitle kicker="Ações">O que fazer agora</CockpitSectionTitle>
                 <MarketingActionQueue
                   items={operationalActions}

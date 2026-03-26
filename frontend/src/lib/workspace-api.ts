@@ -172,3 +172,12 @@ export async function patchProfile(
 ): Promise<{ id: string; email: string; name: string; firstName?: string | null }> {
   return api.patch("/auth/profile", { name });
 }
+
+/** Troca de senha com JWT (sem e-mail). */
+export async function changeAuthenticatedPassword(body: {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}): Promise<void> {
+  await api.patch("/auth/password", body);
+}

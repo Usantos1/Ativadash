@@ -46,14 +46,30 @@ export type CustomAlertKpisContext = {
  * Acrescenta alertas de AlertRule ativas ao array existente.
  * Exige `performanceAlerts` no plano. Respeita mute UTC nas regras.
  */
+export type RuleEvaluatingChannel = "meta" | "google" | "blended";
+
+function ruleMatchesEvalScope(
+  appliesToChannel: string | null | undefined,
+  evaluatingChannel: RuleEvaluatingChannel
+): boolean {
+  const raw = (appliesToChannel ?? "").trim().toLowerCase();
+  const ch = raw === "" ? "all" : raw;
+  if (evaluatingChannel === "blended") {
+    return ch === "all";
+  }
+  return ch === "all" || ch === evaluatingChannel;
+}
+
 export async function appendCustomRuleAlerts(
   organizationId: string,
   ctx: CustomAlertKpisContext,
   alerts: InsightAlert[],
-  opts: { persistOccurrences: boolean }
+  opts: { persistOccurrences: boolean; evaluatingChannel?: RuleEvaluatingChannel }
 ): Promise<void> {
   const features = await getEffectivePlanFeatures(organizationId);
   if (!features.performanceAlerts) return;
+
+  const scope: RuleEvaluatingChannel = opts.evaluatingChannel ?? "blended";
 
   const rules = await prisma.alertRule.findMany({
     where: { organizationId, active: true },
@@ -61,6 +77,7 @@ export async function appendCustomRuleAlerts(
   });
 
   for (const rule of rules) {
+    if (!ruleMatchesEvalScope(rule.appliesToChannel, scope)) continue;
     if (isUtcHourMuted(rule.muteStartHour, rule.muteEndHour)) continue;
 
     let value: number | null = null;
@@ -92,12 +109,21 @@ export async function appendCustomRuleAlerts(
     const threshold = Number(rule.threshold);
     if (!Number.isFinite(threshold)) continue;
 
-    if (!compareOp(rule.operator, value, threshold)) continue;
+    let v = value;
+    let t = threshold;
+    if (rule.metric === "cpa") {
+      v = Math.round(value * 100) / 100;
+      t = Math.round(threshold * 100) / 100;
+    }
+
+    if (!compareOp(rule.operator, v, t)) continue;
 
     const sev = rule.severity === "critical" ? "critical" : "warning";
+    const displayVal = rule.metric === "cpa" ? v : value;
+    const displayTh = rule.metric === "cpa" ? t : threshold;
     const metricLabel =
       rule.metric === "cpa"
-        ? formatMoney(value)
+        ? formatMoney(displayVal)
         : rule.metric === "spend"
           ? formatMoney(value)
           : rule.metric === "ctr"
@@ -106,7 +132,7 @@ export async function appendCustomRuleAlerts(
 
     const thLabel =
       rule.metric === "cpa" || rule.metric === "spend"
-        ? formatMoney(threshold)
+        ? formatMoney(displayTh)
         : rule.metric === "ctr"
           ? `${threshold.toFixed(2)}%`
           : `${threshold.toFixed(2)}×`;
@@ -118,6 +144,7 @@ export async function appendCustomRuleAlerts(
       code: `CUSTOM_RULE:${rule.id}`,
       title: rule.name,
       message: msg,
+      ...(scope === "blended" ? {} : { channel: scope }),
     });
 
     if (opts.persistOccurrences) {

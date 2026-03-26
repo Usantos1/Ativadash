@@ -285,6 +285,23 @@ model MarketingSettings {
   ativaCrmAlertsEnabled     Boolean   @default(false)
   /// Evita spam: último envio de alerta por WhatsApp
   lastAtivaCrmAlertSentAt   DateTime?
+  /// Último envio bem-sucedido do fluxo "Testar" (integração)
+  lastAtivaCrmTestSentAt    DateTime?
+
+  /// Overrides por canal: { "meta": { "targetCpaBrl": ... }, "google": { ... } }
+  goalsByChannel Json?
+  /// Preferências de automação por canal (UI + futura execução)
+  automationsByChannel Json?
+  /// Quais eventos disparam WhatsApp por canal
+  whatsappAlertsByChannel Json?
+  /// Intervalo mínimo entre alertas parecidos (minutos), opcional
+  whatsappAlertCooldownMinutes Int?
+  /// Último envio WhatsApp por código de alerta (dedupe): { "CUSTOM_RULE:xxx": "ISO-8601", ... }
+  whatsappLastOutboundByCode Json?
+  /// Modelos por código ou "default": { "default": "*{title}*...", "CUSTOM_RULE": "..." }
+  whatsappMessageTemplates Json?
+  /// Resumo diário (horário UTC, números): { enabled, hourUtc, minuteUtc?, extraPhones? }
+  whatsappDigestSchedule Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -295,6 +312,9 @@ model AlertRule {
   id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// meta | google | all (null = todas as contas)
+  appliesToChannel String? @db.VarChar(16)
 
   name      String @db.VarChar(120)
   /// cpa | roas | spend | ctr (valores atuais do período / agregados)
@@ -309,6 +329,9 @@ model AlertRule {
   /// Silêncio por hora (0–23, UTC servidor). Ambos null = sem janela de mute.
   muteStartHour Int?
   muteEndHour   Int?
+
+  /// Incluir esta regra em envios automáticos por WhatsApp (quando disparada)
+  notifyWhatsapp Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -331,6 +354,8 @@ model AlertOccurrence {
   metricValue Decimal @db.Decimal(14, 4)
 
   createdAt DateTime @default(now())
+  /// Usuário marcou como visto / resolvido na central de metas
+  acknowledgedAt DateTime?
 
   @@index([organizationId, createdAt])
 }

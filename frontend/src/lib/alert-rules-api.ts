@@ -14,6 +14,8 @@ export type AlertRuleDto = {
   active: boolean;
   muteStartHour: number | null;
   muteEndHour: number | null;
+  appliesToChannel: string | null;
+  notifyWhatsapp: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -36,6 +38,8 @@ export type CreateAlertRulePayload = {
   active?: boolean;
   muteStartHour?: number | null;
   muteEndHour?: number | null;
+  appliesToChannel?: "meta" | "google" | "all";
+  notifyWhatsapp?: boolean;
 };
 
 export async function createAlertRule(payload: CreateAlertRulePayload): Promise<AlertRuleDto> {
@@ -64,9 +68,14 @@ export type AlertOccurrenceDto = {
   message: string;
   metricValue: number;
   createdAt: string;
+  acknowledgedAt: string | null;
 };
 
 export async function fetchAlertOccurrences(limit = 30): Promise<{ items: AlertOccurrenceDto[] }> {
   const q = new URLSearchParams({ limit: String(limit) });
   return api.get<{ items: AlertOccurrenceDto[] }>(`/marketing/alert-occurrences?${q.toString()}`);
+}
+
+export async function acknowledgeAlertOccurrence(occurrenceId: string): Promise<{ ok: true }> {
+  return api.patch<{ ok: true }>(`/marketing/alert-occurrences/${encodeURIComponent(occurrenceId)}/ack`, {});
 }

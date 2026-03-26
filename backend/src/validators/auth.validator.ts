@@ -39,6 +39,18 @@ export const acceptInviteTokenSchema = z.object({
   token: z.string().min(16, "Token inválido"),
 });
 
+/** Troca de senha com sessão JWT (sem e-mail). */
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Senha atual obrigatória"),
+    newPassword: z.string().min(6, "Nova senha: mínimo 6 caracteres"),
+    confirmPassword: z.string().min(1, "Confirme a nova senha"),
+  })
+  .refine((d) => d.newPassword === d.confirmPassword, {
+    message: "Confirmação diferente da nova senha",
+    path: ["confirmPassword"],
+  });
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;

@@ -55,7 +55,7 @@ const navGroups: NavGroup[] = [
     label: "Conexões",
     items: [
       { to: "/marketing/integracoes", label: "Integrações", icon: Plug },
-      { to: "/marketing/configuracoes", label: "Metas e alertas", icon: Wrench },
+      { to: "/ads/metas-alertas", label: "Metas e alertas", icon: Wrench },
     ],
   },
   {

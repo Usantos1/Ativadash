@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+  dispatchMarketingSettingsRefresh,
   fetchMarketingSettings,
   saveMarketingSettings,
   sendAtivaCrmTestMessage,
@@ -77,6 +78,7 @@ export function AtivaCrmIntegrationPanel({ onNotify }: Props) {
       setTokenInput("");
       setLocalOk(IX.cfgSalvas);
       onNotify({ type: "success", text: IX.ativaCrmCfgSalvas });
+      dispatchMarketingSettingsRefresh();
     } catch (err) {
       const msg = getApiErrorMessage(err, "Erro ao salvar.");
       setLocalError(msg);
@@ -104,6 +106,7 @@ export function AtivaCrmIntegrationPanel({ onNotify }: Props) {
       setAlertsEnabled(false);
       setLocalOk(IX.integracaoRemovida);
       onNotify({ type: "success", text: "Ativa CRM desconectado." });
+      dispatchMarketingSettingsRefresh();
     } catch (err) {
       const msg = getApiErrorMessage(err, "Erro ao remover.");
       setLocalError(msg);
@@ -121,6 +124,7 @@ export function AtivaCrmIntegrationPanel({ onNotify }: Props) {
       if (r.ok) {
         setLocalOk(r.message);
         onNotify({ type: "success", text: r.message });
+        dispatchMarketingSettingsRefresh();
       } else {
         setLocalError(r.message);
         onNotify({ type: "error", text: r.message });

@@ -25,7 +25,11 @@ import {
   assertCanMutateAds,
   assertCampaignWriteOnPlan,
 } from "../services/marketing-permissions.service.js";
-import { listAlertOccurrences } from "../services/alert-rules.service.js";
+import {
+  acknowledgeAlertOccurrence,
+  listAlertOccurrences,
+  orgPerformanceAlertsEnabled,
+} from "../services/alert-rules.service.js";
 import { upsertMetricsSnapshot, getLatestMetricsSnapshot } from "../services/metrics-snapshot.service.js";
 import { parseMetricsDateRangeQuery } from "../utils/marketing-date-range.js";
 import {
@@ -344,6 +348,8 @@ export async function postMarketingInsightsHandler(req: Request, res: Response) 
     totalImpressions,
     totalClicks,
     persistOccurrences,
+    channels,
+    sendWhatsappAlerts,
   } = parsed.data;
   try {
     const result = await evaluateInsightsForOrganization(user.organizationId, {
@@ -355,10 +361,13 @@ export async function postMarketingInsightsHandler(req: Request, res: Response) 
       totalImpressions,
       totalClicks,
       persistOccurrences: persistOccurrences !== false,
+      channels,
     });
-    await maybeSendAtivaCrmAlerts(user.organizationId, result).catch((err) =>
-      console.error("[Ativa CRM] maybeSendAtivaCrmAlerts:", err)
-    );
+    if (sendWhatsappAlerts === true) {
+      await maybeSendAtivaCrmAlerts(user.organizationId, result).catch((err) =>
+        console.error("[Ativa CRM] maybeSendAtivaCrmAlerts:", err)
+      );
+    }
     return res.json(result);
   } catch (e) {
     console.error(e);
@@ -824,6 +833,36 @@ export async function getMarketingAlertOccurrencesHandler(req: Request, res: Res
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: "Erro ao listar ocorrências de alerta." });
+  }
+}
+
+/** Marca ocorrência de regra como vista (central de metas / painel). */
+export async function patchMarketingAlertOccurrenceAckHandler(req: Request, res: Response) {
+  const { userId, organizationId } = (req as AuthRequest).user;
+  if (!organizationId) {
+    return res.status(401).json({ message: "Não autorizado" });
+  }
+  const okRead = await userCanReadMarketing(userId, organizationId);
+  if (!okRead) {
+    return res.status(403).json({ message: "Sem acesso aos dados de marketing desta empresa." });
+  }
+  const featureOn = await orgPerformanceAlertsEnabled(organizationId);
+  if (!featureOn) {
+    return res.status(403).json({ message: "Alertas avançados não estão ativos no plano desta empresa." });
+  }
+  const { id } = req.params;
+  if (!id) {
+    return res.status(400).json({ message: "ID obrigatório." });
+  }
+  try {
+    const result = await acknowledgeAlertOccurrence(organizationId, id);
+    if (!result.ok) {
+      return res.status(404).json({ message: "Ocorrência não encontrada." });
+    }
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao atualizar ocorrência." });
   }
 }
 

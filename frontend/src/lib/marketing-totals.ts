@@ -77,3 +77,38 @@ export function buildInsightTotalsFromDashboardSummary(
     totalClicks: googleClk + summary.clicks,
   };
 }
+
+/** Totais só Meta Ads (CPL/ROAS do canal). */
+export function buildMetaChannelTotals(metaMetrics: MetaAdsMetricsResponse | null): InsightTotalsInput | null {
+  if (!metaMetrics?.ok) return null;
+  const s = metaMetrics.summary;
+  const spend = s.spend;
+  const results =
+    (s.leads ?? 0) + (s.messagingConversationsStarted ?? 0) + (s.purchases ?? 0);
+  const value = s.purchaseValue ?? 0;
+  if (spend === 0 && results === 0 && value === 0) return null;
+  return {
+    totalSpendBrl: spend,
+    totalResults: results,
+    totalAttributedValueBrl: value,
+    totalImpressions: s.impressions,
+    totalClicks: s.clicks,
+  };
+}
+
+/** Totais só Google Ads. */
+export function buildGoogleChannelTotals(metrics: GoogleAdsMetricsResponse | null): InsightTotalsInput | null {
+  if (!metrics?.ok) return null;
+  const s = metrics.summary;
+  const spend = s.costMicros / 1_000_000;
+  const results = s.conversions;
+  const value = s.conversionsValue ?? 0;
+  if (spend === 0 && results === 0 && value === 0) return null;
+  return {
+    totalSpendBrl: spend,
+    totalResults: results,
+    totalAttributedValueBrl: value,
+    totalImpressions: s.impressions,
+    totalClicks: s.clicks,
+  };
+}

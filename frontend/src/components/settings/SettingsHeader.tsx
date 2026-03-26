@@ -10,9 +10,10 @@ export function SettingsHeader({
 }) {
   return (
     <PageHeaderPremium
-      eyebrow="Administração da conta"
+      variant="dense"
+      eyebrow="Conta"
       title="Configurações"
-      subtitle="Ajuste empresa, equipe, integrações, marketing e limites do plano — tudo em um só lugar."
+      subtitle="Conta, equipe, integrações e metas."
       meta={
         organizationName ? (
           <>

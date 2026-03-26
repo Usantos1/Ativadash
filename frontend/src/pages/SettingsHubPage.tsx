@@ -1,23 +1,20 @@
-import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import {
-  Briefcase,
-  Building2,
-  Layers,
-  Megaphone,
-  Plug,
-  Shield,
-  Users,
-} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { formatDistanceToNow } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { AlertTriangle, Copy, LayoutDashboard, LineChart } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
-  SettingsGrid,
   SettingsHeader,
   SettingsHelpAccordion,
-  SettingsSectionCard,
-  SettingsStatRow,
+  SettingsHubSection,
+  SettingsHubIntegrationRow,
+  SettingsChangePasswordDialog,
+  HubStat,
+  HubRow,
 } from "@/components/settings";
+import { OrganizationSwitcher } from "@/components/layout/OrganizationSwitcher";
+import { StatusBadge } from "@/components/premium";
 import { useAuthStore } from "@/stores/auth-store";
 import {
   fetchOrganizationContext,
@@ -25,108 +22,134 @@ import {
   formatPlanLimit,
   type OrganizationContext,
 } from "@/lib/organization-api";
-import { fetchIntegrations, type IntegrationFromApi } from "@/lib/integrations-api";
-import { fetchMarketingSettings, type MarketingSettingsDto } from "@/lib/marketing-settings-api";
-import { fetchMembers, fetchPendingInvitations, type MemberRow } from "@/lib/workspace-api";
-import { cn } from "@/lib/utils";
+import { fetchIntegrations, type AtivaCrmHubFromApi, type IntegrationFromApi } from "@/lib/integrations-api";
+import {
+  fetchMarketingSettings,
+  type ChannelAutomationsDto,
+  type ChannelWhatsappAlertsDto,
+  type MarketingSettingsDto,
+} from "@/lib/marketing-settings-api";
+import {
+  fetchMembers,
+  fetchPendingInvitations,
+  fetchClients,
+  type MemberRow,
+  type ClientAccount,
+} from "@/lib/workspace-api";
 
-const ROLE_LABEL: Record<string, string> = {
-  owner: "proprietário(s)",
-  admin: "admin(s)",
-  media_manager: "gestor(es) de mídia",
-  analyst: "analista(s)",
-  member: "membro(s)",
+const ROLE_QUICK: Record<string, string> = {
+  owner: "Proprietário",
+  admin: "Admin",
+  media_manager: "Gestor",
+  analyst: "Operador",
+  member: "Colaborador",
 };
 
-const AVAILABLE_CONNECTORS = 2;
-
-function formatBrl(n: number) {
+function formatBrl(n: number | null | undefined) {
+  if (n == null || !Number.isFinite(n)) return "—";
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
 }
 
-function summarizeRoles(members: MemberRow[] | null): string {
-  if (!members?.length) return "—";
-  const direct = members.filter((m) => !m.source || m.source === "direct");
-  if (!direct.length) return `${members.length} na lista (inclui acesso por agência)`;
-  const counts = new Map<string, number>();
-  for (const m of direct) {
-    counts.set(m.role, (counts.get(m.role) ?? 0) + 1);
+function formatSync(iso: string | null | undefined): string {
+  if (!iso) return "Nunca";
+  try {
+    return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: ptBR });
+  } catch {
+    return "—";
   }
-  const parts: string[] = [];
-  for (const [role, n] of counts) {
-    const label = ROLE_LABEL[role] ?? role;
-    parts.push(`${n} ${label}`);
-  }
-  return parts.join(" · ");
 }
 
-function integrationStatusLabel(list: IntegrationFromApi[]) {
-  const n = list.filter((i) => i.status === "connected").length;
-  if (n === 0) return "Nenhuma conexão ativa";
-  if (n === 1) return "1 integração conectada";
-  return `${n} integrações conectadas`;
+function countAutomations(ch: ChannelAutomationsDto | null | undefined): number {
+  if (!ch) return 0;
+  let n = 0;
+  if (ch.pauseIfCplAboveMax) n++;
+  if (ch.reduceBudgetIfCplAboveTarget) n++;
+  if (ch.increaseBudgetIfCplBelowTarget) n++;
+  if (ch.flagScaleIfCplGood) n++;
+  if (ch.flagReviewSpendUpConvDown) n++;
+  return n;
 }
 
-function marketingSummary(m: MarketingSettingsDto | null): string[] {
-  if (!m) return ["Não foi possível carregar (tente abrir a tela de marketing)."];
-  const bits: string[] = [];
-  const goalLabel =
-    m.businessGoalMode === "LEADS"
-      ? "Objetivo: leads"
-      : m.businessGoalMode === "SALES"
-        ? "Objetivo: vendas"
-        : "Objetivo: híbrido";
-  bits.push(goalLabel);
-  bits.push(m.alertsEnabled ? "Alertas ligados" : "Alertas desligados");
-  if (m.targetCpaBrl != null) bits.push(`Meta CPA ${formatBrl(m.targetCpaBrl)}`);
-  if (m.maxCpaBrl != null) bits.push(`Teto CPA ${formatBrl(m.maxCpaBrl)}`);
-  if (m.targetRoas != null) bits.push(`Meta ROAS ${m.targetRoas}×`);
-  if (bits.length === 1) bits.push("Defina metas em Config. Marketing");
-  return bits.slice(0, 4);
+function countWhatsappRules(ch: ChannelWhatsappAlertsDto | null | undefined): number {
+  if (!ch) return 0;
+  let n = 0;
+  if (ch.cplAboveMax) n++;
+  if (ch.cplAboveTarget) n++;
+  if (ch.roasBelowMin) n++;
+  if (ch.minSpendNoResults) n++;
+  if (ch.scaleOpportunity) n++;
+  if (ch.sharpPerformanceDrop) n++;
+  if (ch.clearAdjustmentOpportunity) n++;
+  return n;
+}
+
+function goalModeLabel(m: MarketingSettingsDto | null): string {
+  if (!m) return "—";
+  if (m.businessGoalMode === "LEADS") return "Leads";
+  if (m.businessGoalMode === "SALES") return "ROAS";
+  return "Híbrido";
+}
+
+function pickIntegration(list: IntegrationFromApi[], slug: string): IntegrationFromApi | undefined {
+  return list.find((i) => i.slug === slug && i.status === "connected");
 }
 
 export function SettingsHubPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const authUser = useAuthStore((s) => s.user);
   const authOrg = authUser?.organization;
+  const logout = useAuthStore((s) => s.logout);
+  const memberships = useAuthStore((s) => s.memberships);
+  const managed = useAuthStore((s) => s.managedOrganizations);
+  const canSwitchWorkspace = useMemo(() => {
+    const opts = new Set<string>();
+    for (const m of memberships ?? []) opts.add(m.organizationId);
+    for (const o of managed ?? []) opts.add(o.id);
+    return opts.size > 1;
+  }, [memberships, managed]);
 
   const [ctx, setCtx] = useState<OrganizationContext | null>(null);
   const [members, setMembers] = useState<MemberRow[] | null>(null);
+  const [clients, setClients] = useState<ClientAccount[] | null>(null);
   const [integrations, setIntegrations] = useState<IntegrationFromApi[] | null>(null);
+  const [ativaCrm, setAtivaCrm] = useState<AtivaCrmHubFromApi | null>(null);
   const [marketing, setMarketing] = useState<MarketingSettingsDto | null>(null);
   const [pendingInvites, setPendingInvites] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoadError(null);
+    setLoading(true);
+    try {
+      const [orgCtx, mem, intRes, mkt, invites, cl] = await Promise.all([
+        fetchOrganizationContext(),
+        fetchMembers().catch(() => null),
+        fetchIntegrations().catch(() => null),
+        fetchMarketingSettings().catch(() => null),
+        fetchPendingInvitations().catch(() => []),
+        fetchClients().catch(() => null),
+      ]);
+      setCtx(orgCtx);
+      setMembers(mem);
+      setIntegrations(intRes?.integrations ?? null);
+      setAtivaCrm(intRes?.ativaCrmHub ?? null);
+      setMarketing(mkt);
+      setPendingInvites(Array.isArray(invites) ? invites.length : 0);
+      setClients(Array.isArray(cl) ? cl : null);
+    } catch {
+      setLoadError("Não foi possível carregar as configurações.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setLoadError(null);
-    Promise.all([
-      fetchOrganizationContext(),
-      fetchMembers().catch(() => null),
-      fetchIntegrations().catch(() => null),
-      fetchMarketingSettings().catch(() => null),
-      fetchPendingInvitations().catch(() => []),
-    ])
-      .then(([orgCtx, mem, integ, mkt, invites]) => {
-        if (cancelled) return;
-        setCtx(orgCtx);
-        setMembers(mem);
-        setIntegrations(integ?.integrations ?? []);
-        setMarketing(mkt);
-        setPendingInvites(Array.isArray(invites) ? invites.length : 0);
-      })
-      .catch(() => {
-        if (!cancelled) setLoadError("Não foi possível carregar as configurações da empresa.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    void load();
+  }, [load]);
 
   useEffect(() => {
     if (location.hash !== "#como-funciona-conta") return;
@@ -137,224 +160,403 @@ export function SettingsHubPage() {
 
   const displayName = ctx?.name ?? authOrg?.name;
   const displaySlug = ctx?.slug ?? authOrg?.slug;
-
-  const orgTagline = ctx?.parentOrganization
-    ? `Organização filha · matriz: ${ctx.parentOrganization.name}`
-    : "Conta principal · dados isolados neste ambiente";
-
-  const planName = ctx?.subscription?.plan.name ?? ctx?.plan?.name ?? "—";
-  const limits = ctx?.limits;
-  const usage = ctx?.usage;
   const integList = integrations ?? [];
   const integEnabled = ctx?.enabledFeatures?.integrations !== false;
+  const limits = ctx?.limits;
+  const usage = ctx?.usage;
+  const planName = ctx?.subscription?.plan?.name ?? ctx?.plan?.name ?? "—";
+
+  const metaInt = pickIntegration(integList, "meta");
+  const googleInt = pickIntegration(integList, "google-ads");
+  const waConnected = ativaCrm?.connected === true;
+  const waPhone = marketing?.ativaCrmNotifyPhone ?? ativaCrm?.notifyPhone ?? null;
+
+  const autoCount = marketing
+    ? countAutomations(marketing.automationsMeta) + countAutomations(marketing.automationsGoogle)
+    : 0;
+  const waRulesCount = marketing
+    ? countWhatsappRules(marketing.whatsappAlertsMeta) + countWhatsappRules(marketing.whatsappAlertsGoogle)
+    : 0;
+
+  const directMembers = members?.filter((m) => !m.source || m.source === "direct") ?? [];
+  const previewMembers = directMembers.slice(0, 5);
+  const previewClients = (clients ?? []).slice(0, 5);
+
+  async function copyText(label: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(label);
+      window.setTimeout(() => setCopiedField(null), 1800);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const subStatus = ctx?.subscription?.status;
+  const accountStatusLabel =
+    subStatus === "active" || subStatus === "trialing"
+      ? "Ativa"
+      : subStatus === "past_due" || subStatus === "unpaid"
+        ? "Atenção"
+        : subStatus
+          ? subStatus
+          : "—";
+
+  const slugValue: ReactNode = displaySlug ? (
+    <span className="flex flex-wrap items-center gap-1 font-mono text-xs">
+      {displaySlug}
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-7 gap-1 px-1.5 text-[11px]"
+        onClick={() => void copyText("slug", displaySlug)}
+      >
+        <Copy className="h-3 w-3" />
+        {copiedField === "slug" ? "OK" : "Copiar"}
+      </Button>
+    </span>
+  ) : (
+    "—"
+  );
+
+  const idValue: ReactNode =
+    ctx?.id != null ? (
+      <span className="flex flex-wrap items-center gap-1 font-mono text-[11px]">
+        <span className="max-w-[140px] truncate">{ctx.id}</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1 px-1.5 text-[11px]"
+          onClick={() => void copyText("id", ctx.id)}
+        >
+          <Copy className="h-3 w-3" />
+          {copiedField === "id" ? "OK" : "Copiar"}
+        </Button>
+      </span>
+    ) : loading ? (
+      "…"
+    ) : (
+      "—"
+    );
 
   return (
-    <div className="mx-auto min-w-0 max-w-6xl space-y-8 pb-10">
+    <div className="mx-auto w-full max-w-[min(100%,100rem)] space-y-5 pb-12">
       <SettingsHeader organizationName={displayName} organizationSlug={displaySlug} />
 
+      <SettingsChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
+
       {loadError ? (
-        <Card className="rounded-2xl border-destructive/40 bg-destructive/[0.06]">
-          <CardContent className="flex flex-col gap-3 py-6 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-destructive">{loadError}</p>
-            <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
-              Tentar novamente
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/[0.06] px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-destructive">{loadError}</p>
+          <Button variant="outline" size="sm" className="h-8 shrink-0 rounded-md text-xs" onClick={() => void load()}>
+            Tentar novamente
+          </Button>
+        </div>
       ) : null}
 
-      {/* A — Conta e organização (destaque) */}
-      <Card
-        className={cn(
-          "overflow-hidden rounded-2xl border-border/60 bg-gradient-to-br from-card via-card to-primary/[0.04]",
-          "shadow-[var(--shadow-surface)]"
-        )}
-      >
-        <CardContent className="flex flex-col gap-6 p-5 sm:flex-row sm:items-stretch sm:justify-between sm:gap-8 sm:p-6">
-          <div className="flex min-w-0 flex-1 gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-              <Building2 className="h-7 w-7" aria-hidden />
+      {/* Conta — largura total, denso */}
+      <section aria-labelledby="hub-hero-heading">
+        <div className="overflow-hidden rounded-lg border border-border/60 bg-card/80 shadow-sm">
+          <div className="p-4 md:p-5">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Conta</p>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <h2 id="hub-hero-heading" className="text-base font-semibold tracking-tight text-foreground md:text-lg">
+                {displayName ?? "—"}
+              </h2>
+              {accountStatusLabel === "Ativa" ? (
+                <StatusBadge tone="healthy" dot>
+                  {accountStatusLabel}
+                </StatusBadge>
+              ) : accountStatusLabel !== "—" ? (
+                <StatusBadge tone="alert" dot>
+                  {accountStatusLabel}
+                </StatusBadge>
+              ) : null}
             </div>
-            <div className="min-w-0 space-y-2">
-              <div>
-                <h2 className="text-lg font-bold tracking-tight text-foreground">Conta e organização</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Nome, slug e tipo de ambiente. Revenda e empresas filhas ficam nos detalhes.
-                </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {ctx?.parentOrganization ? (
+                <>
+                  Filha de <span className="font-medium text-foreground">{ctx.parentOrganization.name}</span>
+                </>
+              ) : (
+                "Workspace principal"
+              )}
+            </p>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-12 lg:gap-5">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:col-span-7">
+                <HubStat label="Plano" value={loading && !ctx ? "…" : planName} />
+                <HubStat label="Slug" value={slugValue} />
+                <HubStat label="ID suporte" value={idValue} className="col-span-2 sm:col-span-1" />
               </div>
-              <dl className="grid gap-2 text-sm sm:grid-cols-2">
+
+              <div className="flex flex-col gap-3 border-t border-border/50 pt-4 lg:col-span-5 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
                 <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Empresa ativa</dt>
-                  <dd className="font-semibold text-foreground">{loading && !ctx ? "Carregando…" : displayName ?? "—"}</dd>
+                  <p className="text-[10px] font-semibold uppercase text-muted-foreground">Workspace</p>
+                  <div className="mt-1.5 max-w-md">
+                    <OrganizationSwitcher />
+                  </div>
+                  {!canSwitchWorkspace ? <p className="mt-1 text-[11px] text-muted-foreground">Único disponível.</p> : null}
                 </div>
-                <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Slug</dt>
-                  <dd>
-                    {displaySlug ? (
-                      <code className="rounded-md bg-muted/80 px-2 py-0.5 font-mono text-[13px]">{displaySlug}</code>
-                    ) : (
-                      "—"
-                    )}
-                  </dd>
+                <div className="flex flex-wrap gap-1.5">
+                  <Button size="sm" className="h-8 rounded-md text-xs" asChild>
+                    <Link to="/configuracoes/empresa">Editar empresa</Link>
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-8 rounded-md text-xs" asChild>
+                    <Link to="/marketing" className="inline-flex items-center gap-1.5">
+                      <LineChart className="h-3.5 w-3.5" />
+                      Painel ADS
+                    </Link>
+                  </Button>
+                  <Button variant="secondary" size="sm" className="h-8 rounded-md text-xs" asChild>
+                    <Link to="/dashboard" className="inline-flex items-center gap-1.5">
+                      <LayoutDashboard className="h-3.5 w-3.5" />
+                      Dashboard
+                    </Link>
+                  </Button>
                 </div>
-                <div className="sm:col-span-2">
-                  <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Contexto</dt>
-                  <dd className="text-foreground/90">{ctx ? orgTagline : "—"}</dd>
-                </div>
-              </dl>
+              </div>
             </div>
           </div>
-          <div className="flex shrink-0 flex-col justify-center gap-2 border-t border-border/50 pt-4 sm:border-l sm:border-t-0 sm:pl-8 sm:pt-0">
-            <Button asChild className="rounded-xl">
-              <Link to="/configuracoes/empresa">Abrir detalhes da empresa</Link>
-            </Button>
-            <p className="text-center text-[11px] text-muted-foreground sm:text-left">
-              Nome, revenda, plano da filial e portfólio
-            </p>
+        </div>
+      </section>
+
+      {/* Equipe + Clientes */}
+      <SettingsHubSection kicker="Operação" title="Equipe e clientes">
+        <div className="grid lg:grid-cols-2 lg:divide-x lg:divide-border/50">
+          <div className="p-3 md:p-4">
+            <h3 className="text-xs font-semibold text-foreground">Equipe</h3>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <HubStat label="Membros" value={usage ? String(usage.directMembers) : loading ? "…" : "—"} />
+              <HubStat label="Convites" value={pendingInvites != null ? String(pendingInvites) : "—"} />
+            </div>
+            {previewMembers.length > 0 ? (
+              <ul className="mt-2 space-y-0.5 border-t border-border/40 pt-2">
+                {previewMembers.map((m) => (
+                  <li key={m.membershipId} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="truncate font-medium">{m.name}</span>
+                    <span className="shrink-0 text-[11px] text-muted-foreground">{ROLE_QUICK[m.role] ?? m.role}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-xs text-muted-foreground">{loading ? "…" : "Nenhum membro."}</p>
+            )}
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Button size="sm" className="h-8 rounded-md text-xs" asChild>
+                <Link to="/usuarios">Equipe</Link>
+              </Button>
+              <Button variant="outline" size="sm" className="h-8 rounded-md text-xs" asChild>
+                <Link to="/usuarios">Convidar</Link>
+              </Button>
+            </div>
           </div>
-        </CardContent>
-      </Card>
+          <div className="p-3 md:p-4">
+            <h3 className="text-xs font-semibold text-foreground">Clientes</h3>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <HubStat
+                label="Cadastrados"
+                value={
+                  clients != null ? String(clients.length) : usage ? String(usage.clientAccounts) : loading ? "…" : "—"
+                }
+              />
+              <HubStat label="Limite" value={limits ? formatPlanCap(limits.maxClientAccounts) : "—"} />
+            </div>
+            {previewClients.length > 0 ? (
+              <ul className="mt-2 space-y-0.5 border-t border-border/40 pt-2">
+                {previewClients.map((c) => (
+                  <li key={c.id} className="truncate text-xs font-medium">
+                    {c.name}
+                  </li>
+                ))}
+              </ul>
+            ) : !loading ? (
+              <p className="mt-2 text-xs text-muted-foreground">Nenhum cliente.</p>
+            ) : null}
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Button size="sm" className="h-8 rounded-md text-xs" asChild>
+                <Link to="/projetos">Cadastro</Link>
+              </Button>
+              <Button variant="outline" size="sm" className="h-8 rounded-md text-xs" asChild>
+                <Link to="/clientes">Agência</Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </SettingsHubSection>
 
-      {/* B–G — grade modular */}
-      <SettingsGrid>
-        <SettingsSectionCard
-          icon={Users}
-          title="Usuários e permissões"
-          description="Quem acessa este ambiente, papéis e convites pendentes."
-          action={{ label: "Gerenciar equipe", to: "/usuarios" }}
-        >
-          <SettingsStatRow
-            label="Membros (diretos)"
-            value={usage ? String(usage.directMembers) : loading ? "…" : "—"}
-          />
-          <SettingsStatRow
-            label="Convites pendentes"
-            value={pendingInvites != null ? String(pendingInvites) : "—"}
-          />
-          <SettingsStatRow label="Papéis" value={summarizeRoles(members)} />
-        </SettingsSectionCard>
+      {/* Integrações */}
+      <SettingsHubSection
+        kicker="Conexões"
+        title="Integrações"
+        headerRight={
+          integEnabled ? (
+            <Link to="/marketing/integracoes" className="text-xs font-medium text-primary hover:underline">
+              Central →
+            </Link>
+          ) : null
+        }
+      >
+        {!integEnabled ? (
+          <p className="px-3 py-4 text-center text-xs text-muted-foreground sm:px-4">Indisponível no plano.</p>
+        ) : (
+          <>
+            <SettingsHubIntegrationRow
+              name="Meta Ads"
+              connected={!!metaInt}
+              syncLine={metaInt ? `Última sync ${formatSync(metaInt.lastSyncAt)}` : "—"}
+              configHref="/marketing/integracoes/meta-ads"
+              reconnectHref="/marketing/integracoes/meta-ads"
+            />
+            <SettingsHubIntegrationRow
+              name="Google Ads"
+              connected={!!googleInt}
+              syncLine={googleInt ? `Última sync ${formatSync(googleInt.lastSyncAt)}` : "—"}
+              configHref="/marketing/integracoes/google-ads"
+              reconnectHref="/marketing/integracoes/google-ads"
+            />
+            <SettingsHubIntegrationRow
+              name="WhatsApp (Ativa CRM)"
+              connected={waConnected}
+              syncLine={
+                waConnected ? (waPhone ? `Número ${waPhone}` : "Conectado") : "Desconectado"
+              }
+              configHref="/marketing/integracoes/ativa-crm"
+              reconnectHref="/marketing/integracoes/ativa-crm"
+            />
+          </>
+        )}
+      </SettingsHubSection>
 
-        <SettingsSectionCard
-          icon={Briefcase}
-          title="Clientes comerciais"
-          description="Contas e marcas que você gerencia nesta empresa — não confundir com equipe."
-          action={{ label: "Ir para clientes", to: "/clientes" }}
-        >
-          <SettingsStatRow
-            label="Cadastrados"
-            value={usage ? String(usage.clientAccounts) : loading ? "…" : "—"}
-          />
-          <SettingsStatRow
-            label="Limite do plano"
-            value={limits ? formatPlanCap(limits.maxClientAccounts) : "—"}
-          />
-        </SettingsSectionCard>
+      {/* Marketing | Automações */}
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+        <SettingsHubSection kicker="Performance" title="Marketing" className="h-full">
+          <div className="p-3 md:p-4">
+            <div className="grid grid-cols-2 gap-2">
+              <HubStat label="Modo" value={goalModeLabel(marketing)} />
+              <HubStat
+                label="Status"
+                value={marketing ? (marketing.alertsEnabled ? "Alertas on" : "Alertas off") : "—"}
+              />
+              <HubStat label="CPL meta" value={marketing ? formatBrl(marketing.targetCpaBrl) : "—"} />
+              <HubStat label="ROAS meta" value={marketing?.targetRoas != null ? `${marketing.targetRoas}×` : "—"} />
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Button size="sm" className="h-8 rounded-md text-xs" asChild>
+                <Link to="/marketing/configuracoes">Editar metas</Link>
+              </Button>
+              <Button variant="outline" size="sm" className="h-8 rounded-md text-xs" asChild>
+                <Link to="/marketing">Painel ADS</Link>
+              </Button>
+            </div>
+          </div>
+        </SettingsHubSection>
 
-        <SettingsSectionCard
-          icon={Plug}
-          title="Integrações"
-          description="Meta Ads, Google Ads, WhatsApp CRM e demais conexões deste ambiente."
-          action={{ label: "Gerenciar integrações", to: "/marketing/integracoes" }}
-        >
-          <SettingsStatRow
-            label="Status"
-            value={
-              !integEnabled
-                ? "Indisponível no plano"
-                : integrations === null
-                  ? loading
-                    ? "…"
+        <SettingsHubSection kicker="WhatsApp" title="Automações" className="h-full">
+          <div className="p-3 md:p-4">
+            <div className="mb-2">
+              {marketing?.alertsEnabled && waConnected ? (
+                <StatusBadge tone="healthy" dot>
+                  OK
+                </StatusBadge>
+              ) : (
+                <StatusBadge tone="alert" dot>
+                  Ajustar
+                </StatusBadge>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <HubStat label="Automações" value={String(autoCount)} />
+              <HubStat label="Alertas" value={String(waRulesCount)} />
+              <HubStat label="Último envio" value={formatSync(marketing?.ativaCrmLastAlertSentAt ?? null)} />
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Button size="sm" className="h-8 rounded-md text-xs" asChild>
+                <Link to="/marketing/configuracoes">Automações</Link>
+              </Button>
+              <Button variant="outline" size="sm" className="h-8 rounded-md text-xs" asChild>
+                <Link to="/marketing/configuracoes">Alertas</Link>
+              </Button>
+            </div>
+          </div>
+        </SettingsHubSection>
+      </div>
+
+      {/* Plano | Segurança */}
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+        <SettingsHubSection kicker="Assinatura" title="Plano e limites">
+          <div className="p-3 md:flex md:items-start md:justify-between md:gap-4 md:p-4">
+            <div className="min-w-0 flex-1 space-y-0">
+              <HubRow label="Plano" value={loading && !ctx ? "…" : planName} />
+              <HubRow
+                label="Usuários"
+                value={usage && limits ? `${usage.directMembers} / ${formatPlanCap(limits.maxUsers)}` : "—"}
+              />
+              <HubRow
+                label="Integrações"
+                value={usage && limits ? `${usage.integrations} / ${formatPlanCap(limits.maxIntegrations)}` : "—"}
+              />
+              <HubRow
+                label="Workspaces"
+                value={
+                  usage && limits
+                    ? `${usage.childOrganizations} / ${formatPlanLimit(limits.maxChildOrganizations, { zeroMeansNotIncluded: true })}`
                     : "—"
-                  : integrationStatusLabel(integList)
-            }
-          />
-          <SettingsStatRow
-            label="Conectadas / disponíveis (mídia)"
-            value={
-              !integEnabled
-                ? "—"
-                : `${integList.filter((i) => i.status === "connected").length} / ${AVAILABLE_CONNECTORS}`
-            }
-          />
-        </SettingsSectionCard>
+                }
+              />
+              {ctx?.limitsHaveOverrides ? (
+                <p className="flex items-center gap-1.5 pt-2 text-xs font-medium text-primary">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  Limites customizados
+                </p>
+              ) : null}
+            </div>
+            <div className="mt-3 flex shrink-0 flex-col gap-1.5 md:mt-0">
+              <Button size="sm" className="h-8 rounded-md text-xs whitespace-nowrap" asChild>
+                <Link to="/configuracoes/empresa">Plano</Link>
+              </Button>
+              {!ctx?.parentOrganization ? (
+                <Button variant="outline" size="sm" className="h-8 rounded-md text-xs whitespace-nowrap" asChild>
+                  <Link to="/revenda">Filhos</Link>
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </SettingsHubSection>
 
-        <SettingsSectionCard
-          icon={Megaphone}
-          title="Marketing"
-          description="Metas de CPA e ROAS, alertas e critérios de performance."
-          action={{ label: "Configurações de marketing", to: "/marketing/configuracoes" }}
-        >
-          {marketingSummary(marketing).map((line) => (
-            <p key={line} className="text-sm leading-snug text-foreground/90">
-              {line}
-            </p>
-          ))}
-        </SettingsSectionCard>
+        <SettingsHubSection kicker="Acesso" title="Segurança">
+          <div className="flex flex-col gap-3 p-3 md:flex-row md:items-center md:justify-between md:p-4">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">{authUser?.name ?? "—"}</p>
+              <p className="text-xs text-muted-foreground">{authUser?.email ?? "—"}</p>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <Button variant="outline" size="sm" className="h-8 rounded-md text-xs" asChild>
+                <Link to="/perfil">Perfil</Link>
+              </Button>
+              <Button variant="outline" size="sm" className="h-8 rounded-md text-xs" type="button" onClick={() => setPasswordOpen(true)}>
+                Senha
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="h-8 rounded-md text-xs"
+                type="button"
+                onClick={() => {
+                  logout();
+                  navigate("/login", { replace: true });
+                }}
+              >
+                Sair
+              </Button>
+            </div>
+          </div>
+        </SettingsHubSection>
+      </div>
 
-        <SettingsSectionCard
-          icon={Layers}
-          title="Gestão de workspaces"
-          description="Revenda e multiempresa: filiais, métricas, alertas e consumo consolidado da matriz."
-          action={{ label: "Abrir gestão de workspaces", to: "/revenda" }}
-        >
-          <SettingsStatRow label="Plano" value={loading && !ctx ? "…" : planName} />
-          <SettingsStatRow
-            label="Usuários"
-            value={
-              usage && limits
-                ? `${usage.directMembers} / ${formatPlanCap(limits.maxUsers)}`
-                : loading
-                  ? "…"
-                  : "—"
-            }
-          />
-          <SettingsStatRow
-            label="Dashboards"
-            value={
-              usage && limits ? `${usage.dashboards} / ${formatPlanCap(limits.maxDashboards)}` : loading ? "…" : "—"
-            }
-          />
-          <SettingsStatRow
-            label="Integrações"
-            value={
-              usage && limits
-                ? `${usage.integrations} / ${formatPlanCap(limits.maxIntegrations)}`
-                : loading
-                  ? "…"
-                  : "—"
-            }
-          />
-          <SettingsStatRow
-            label="Empresas vinculadas (filhas)"
-            value={
-              usage && limits
-                ? `${usage.childOrganizations} / ${formatPlanLimit(limits.maxChildOrganizations, {
-                    zeroMeansNotIncluded: true,
-                  })}`
-                : loading
-                  ? "…"
-                  : "—"
-            }
-          />
-          {ctx?.limitsHaveOverrides ? (
-            <p className="text-xs font-medium text-primary">Limites personalizados para esta empresa</p>
-          ) : null}
-        </SettingsSectionCard>
-
-        <SettingsSectionCard
-          icon={Shield}
-          title="Perfil e segurança"
-          description="Seus dados de login, senha e preferências pessoais — não afetam a empresa inteira."
-          action={{ label: "Abrir meu perfil", to: "/perfil" }}
-        >
-          <SettingsStatRow label="Nome" value={authUser?.name ?? "—"} />
-          <SettingsStatRow label="E-mail" value={authUser?.email ?? "—"} />
-          <SettingsStatRow label="Senha" value="Alterar no perfil" />
-          <SettingsStatRow label="Sessão" value="Ativa neste navegador" />
-        </SettingsSectionCard>
-      </SettingsGrid>
-
-      <div className="max-w-3xl">
+      <div className="max-w-2xl border-t border-border/40 pt-5">
         <SettingsHelpAccordion />
       </div>
     </div>

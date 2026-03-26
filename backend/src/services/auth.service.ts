@@ -531,6 +531,25 @@ export async function updateProfile(userId: string, name: string) {
   return { id: user.id, email: user.email, name: user.name, firstName: user.firstName ?? null };
 }
 
+/** Alteração de senha autenticada (valida senha atual com bcrypt). */
+export async function changePasswordForUser(userId: string, currentPassword: string, newPassword: string) {
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
+  });
+  if (!user) {
+    throw new Error("Usuário não encontrado");
+  }
+  const valid = await bcrypt.compare(currentPassword, user.password);
+  if (!valid) {
+    throw new Error("Senha atual incorreta");
+  }
+  const hashed = await bcrypt.hash(newPassword, SALT_ROUNDS);
+  await prisma.user.update({
+    where: { id: userId },
+    data: { password: hashed, mustChangePassword: false },
+  });
+}
+
 async function saveRefreshToken(userId: string, token: string) {
   const decoded = jwt.decode(token) as { exp?: number };
   const expiresAt = decoded?.exp

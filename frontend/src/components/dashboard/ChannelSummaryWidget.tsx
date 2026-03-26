@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { AlertCircle, AlertTriangle, Award, Facebook, Globe, Loader2, TrendingUp } from "lucide-react";
+import { AlertCircle, AlertTriangle, Award, Loader2, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ExecutiveChannelBadge } from "@/lib/channel-executive-badge";
 import { Button } from "@/components/ui/button";
@@ -103,7 +103,7 @@ export function ChannelSummaryWidget({
   notConnected,
   emptyMessage,
 }: ChannelSummaryWidgetProps) {
-  const Icon = channel === "meta" ? Facebook : Globe;
+  const platformLogoSrc = channel === "meta" ? "/logos/meta.svg" : "/logos/google-ads.svg";
   const iconWrap =
     accent === "purple"
       ? "bg-violet-500/[0.14] text-violet-800 dark:text-violet-100"
@@ -131,7 +131,15 @@ export function ChannelSummaryWidget({
       <div className="flex flex-wrap items-start justify-between gap-2 border-b border-border/25 pb-1.5">
         <div className="flex min-w-0 flex-1 items-start gap-2">
           <div className={cn("mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", iconWrap)}>
-            <Icon className="h-4 w-4" aria-hidden />
+            <img
+              src={platformLogoSrc}
+              alt=""
+              width={20}
+              height={20}
+              className="h-5 w-5 object-contain"
+              decoding="async"
+              aria-hidden
+            />
           </div>
           <div className="min-w-0 space-y-1.5">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
