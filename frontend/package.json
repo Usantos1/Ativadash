@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "npx vite",
     "build": "npx tsc -b && npx vite build",
+    "build:prod": "cross-env VITE_API_URL=https://api.ativadash.com npm run build",
     "lint": "eslint .",
     "preview": "npx vite preview"
   },
@@ -44,6 +45,7 @@
     "@types/react-dom": "^18.2.19",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.17",
+    "cross-env": "^7.0.3",
     "eslint": "^9.9.0",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.9",
