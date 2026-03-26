@@ -8,6 +8,7 @@ import {
   ChannelPerformanceBodySkeleton,
 } from "./ChannelPerformanceBody";
 import type { ChannelPerformanceLayout } from "./build-channel-performance-layout";
+import { GoogleAdsMark, MetaMark } from "./PlatformChannelLogos";
 
 export type ChannelSummaryWidgetProps = {
   channel: "meta" | "google";
@@ -103,7 +104,6 @@ export function ChannelSummaryWidget({
   notConnected,
   emptyMessage,
 }: ChannelSummaryWidgetProps) {
-  const platformLogoSrc = channel === "meta" ? "/logos/meta.svg" : "/logos/google-ads.svg";
   const iconWrap =
     accent === "purple"
       ? "bg-violet-500/[0.14] text-violet-800 dark:text-violet-100"
@@ -131,15 +131,11 @@ export function ChannelSummaryWidget({
       <div className="flex flex-wrap items-start justify-between gap-2 border-b border-border/25 pb-1.5">
         <div className="flex min-w-0 flex-1 items-start gap-2">
           <div className={cn("mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", iconWrap)}>
-            <img
-              src={platformLogoSrc}
-              alt=""
-              width={20}
-              height={20}
-              className="h-5 w-5 object-contain"
-              decoding="async"
-              aria-hidden
-            />
+            {channel === "meta" ? (
+              <MetaMark className="h-5 w-5" />
+            ) : (
+              <GoogleAdsMark className="h-5 w-5" />
+            )}
           </div>
           <div className="min-w-0 space-y-1.5">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
