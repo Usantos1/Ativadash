@@ -131,6 +131,7 @@ model Organization {
   matrixGrantsAsWorkspace MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantWorkspace")
   assetAccessGrants      AssetAccessGrant[]
   googleAdsCustomerAssignments GoogleAdsCustomerAssignment[]
+  metaAdsAssignments         MetaAdsAssignment[]
 
   @@index([parentOrganizationId])
   @@index([organizationKind])
@@ -421,6 +422,7 @@ model ClientAccount {
   projects Project[]
   integrations Integration[]
   googleAdsCustomerAssignments GoogleAdsCustomerAssignment[]
+  metaAdsAssignments         MetaAdsAssignment[]
 
   @@index([organizationId])
 }
@@ -481,6 +483,27 @@ model Integration {
 
   googleAdsAccessibleCustomers GoogleAdsAccessibleCustomer[]
   googleAdsCustomerAssignments GoogleAdsCustomerAssignment[]
+  metaAdsAssignments         MetaAdsAssignment[]
+}
+
+/// Vínculo explícito: cliente comercial → conta de anúncios Meta (BM + act id numérico).
+model MetaAdsAssignment {
+  id              String   @id @default(cuid())
+  integrationId   String
+  integration     Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientAccountId String
+  clientAccount   ClientAccount @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+  /// Facebook Business ID (ou "__personal__" quando só há /me/adaccounts)
+  businessId      String
+  /// ID numérico da conta, sem prefixo act_
+  adAccountId     String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([integrationId, clientAccountId])
+  @@index([organizationId])
 }
 
 /// Contas Google Ads devolvidas por ListAccessibleCustomers + metadados (por integração OAuth).

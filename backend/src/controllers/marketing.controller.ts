@@ -61,6 +61,11 @@ function googleAdsQueryContextFromReq(req: Request): GoogleAdsMetricsQueryContex
   return { clientAccountId: String(s) };
 }
 
+/** Mesma semântica que Google/Meta em métricas — usado na chave de cache do dashboard agregado. */
+function marketingDashboardClientAccountIdFromReq(req: Request): string | null | undefined {
+  return googleAdsQueryContextFromReq(req)?.clientAccountId;
+}
+
 /** Corpo JSON para 403 em mutações de mídia (doc contrato: FORBIDDEN_PLAN | FORBIDDEN_ROLE). */
 function jsonMutateForbidden(e: unknown): { code: string; message: string } {
   const message = e instanceof Error ? e.message : "Sem permissão";
@@ -135,7 +140,7 @@ export async function getMetaAdsMetricsHandler(req: Request, res: Response) {
       endDate: req.query.endDate as string | undefined,
       period: req.query.period as string | undefined,
     });
-    const result = await fetchMetaAdsMetrics(organizationId, range);
+    const result = await fetchMetaAdsMetrics(organizationId, range, googleAdsQueryContextFromReq(req));
     return res.json(result);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -164,6 +169,7 @@ export async function getMarketingDashboardHandler(req: Request, res: Response) 
     });
     const result = await getMarketingDashboardCached(organizationId, range, {
       bypassCache: parseDashboardBypassCache(req),
+      clientAccountId: marketingDashboardClientAccountIdFromReq(req),
     });
     return res.json(result);
   } catch (e) {
@@ -187,6 +193,7 @@ export async function getMarketingDashboardSummaryHandler(req: Request, res: Res
     });
     const result = await getMarketingDashboardCached(organizationId, range, {
       bypassCache: parseDashboardBypassCache(req),
+      clientAccountId: marketingDashboardClientAccountIdFromReq(req),
     });
     if (!result.ok) return res.json(result);
     const merged = await mergeMarketingGoalIntoDashboardPayload(organizationId, result);
@@ -219,6 +226,7 @@ export async function getMarketingDashboardTimeseriesHandler(req: Request, res: 
     });
     const result = await getMarketingDashboardCached(organizationId, range, {
       bypassCache: parseDashboardBypassCache(req),
+      clientAccountId: marketingDashboardClientAccountIdFromReq(req),
     });
     if (!result.ok) return res.json(result);
     return res.json({ ok: true, range: result.range, timeseries: result.timeseries });
@@ -243,6 +251,7 @@ export async function getMarketingDashboardPerformanceHandler(req: Request, res:
     });
     const result = await getMarketingDashboardCached(organizationId, range, {
       bypassCache: parseDashboardBypassCache(req),
+      clientAccountId: marketingDashboardClientAccountIdFromReq(req),
     });
     if (!result.ok) return res.json(result);
     return res.json({ ok: true, range: result.range, performanceByLevel: result.performanceByLevel });
@@ -673,6 +682,7 @@ export async function getMarketingSummaryContractHandler(req: Request, res: Resp
     });
     const result = await getMarketingDashboardCached(organizationId, range, {
       bypassCache: parseDashboardBypassCache(req),
+      clientAccountId: marketingDashboardClientAccountIdFromReq(req),
     });
     if (!result.ok) return res.json(result);
     const merged = await mergeMarketingGoalIntoDashboardPayload(organizationId, result);
@@ -708,6 +718,7 @@ export async function getMarketingTimeseriesContractHandler(req: Request, res: R
     });
     const result = await getMarketingDashboardCached(organizationId, range, {
       bypassCache: parseDashboardBypassCache(req),
+      clientAccountId: marketingDashboardClientAccountIdFromReq(req),
     });
     if (!result.ok) return res.json(result);
     return res.json({
@@ -737,6 +748,7 @@ export async function getMarketingFunnelContractHandler(req: Request, res: Respo
     });
     const result = await getMarketingDashboardCached(organizationId, range, {
       bypassCache: parseDashboardBypassCache(req),
+      clientAccountId: marketingDashboardClientAccountIdFromReq(req),
     });
     if (!result.ok) return res.json(result);
     const { steps, transitions } = buildContractFunnel(result);
@@ -769,6 +781,7 @@ export async function getMarketingDetailCampaignsHandler(req: Request, res: Resp
     });
     const result = await getMarketingDashboardCached(organizationId, range, {
       bypassCache: parseDashboardBypassCache(req),
+      clientAccountId: marketingDashboardClientAccountIdFromReq(req),
     });
     if (!result.ok) return res.json(result);
     const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10) || 1);
@@ -826,6 +839,7 @@ export async function getMarketingAlertsInsightHandler(req: Request, res: Respon
     });
     const result = await getMarketingDashboardCached(organizationId, range, {
       bypassCache: parseDashboardBypassCache(req),
+      clientAccountId: marketingDashboardClientAccountIdFromReq(req),
     });
     if (!result.ok) {
       return res.json({

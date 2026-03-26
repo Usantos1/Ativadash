@@ -15,8 +15,18 @@ type CacheEntry = { expires: number; value: MarketingDashboardPayload };
 const dashboardCache = new Map<string, CacheEntry>();
 const dashboardInflight = new Map<string, Promise<MarketingDashboardPayload>>();
 
-export function dashboardCacheKey(organizationId: string, range: { start: string; end: string }): string {
-  return `${organizationId}:${range.start}:${range.end}`;
+function clientKeyPart(clientAccountId: string | null | undefined): string {
+  if (clientAccountId === undefined) return ":ctx_open";
+  if (clientAccountId === null) return ":ctx_org";
+  return `:ctx_${clientAccountId}`;
+}
+
+export function dashboardCacheKey(
+  organizationId: string,
+  range: { start: string; end: string },
+  clientAccountId?: string | null
+): string {
+  return `${organizationId}:${range.start}:${range.end}${clientKeyPart(clientAccountId)}`;
 }
 
 /**
@@ -26,14 +36,16 @@ export function dashboardCacheKey(organizationId: string, range: { start: string
 export async function getMarketingDashboardCached(
   organizationId: string,
   range: { start: string; end: string },
-  options?: { bypassCache?: boolean }
+  options?: { bypassCache?: boolean; clientAccountId?: string | null }
 ): Promise<MarketingDashboardPayload> {
-  const key = dashboardCacheKey(organizationId, range);
+  const key = dashboardCacheKey(organizationId, range, options?.clientAccountId);
 
   if (options?.bypassCache) {
     dashboardInflight.delete(key);
     dashboardCache.delete(key);
-    const value = await fetchMarketingDashboardPayload(organizationId, range);
+    const value = await fetchMarketingDashboardPayload(organizationId, range, {
+      clientAccountId: options?.clientAccountId,
+    });
     dashboardCache.set(key, { value, expires: Date.now() + DASHBOARD_TTL_MS });
     return value;
   }
@@ -45,7 +57,9 @@ export async function getMarketingDashboardCached(
 
   let p = dashboardInflight.get(key);
   if (!p) {
-    p = fetchMarketingDashboardPayload(organizationId, range)
+    p = fetchMarketingDashboardPayload(organizationId, range, {
+      clientAccountId: options?.clientAccountId,
+    })
       .then((value) => {
         dashboardCache.set(key, { value, expires: Date.now() + DASHBOARD_TTL_MS });
         dashboardInflight.delete(key);

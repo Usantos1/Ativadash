@@ -8,6 +8,7 @@ import type { MarketingDashboardGoalContext } from "./business-goal-mode.js";
 import { computeGoogleAdsIntegrationUiStatus } from "../utils/google-ads-readiness.js";
 import { fetchGoogleAdsMetrics } from "./google-ads-metrics.service.js";
 import { metaGraphGet, metaGraphGetAllPages, getMetaAppSecret } from "./meta/meta-graph.js";
+import { resolveMetaAdAccountsForQuery } from "./meta-ads-accounts.service.js";
 import {
   type ActionEntry,
   type CostPerActionEntry,
@@ -550,7 +551,8 @@ async function fetchAdRowsForDashboard(
 
 export async function fetchMarketingDashboardPayload(
   organizationId: string,
-  range: { start: string; end: string }
+  range: { start: string; end: string },
+  options?: { clientAccountId?: string | null }
 ): Promise<MarketingDashboardPayload> {
   const accessToken = await getMetaToken(organizationId);
   const appSecret = getMetaAppSecret();
@@ -573,12 +575,14 @@ export async function fetchMarketingDashboardPayload(
   const googleStatus = computeGoogleAdsIntegrationUiStatus(googleConnected);
 
   try {
-    const adAccountsRes = await metaGraphGet<{ data: { id: string; name: string; account_id: string }[] }>(
-      `/me/adaccounts?fields=id,name,account_id`,
-      accessToken,
-      appSecret
-    );
-    const accounts = adAccountsRes.data ?? [];
+    const resolved = await resolveMetaAdAccountsForQuery(organizationId, options?.clientAccountId);
+    const accounts =
+      "error" in resolved
+        ? []
+        : (resolved.accounts as { id: string; name: string; account_id: string }[]);
+    if ("error" in resolved && accounts.length === 0 && resolved.error !== "not_connected") {
+      console.warn("[Marketing dashboard] Meta resolve:", resolved.error);
+    }
 
     if (accounts.length === 0) {
       return {

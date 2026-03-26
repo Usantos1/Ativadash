@@ -16,6 +16,16 @@ import {
   upsertGoogleAdsClientAssignment,
   deleteGoogleAdsClientAssignment,
 } from "../services/google-ads-accounts.service.js";
+import {
+  getMetaAdsSetup,
+  setDefaultMetaAdsAdAccount,
+  upsertMetaAdsClientAssignment,
+  deleteMetaAdsClientAssignment,
+} from "../services/meta-ads-accounts.service.js";
+import {
+  getOrCreateMarketingSettings,
+  ativaCrmHubFromSettingsDto,
+} from "../services/marketing-settings.service.js";
 import { env } from "../config/env.js";
 
 const patchIntegrationClientSchema = z.object({
@@ -28,6 +38,16 @@ const patchGoogleAdsDefaultSchema = z.object({
 
 const putGoogleAdsAssignmentSchema = z.object({
   googleCustomerId: z.string().min(1),
+});
+
+const patchMetaAdsDefaultSchema = z.object({
+  adAccountId: z.union([z.string().min(1), z.null()]),
+  businessId: z.union([z.string().min(1), z.null()]),
+});
+
+const putMetaAdsAssignmentSchema = z.object({
+  businessId: z.string().min(1),
+  adAccountId: z.string().min(1),
 });
 
 type AuthRequest = Request & { user: { organizationId: string } };
@@ -56,27 +76,27 @@ export async function googleAdsCallbackHandler(req: Request, res: Response) {
   const state = req.query.state as string | undefined;
   const error = req.query.error as string | undefined;
 
-  const redirectBase = `${env.FRONTEND_URL}/marketing/integracoes`;
+  const detail = `${env.FRONTEND_URL}/marketing/integracoes/google-ads`;
 
   if (error) {
-    return res.redirect(`${redirectBase}?error=${encodeURIComponent(error)}`);
+    return res.redirect(`${detail}?error=${encodeURIComponent(error)}`);
   }
   if (!code || !state) {
-    return res.redirect(`${redirectBase}?error=missing_code_or_state`);
+    return res.redirect(`${detail}?error=missing_code_or_state`);
   }
 
   try {
     const organizationId = await exchangeGoogleAdsCode(code, state);
     if (!organizationId) {
-      return res.redirect(`${redirectBase}?error=invalid_state`);
+      return res.redirect(`${detail}?error=invalid_state`);
     }
-    return res.redirect(`${redirectBase}?connected=google-ads`);
+    return res.redirect(`${detail}?connected=google-ads`);
   } catch (e) {
     console.error(e);
     if (e instanceof Error && e.message.includes("Limite de integrações")) {
-      return res.redirect(`${redirectBase}?error=plan_limit_integrations`);
+      return res.redirect(`${detail}?error=plan_limit_integrations`);
     }
-    return res.redirect(`${redirectBase}?error=exchange_failed`);
+    return res.redirect(`${detail}?error=exchange_failed`);
   }
 }
 
@@ -104,27 +124,27 @@ export async function metaAdsCallbackHandler(req: Request, res: Response) {
   const state = req.query.state as string | undefined;
   const error = req.query.error as string | undefined;
 
-  const redirectBase = `${env.FRONTEND_URL}/marketing/integracoes`;
+  const detail = `${env.FRONTEND_URL}/marketing/integracoes/meta-ads`;
 
   if (error) {
-    return res.redirect(`${redirectBase}?error=${encodeURIComponent(error)}`);
+    return res.redirect(`${detail}?error=${encodeURIComponent(error)}`);
   }
   if (!code || !state) {
-    return res.redirect(`${redirectBase}?error=missing_code_or_state`);
+    return res.redirect(`${detail}?error=missing_code_or_state`);
   }
 
   try {
     const organizationId = await exchangeMetaAdsCode(code, state);
     if (!organizationId) {
-      return res.redirect(`${redirectBase}?error=invalid_state`);
+      return res.redirect(`${detail}?error=invalid_state`);
     }
-    return res.redirect(`${redirectBase}?connected=meta-ads`);
+    return res.redirect(`${detail}?connected=meta-ads`);
   } catch (e) {
     console.error(e);
     if (e instanceof Error && e.message.includes("Limite de integrações")) {
-      return res.redirect(`${redirectBase}?error=plan_limit_integrations`);
+      return res.redirect(`${detail}?error=plan_limit_integrations`);
     }
-    return res.redirect(`${redirectBase}?error=exchange_failed`);
+    return res.redirect(`${detail}?error=exchange_failed`);
   }
 }
 
@@ -134,8 +154,14 @@ export async function listHandler(req: Request, res: Response) {
     return res.status(401).json({ message: "Não autorizado" });
   }
   try {
-    const list = await listIntegrations(user.organizationId);
-    return res.json({ integrations: list });
+    const [list, marketingSettings] = await Promise.all([
+      listIntegrations(user.organizationId),
+      getOrCreateMarketingSettings(user.organizationId),
+    ]);
+    return res.json({
+      integrations: list,
+      ativaCrmHub: ativaCrmHubFromSettingsDto(marketingSettings),
+    });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: "Erro ao listar integrações" });
@@ -254,6 +280,96 @@ export async function deleteGoogleAdsClientAssignmentHandler(req: Request, res: 
   }
   try {
     await deleteGoogleAdsClientAssignment(integrationId, user.organizationId, clientAccountId);
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao remover vínculo." });
+  }
+}
+
+export async function getMetaAdsSetupHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  if (!user?.organizationId) {
+    return res.status(401).json({ message: "Não autorizado" });
+  }
+  try {
+    const setup = await getMetaAdsSetup(user.organizationId);
+    if (!setup) {
+      return res.status(404).json({ message: "Meta Ads não conectado." });
+    }
+    return res.json(setup);
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao carregar contas Meta Ads." });
+  }
+}
+
+export async function patchMetaAdsDefaultAdAccountHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const { integrationId } = req.params;
+  if (!user?.organizationId || !integrationId) {
+    return res.status(400).json({ message: "Dados inválidos" });
+  }
+  const parsed = patchMetaAdsDefaultSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Dados inválidos" });
+  }
+  try {
+    const r = await setDefaultMetaAdsAdAccount(
+      integrationId,
+      user.organizationId,
+      parsed.data.adAccountId,
+      parsed.data.businessId
+    );
+    if (!r.ok) {
+      return res.status(400).json({ message: r.message });
+    }
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao definir conta padrão." });
+  }
+}
+
+export async function putMetaAdsClientAssignmentHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const { integrationId, clientAccountId } = req.params;
+  if (!user?.organizationId || !integrationId || !clientAccountId) {
+    return res.status(400).json({ message: "Dados inválidos" });
+  }
+  const parsed = putMetaAdsAssignmentSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Dados inválidos" });
+  }
+  try {
+    const r = await upsertMetaAdsClientAssignment(
+      integrationId,
+      user.organizationId,
+      clientAccountId,
+      parsed.data.businessId,
+      parsed.data.adAccountId
+    );
+    if (!r.ok) {
+      return res.status(400).json({ message: r.message });
+    }
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao vincular conta ao cliente." });
+  }
+}
+
+export async function deleteMetaAdsClientAssignmentHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const { integrationId, clientAccountId } = req.params;
+  if (!user?.organizationId || !integrationId || !clientAccountId) {
+    return res.status(400).json({ message: "Dados inválidos" });
+  }
+  try {
+    const r = await deleteMetaAdsClientAssignment(integrationId, user.organizationId, clientAccountId);
+    if (!r.ok) {
+      return res.status(404).json({ message: r.message });
+    }
     return res.json({ ok: true });
   } catch (e) {
     console.error(e);

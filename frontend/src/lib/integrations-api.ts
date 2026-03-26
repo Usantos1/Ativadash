@@ -13,11 +13,27 @@ export interface IntegrationFromApi {
   googleAdsAccessibleCount?: number;
   googleAdsAssignmentCount?: number;
   googleAdsDefaultCustomerId?: string | null;
+  /** Meta Ads (slug === meta) */
+  metaAssignmentCount?: number;
+  metaDefaultAdAccountId?: string | null;
+  metaFacebookUserName?: string | null;
 }
 
-export async function fetchIntegrations(): Promise<IntegrationFromApi[]> {
-  const res = await api.get<{ integrations: IntegrationFromApi[] }>("/integrations");
-  return res.integrations;
+/** Estado do Ativa CRM para o hub (alinhado a MarketingSettings no backend). */
+export type AtivaCrmHubFromApi = {
+  connected: boolean;
+  tokenConfigured: boolean;
+  notifyPhone: string | null;
+  alertsEnabled: boolean;
+};
+
+export type IntegrationsListResponse = {
+  integrations: IntegrationFromApi[];
+  ativaCrmHub: AtivaCrmHubFromApi;
+};
+
+export async function fetchIntegrations(): Promise<IntegrationsListResponse> {
+  return api.get<IntegrationsListResponse>("/integrations");
 }
 
 export async function getGoogleAdsAuthUrl(): Promise<string> {
@@ -103,6 +119,75 @@ export async function deleteGoogleAdsClientAssignment(
 ): Promise<{ ok: true }> {
   return api.delete<{ ok: true }>(
     `/integrations/google-ads/${integrationId}/assignments/${encodeURIComponent(clientAccountId)}`
+  );
+}
+
+/** Alinhado ao backend: contas só de /me/adaccounts */
+export const META_PERSONAL_BUSINESS_SENTINEL = "__personal__";
+
+export interface MetaAdsSetupBusinessRow {
+  id: string;
+  name: string;
+}
+
+export interface MetaAdsSetupAdAccountRow {
+  businessId: string;
+  businessName: string;
+  graphId: string;
+  name: string;
+  accountId: string;
+  accountStatus: string | null;
+  currency: string | null;
+}
+
+export interface MetaAdsSetupAssignmentRow {
+  clientAccountId: string;
+  clientName: string;
+  businessId: string;
+  adAccountId: string;
+}
+
+export interface MetaAdsSetupDto {
+  integrationId: string;
+  facebookUserName: string | null;
+  facebookUserId: string | null;
+  defaultAdAccountId: string | null;
+  defaultBusinessId: string | null;
+  accessibleAdAccountCount: number;
+  assignmentCount: number;
+  businesses: MetaAdsSetupBusinessRow[];
+  adAccounts: MetaAdsSetupAdAccountRow[];
+  assignments: MetaAdsSetupAssignmentRow[];
+}
+
+export async function fetchMetaAdsSetup(): Promise<MetaAdsSetupDto> {
+  return api.get<MetaAdsSetupDto>("/integrations/meta-ads/setup");
+}
+
+export async function patchMetaAdsDefaultAdAccount(
+  integrationId: string,
+  body: { adAccountId: string | null; businessId: string | null }
+): Promise<{ ok: true }> {
+  return api.patch<{ ok: true }>(`/integrations/meta-ads/${integrationId}/default-ad-account`, body);
+}
+
+export async function putMetaAdsClientAssignment(
+  integrationId: string,
+  clientAccountId: string,
+  body: { businessId: string; adAccountId: string }
+): Promise<{ ok: true }> {
+  return api.put<{ ok: true }>(
+    `/integrations/meta-ads/${integrationId}/assignments/${encodeURIComponent(clientAccountId)}`,
+    body
+  );
+}
+
+export async function deleteMetaAdsClientAssignment(
+  integrationId: string,
+  clientAccountId: string
+): Promise<{ ok: true }> {
+  return api.delete<{ ok: true }>(
+    `/integrations/meta-ads/${integrationId}/assignments/${encodeURIComponent(clientAccountId)}`
   );
 }
 

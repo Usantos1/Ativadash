@@ -21,6 +21,7 @@ import {
   MarketingFunnelStrip,
   type FunnelStripStep,
 } from "@/components/marketing/MarketingCockpit";
+import { AppMainRouteBody } from "@/components/layout/AppMainRouteBody";
 import { cn } from "@/lib/utils";
 import type {
   GoogleAdsAdGroupRow,
@@ -634,7 +635,7 @@ export function Marketing() {
   }, []);
 
   return (
-    <div className="w-full space-y-6">
+    <AppMainRouteBody className="space-y-6">
       <PageHeaderPremium
         eyebrow="ADS"
         title="Painel ADS"
@@ -1015,6 +1016,6 @@ export function Marketing() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AppMainRouteBody>
   );
 }

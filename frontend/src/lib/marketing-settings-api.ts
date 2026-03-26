@@ -18,6 +18,8 @@ export type MarketingSettingsDto = {
   ativaCrmTokenConfigured: boolean;
   ativaCrmNotifyPhone: string | null;
   ativaCrmAlertsEnabled: boolean;
+  /** Mesma regra que `ativaCrmHub.connected` em GET /integrations */
+  ativaCrmHubConnected: boolean;
 };
 
 export type InsightAlert = {

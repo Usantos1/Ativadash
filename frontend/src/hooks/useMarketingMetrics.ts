@@ -56,8 +56,9 @@ export function useMarketingMetrics(opts?: {
   useEffect(() => {
     let cancelled = false;
     fetchIntegrations()
-      .then((list) => {
+      .then((res) => {
         if (!cancelled) {
+          const list = res.integrations;
           setHasGoogle(list.some((i) => i.slug === "google-ads" && i.status === "connected"));
           setHasMeta(list.some((i) => i.slug === "meta" && i.status === "connected"));
         }

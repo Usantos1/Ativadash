@@ -113,7 +113,7 @@ export function SettingsHubPage() {
         if (cancelled) return;
         setCtx(orgCtx);
         setMembers(mem);
-        setIntegrations(integ ?? []);
+        setIntegrations(integ?.integrations ?? []);
         setMarketing(mkt);
         setPendingInvites(Array.isArray(invites) ? invites.length : 0);
       })

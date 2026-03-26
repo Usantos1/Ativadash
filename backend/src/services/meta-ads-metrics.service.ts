@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { env } from "../config/env.js";
 import { prisma } from "../utils/prisma.js";
+import { resolveMetaAdAccountsForQuery } from "./meta-ads-accounts.service.js";
 
 const META_SLUG = "meta";
 const GRAPH_VERSION = "v21.0";
@@ -350,7 +351,8 @@ async function fetchMetaDailyForAccount(
 
 export async function fetchMetaAdsMetrics(
   organizationId: string,
-  range: { start: string; end: string }
+  range: { start: string; end: string },
+  queryContext?: { clientAccountId?: string | null }
 ): Promise<MetaAdsMetricsResult> {
   const config = await getMetaAdsConfig(organizationId);
   if (!config?.access_token) {
@@ -364,12 +366,14 @@ export async function fetchMetaAdsMetrics(
   }
 
   try {
-    const adAccountsRes = await graphGet<{ data: { id: string; name: string; account_id: string }[] }>(
-      `/me/adaccounts?fields=id,name,account_id`,
-      config.access_token,
-      appSecret
-    );
-    const accounts = adAccountsRes.data ?? [];
+    const resolved = await resolveMetaAdAccountsForQuery(organizationId, queryContext?.clientAccountId);
+    if ("error" in resolved) {
+      if (resolved.error === "not_connected") {
+        return { ok: false, message: "Meta Ads não conectado. Conecte em Integrações." };
+      }
+      return { ok: false, message: resolved.error };
+    }
+    const accounts = resolved.accounts;
     if (accounts.length === 0) {
       return {
         ok: true,

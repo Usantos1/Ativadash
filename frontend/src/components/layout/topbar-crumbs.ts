@@ -1,6 +1,8 @@
 /**
  * Trilha discreta para o centro da topbar (não duplica breadcrumbs longos das páginas).
  */
+import { hubItemByRouteSlug } from "@/lib/integration-hub-registry";
+
 export type TopbarCrumb = { label: string; href?: string };
 
 export function resolveTopbarCrumbs(pathname: string): TopbarCrumb[] {
@@ -30,6 +32,15 @@ export function resolveTopbarCrumbs(pathname: string): TopbarCrumb[] {
     return [
       { label: "Marketing", href: "/marketing" },
       { label: "Integrações" },
+    ];
+  }
+  if (p.startsWith("/marketing/integracoes/")) {
+    const slug = p.slice("/marketing/integracoes/".length);
+    const item = hubItemByRouteSlug(slug);
+    return [
+      { label: "Marketing", href: "/marketing" },
+      { label: "Integrações", href: "/marketing/integracoes" },
+      { label: item?.name ?? slug },
     ];
   }
   if (p === "/marketing/configuracoes") {

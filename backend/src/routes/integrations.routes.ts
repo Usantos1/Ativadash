@@ -34,5 +34,21 @@ router.get("/google-ads/callback", integrations.googleAdsCallbackHandler);
 
 router.get("/meta-ads/auth-url", ...authCtx, integrations.getMetaAdsAuthUrlHandler);
 router.get("/meta-ads/callback", integrations.metaAdsCallbackHandler);
+router.get("/meta-ads/setup", ...authCtx, integrations.getMetaAdsSetupHandler);
+router.patch(
+  "/meta-ads/:integrationId/default-ad-account",
+  ...authCtx,
+  integrations.patchMetaAdsDefaultAdAccountHandler
+);
+router.put(
+  "/meta-ads/:integrationId/assignments/:clientAccountId",
+  ...authCtx,
+  integrations.putMetaAdsClientAssignmentHandler
+);
+router.delete(
+  "/meta-ads/:integrationId/assignments/:clientAccountId",
+  ...authCtx,
+  integrations.deleteMetaAdsClientAssignmentHandler
+);
 
 export default router;

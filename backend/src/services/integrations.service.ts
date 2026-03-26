@@ -3,6 +3,7 @@ import { prisma } from "../utils/prisma.js";
 import { createState, consumeState } from "../utils/oauth-state.js";
 import { assertCanAddIntegration } from "./plan-limits.service.js";
 import { parseGoogleAdsConfig, syncAccessibleGoogleAdsCustomers } from "./google-ads-accounts.service.js";
+import { parseMetaAdsConfig } from "./meta-ads-accounts.service.js";
 
 const GOOGLE_ADS_SLUG = "google-ads";
 const META_ADS_SLUG = "meta";
@@ -13,7 +14,7 @@ const SCOPES = [
   "https://www.googleapis.com/auth/userinfo.email",
   "https://www.googleapis.com/auth/userinfo.profile",
 ];
-const META_SCOPES = ["ads_read", "ads_management"]; // ads_read = read-only; ads_management for account list
+const META_SCOPES = ["ads_read", "ads_management", "business_management"];
 const BASE = env.FRONTEND_URL;
 
 export function getGoogleAdsAuthUrl(organizationId: string): string {
@@ -205,17 +206,23 @@ export async function exchangeMetaAdsCode(code: string, state: string): Promise<
     ? ((await longRes.json()) as { access_token?: string }).access_token ?? accessToken
     : accessToken;
 
-  const config = JSON.stringify({
-    access_token: tokenToStore,
-    expiry_date: Date.now() + 60 * 24 * 60 * 60 * 1000, // ~60 days
-  });
-
   const existingMeta = await prisma.integration.findUnique({
     where: { organizationId_slug: { organizationId, slug: META_ADS_SLUG } },
   });
   if (!existingMeta) {
     await assertCanAddIntegration(organizationId);
   }
+
+  const baseConfig: Record<string, unknown> = {
+    access_token: tokenToStore,
+    expiry_date: Date.now() + 60 * 24 * 60 * 60 * 1000,
+  };
+  if (existingMeta?.config) {
+    const prev = parseMetaAdsConfig(existingMeta.config);
+    if (prev?.default_ad_account_id) baseConfig.default_ad_account_id = prev.default_ad_account_id;
+    if (prev?.default_business_id) baseConfig.default_business_id = prev.default_business_id;
+  }
+  const config = JSON.stringify(baseConfig);
 
   // Mesma constraint composta que o Google Ads (`organizationId` + `slug`).
   await prisma.integration.upsert({
@@ -246,7 +253,8 @@ export async function listIntegrations(organizationId: string) {
     orderBy: { createdAt: "asc" },
   });
   const googleIds = list.filter((i) => i.slug === GOOGLE_ADS_SLUG && i.status === "connected").map((i) => i.id);
-  const [accCounts, asnCounts] = await Promise.all([
+  const metaIds = list.filter((i) => i.slug === META_ADS_SLUG && i.status === "connected").map((i) => i.id);
+  const [accCounts, asnCounts, metaAsnCounts] = await Promise.all([
     googleIds.length
       ? prisma.googleAdsAccessibleCustomer.groupBy({
           by: ["integrationId"],
@@ -261,9 +269,17 @@ export async function listIntegrations(organizationId: string) {
           _count: { id: true },
         })
       : Promise.resolve([]),
+    metaIds.length
+      ? prisma.metaAdsAssignment.groupBy({
+          by: ["integrationId"],
+          where: { integrationId: { in: metaIds } },
+          _count: { id: true },
+        })
+      : Promise.resolve([]),
   ]);
   const accMap = new Map(accCounts.map((g) => [g.integrationId, g._count.id]));
   const asnMap = new Map(asnCounts.map((g) => [g.integrationId, g._count.id]));
+  const metaAsnMap = new Map(metaAsnCounts.map((g) => [g.integrationId, g._count.id]));
 
   return list.map((i) => {
     const base = {
@@ -275,15 +291,26 @@ export async function listIntegrations(organizationId: string) {
       lastSyncAt: i.lastSyncAt?.toISOString() ?? null,
       createdAt: i.createdAt.toISOString(),
     };
-    if (i.slug !== GOOGLE_ADS_SLUG) return base;
-    const parsed = i.config ? parseGoogleAdsConfig(i.config) : null;
-    return {
-      ...base,
-      googleUserEmail: parsed?.google_user_email ?? null,
-      googleAdsAccessibleCount: accMap.get(i.id) ?? 0,
-      googleAdsAssignmentCount: asnMap.get(i.id) ?? 0,
-      googleAdsDefaultCustomerId: parsed?.default_google_customer_id ?? null,
-    };
+    if (i.slug === GOOGLE_ADS_SLUG) {
+      const parsed = i.config ? parseGoogleAdsConfig(i.config) : null;
+      return {
+        ...base,
+        googleUserEmail: parsed?.google_user_email ?? null,
+        googleAdsAccessibleCount: accMap.get(i.id) ?? 0,
+        googleAdsAssignmentCount: asnMap.get(i.id) ?? 0,
+        googleAdsDefaultCustomerId: parsed?.default_google_customer_id ?? null,
+      };
+    }
+    if (i.slug === META_ADS_SLUG) {
+      const mp = parseMetaAdsConfig(i.config);
+      return {
+        ...base,
+        metaAssignmentCount: metaAsnMap.get(i.id) ?? 0,
+        metaDefaultAdAccountId: mp?.default_ad_account_id ?? null,
+        metaFacebookUserName: null,
+      };
+    }
+    return base;
   });
 }
 
@@ -316,6 +343,7 @@ export async function disconnectIntegration(integrationId: string, organizationI
   });
   if (!integration) return false;
   await prisma.$transaction([
+    prisma.metaAdsAssignment.deleteMany({ where: { integrationId } }),
     prisma.googleAdsCustomerAssignment.deleteMany({ where: { integrationId } }),
     prisma.googleAdsAccessibleCustomer.deleteMany({ where: { integrationId } }),
     prisma.integration.update({

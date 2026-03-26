@@ -6,7 +6,12 @@ import { Register } from "@/pages/Register";
 import { ForgotPassword } from "@/pages/ForgotPassword";
 import { Dashboard } from "@/pages/Dashboard";
 import { Marketing } from "@/pages/Marketing";
-import { Integrations } from "@/pages/Integrations";
+import { IntegrationsHubPage } from "@/pages/integrations/IntegrationsHubPage";
+import { GoogleAdsIntegrationPage } from "@/pages/integrations/GoogleAdsIntegrationPage";
+import { MetaAdsIntegrationPage } from "@/pages/integrations/MetaAdsIntegrationPage";
+import { WhatsAppIntegrationPage } from "@/pages/integrations/WhatsAppIntegrationPage";
+import { WebhooksIntegrationPage } from "@/pages/integrations/WebhooksIntegrationPage";
+import { IntegrationComingSoonPage } from "@/pages/integrations/IntegrationComingSoonPage";
 import { MarketingSettings } from "@/pages/MarketingSettings";
 import { MarketingFunnelPage } from "@/pages/MarketingFunnelPage";
 import { ClientsPage } from "@/pages/ClientsPage";
@@ -49,7 +54,13 @@ export default function App() {
           <Route path="marketing/captacao" element={<MarketingFunnelPage variant="captacao" />} />
           <Route path="marketing/conversao" element={<MarketingFunnelPage variant="conversao" />} />
           <Route path="marketing/receita" element={<MarketingFunnelPage variant="receita" />} />
-          <Route path="marketing/integracoes" element={<Integrations />} />
+          <Route path="marketing/integracoes" element={<IntegrationsHubPage />} />
+          <Route path="marketing/integracoes/google-ads" element={<GoogleAdsIntegrationPage />} />
+          <Route path="marketing/integracoes/meta-ads" element={<MetaAdsIntegrationPage />} />
+          <Route path="marketing/integracoes/ativa-crm" element={<WhatsAppIntegrationPage />} />
+          <Route path="marketing/integracoes/whatsapp" element={<WhatsAppIntegrationPage />} />
+          <Route path="marketing/integracoes/webhook" element={<WebhooksIntegrationPage />} />
+          <Route path="marketing/integracoes/:slug" element={<IntegrationComingSoonPage />} />
           <Route path="marketing/configuracoes" element={<MarketingSettings />} />
           <Route path="clientes" element={<ClientsPage />} />
           <Route path="projetos" element={<ProjectsPage />} />

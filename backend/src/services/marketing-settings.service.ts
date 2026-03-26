@@ -24,6 +24,8 @@ export type MarketingSettingsDto = {
   ativaCrmTokenConfigured: boolean;
   ativaCrmNotifyPhone: string | null;
   ativaCrmAlertsEnabled: boolean;
+  /** Hub /marketing/integracoes — mesma regra que `ativaCrmHub` em GET /integrations */
+  ativaCrmHubConnected: boolean;
 };
 
 function decToNumber(v: unknown): number | null {
@@ -32,7 +34,26 @@ function decToNumber(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Ativa CRM “conectado” no hub: token persistido + WhatsApp (DDD) + alertas por WhatsApp ativos.
+ * Mantém paridade com o que a tela de detalhe exige para operação real de alertas.
+ */
+export function isAtivaCrmHubConnected(params: {
+  ativaCrmTokenConfigured: boolean;
+  ativaCrmNotifyPhone: string | null;
+  ativaCrmAlertsEnabled: boolean;
+}): boolean {
+  return (
+    params.ativaCrmTokenConfigured &&
+    Boolean(params.ativaCrmNotifyPhone?.trim()) &&
+    params.ativaCrmAlertsEnabled
+  );
+}
+
 function toDto(row: MarketingSettings): MarketingSettingsDto {
+  const ativaCrmTokenConfigured = Boolean(row.ativaCrmApiToken?.trim());
+  const ativaCrmNotifyPhone = row.ativaCrmNotifyPhone ?? null;
+  const ativaCrmAlertsEnabled = row.ativaCrmAlertsEnabled;
   return {
     businessGoalMode: row.businessGoalMode,
     primaryConversionLabel: row.primaryConversionLabel?.trim() || null,
@@ -46,9 +67,24 @@ function toDto(row: MarketingSettings): MarketingSettingsDto {
     alertCpaAboveMax: row.alertCpaAboveMax,
     alertCpaAboveTarget: row.alertCpaAboveTarget,
     alertRoasBelowTarget: row.alertRoasBelowTarget,
-    ativaCrmTokenConfigured: Boolean(row.ativaCrmApiToken?.trim()),
-    ativaCrmNotifyPhone: row.ativaCrmNotifyPhone ?? null,
-    ativaCrmAlertsEnabled: row.ativaCrmAlertsEnabled,
+    ativaCrmTokenConfigured,
+    ativaCrmNotifyPhone,
+    ativaCrmAlertsEnabled,
+    ativaCrmHubConnected: isAtivaCrmHubConnected({
+      ativaCrmTokenConfigured,
+      ativaCrmNotifyPhone,
+      ativaCrmAlertsEnabled,
+    }),
+  };
+}
+
+/** Payload para GET /integrations — fonte única com o DTO de settings */
+export function ativaCrmHubFromSettingsDto(dto: MarketingSettingsDto) {
+  return {
+    connected: dto.ativaCrmHubConnected,
+    tokenConfigured: dto.ativaCrmTokenConfigured,
+    notifyPhone: dto.ativaCrmNotifyPhone,
+    alertsEnabled: dto.ativaCrmAlertsEnabled,
   };
 }
 
