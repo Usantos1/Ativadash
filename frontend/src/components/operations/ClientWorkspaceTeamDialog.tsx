@@ -24,23 +24,9 @@ import {
 } from "@/lib/workspace-api";
 import { useAuthStore } from "@/stores/auth-store";
 import { MemberDetailDialog } from "@/components/operations/member-detail-dialog";
+import { membershipRoleLabelPt } from "@/lib/membership-role-labels";
 
 const INVITE_ROLES = ["admin", "member", "media_manager", "analyst"] as const;
-const ROLE_LABEL: Record<string, string> = {
-  owner: "Proprietário",
-  admin: "Administrador",
-  member: "Membro",
-  media_manager: "Gestor de mídia",
-  analyst: "Analista",
-  agency_owner: "Dono (agência)",
-  agency_admin: "Admin (agência)",
-  workspace_owner: "Dono (workspace)",
-  workspace_admin: "Admin (workspace)",
-};
-
-function rolePt(role: string): string {
-  return ROLE_LABEL[role] ?? role;
-}
 
 type Props = {
   open: boolean;
@@ -269,7 +255,7 @@ export function ClientWorkspaceTeamDialog({ open, onOpenChange, workspaceId, wor
               <SelectContent>
                 {INVITE_ROLES.map((r) => (
                   <SelectItem key={r} value={r}>
-                    {rolePt(r)}
+                    {membershipRoleLabelPt(r)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -297,7 +283,7 @@ export function ClientWorkspaceTeamDialog({ open, onOpenChange, workspaceId, wor
               <SelectContent>
                 {INVITE_ROLES.map((r) => (
                   <SelectItem key={r} value={r}>
-                    {rolePt(r)}
+                    {membershipRoleLabelPt(r)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -334,7 +320,7 @@ export function ClientWorkspaceTeamDialog({ open, onOpenChange, workspaceId, wor
                       >
                         <span className="truncate">{inv.email}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">{rolePt(inv.role)}</span>
+                          <span className="text-xs text-muted-foreground">{membershipRoleLabelPt(inv.role)}</span>
                           <Button
                             type="button"
                             variant="ghost"
@@ -384,7 +370,7 @@ export function ClientWorkspaceTeamDialog({ open, onOpenChange, workspaceId, wor
                             {direct ? (
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="text-xs text-muted-foreground">
-                                  Papel: <span className="font-medium text-foreground">{rolePt(m.role)}</span>
+                                  Papel: <span className="font-medium text-foreground">{membershipRoleLabelPt(m.role)}</span>
                                 </span>
                                 {m.role !== "owner" && m.role !== "workspace_owner" ? (
                                   <Select
@@ -397,7 +383,7 @@ export function ClientWorkspaceTeamDialog({ open, onOpenChange, workspaceId, wor
                                     <SelectContent>
                                       {INVITE_ROLES.map((r) => (
                                         <SelectItem key={r} value={r}>
-                                          {rolePt(r)}
+                                          {membershipRoleLabelPt(r)}
                                         </SelectItem>
                                       ))}
                                     </SelectContent>
@@ -433,7 +419,7 @@ export function ClientWorkspaceTeamDialog({ open, onOpenChange, workspaceId, wor
                                 </Button>
                               </div>
                             ) : (
-                              <span className="text-xs text-muted-foreground">{rolePt(m.role)}</span>
+                              <span className="text-xs text-muted-foreground">{membershipRoleLabelPt(m.role)}</span>
                             )}
                           </div>
                         </li>

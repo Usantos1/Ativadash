@@ -9,14 +9,7 @@ import { StatusBadge } from "@/components/premium";
 import type { MemberRow, PatchMemberPayload } from "@/lib/workspace-api";
 import { patchMember, resetMemberPassword } from "@/lib/workspace-api";
 import { Link } from "react-router-dom";
-
-const roleLabel: Record<string, string> = {
-  owner: "Proprietário",
-  member: "Membro",
-  admin: "Administrador",
-  media_manager: "Gestor de mídia",
-  analyst: "Analista",
-};
+import { membershipRoleLabelPt } from "@/lib/membership-role-labels";
 
 type Props = {
   open: boolean;
@@ -143,7 +136,7 @@ export function MemberDetailDialog({
                   </StatusBadge>
                 ) : null}
                 <span className="text-xs text-muted-foreground">
-                  Papel global: <strong className="text-foreground">{roleLabel[member.role] ?? member.role}</strong>
+                  Papel global: <strong className="text-foreground">{membershipRoleLabelPt(member.role)}</strong>
                 </span>
               </div>
               <div className="grid gap-2 rounded-xl border border-border/45 bg-muted/10 p-3 text-sm">

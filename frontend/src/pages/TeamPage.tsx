@@ -30,14 +30,7 @@ import { fetchOrganizationContext, formatPlanCap, type OrganizationContext } fro
 import { useAuthStore } from "@/stores/auth-store";
 import { OperationsModuleNav } from "@/components/operations/operations-module-nav";
 import { MemberDetailDialog } from "@/components/operations/member-detail-dialog";
-
-const roleLabel: Record<string, string> = {
-  owner: "Proprietário",
-  member: "Membro",
-  admin: "Administrador",
-  media_manager: "Gestor de mídia",
-  analyst: "Analista",
-};
+import { membershipRoleLabelPt } from "@/lib/membership-role-labels";
 
 function formatMemberDate(iso: string): string {
   try {
@@ -387,7 +380,7 @@ export function TeamPage() {
               >
                 <span>
                   <span className="font-semibold">{inv.email}</span>{" "}
-                  <span className="text-muted-foreground">({roleLabel[inv.role] ?? inv.role})</span>
+                  <span className="text-muted-foreground">({membershipRoleLabelPt(inv.role)})</span>
                 </span>
                 <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg" onClick={() => handleRevokeInvite(inv.id)}>
                   Revogar
@@ -437,7 +430,7 @@ export function TeamPage() {
                     <p className="text-sm text-muted-foreground">{row.email}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       <StatusBadge tone={row.source === "agency" ? "alert" : "healthy"} dot>
-                        {roleLabel[row.role] ?? row.role}
+                        {membershipRoleLabelPt(row.role)}
                       </StatusBadge>
                       {row.suspended ? (
                         <StatusBadge tone="alert" dot>
