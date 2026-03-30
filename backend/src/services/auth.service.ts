@@ -302,7 +302,7 @@ export async function register(data: RegisterInput) {
   const userDto = await buildAuthUserDto(user.id, user.email, user.name, org.id, user.firstName ?? null);
   const memberships = await listMembershipSummaries(user.id);
   return {
-    user: userDto,
+    user: { ...userDto, platformAdmin: isPlatformAdminEmail(user.email) },
     memberships,
     accessToken,
     refreshToken,
@@ -355,7 +355,7 @@ export async function login(data: LoginInput) {
   );
   const memberships = await listMembershipSummaries(user.id);
   return {
-    user: userDto,
+    user: { ...userDto, platformAdmin: isPlatformAdminEmail(user.email) },
     memberships,
     accessToken,
     refreshToken,
@@ -416,7 +416,7 @@ export async function refreshAccessToken(refreshTokenStr: string) {
   }
   const memberships = await listMembershipSummaries(stored.userId);
   return {
-    user: userDto,
+    user: { ...userDto, platformAdmin: isPlatformAdminEmail(stored.user.email) },
     memberships,
     accessToken,
     refreshToken: newRefresh,
@@ -465,7 +465,7 @@ export async function switchActiveOrganization(
   const memberships = await listMembershipSummaries(userId);
   const managedOrganizations = await listManagedOrganizationsForActiveContext(userId, targetOrganizationId);
   return {
-    user: userDto,
+    user: { ...userDto, platformAdmin: isPlatformAdminEmail(user.email) },
     memberships,
     managedOrganizations,
     accessToken,
@@ -650,7 +650,7 @@ export async function finalizeSessionForUser(userId: string, organizationId: str
   const memberships = await listMembershipSummaries(userId);
   const managedOrganizations = await listManagedOrganizationsForActiveContext(userId, organizationId);
   return {
-    user: userDto,
+    user: { ...userDto, platformAdmin: isPlatformAdminEmail(user.email) },
     memberships,
     managedOrganizations,
     accessToken,

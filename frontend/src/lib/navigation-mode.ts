@@ -60,8 +60,9 @@ export function getActiveMembership(
 }
 
 /**
- * Painel /revenda ("Matriz e filiais"): só staff global, tenant raiz (sem pai) e tipo operacional da matriz.
- * Não usar só `rootResellerPartner` — ele reflete a raiz do ecossistema e é verdadeiro também em workspaces cliente.
+ * Painel /revenda: em caso de dúvida, esconder.
+ * Só staff global ou org ativa explicitamente `MATRIX` na raiz (confirmada no vínculo + no user).
+ * `rootResellerPartner` sozinho não basta (é herdado do ecossistema).
  */
 export function canAccessMatrizResellerNav(
   user: User | null,
@@ -70,21 +71,17 @@ export function canAccessMatrizResellerNav(
   if (!user?.organizationId) return false;
   if (user.platformAdmin === true) return true;
 
+  if (!memberships || memberships.length === 0) return false;
+
   const active = getActiveMembership(user, memberships);
-  const parentFromMembership = active?.parentOrganizationId;
-  const parentOrganizationId =
-    parentFromMembership !== undefined ? parentFromMembership : (user.parentOrganizationId ?? null);
+  if (!active) return false;
 
-  if (parentOrganizationId != null) return false;
+  if (active.organizationKind !== "MATRIX") return false;
+  if (active.parentOrganizationId !== null) return false;
 
-  const kindFromMembership = active?.organizationKind;
-  const organizationKind =
-    kindFromMembership === "MATRIX" || kindFromMembership === "DIRECT" || kindFromMembership === "CLIENT_WORKSPACE"
-      ? kindFromMembership
-      : resolveOrganizationKind(user);
+  if (user.organizationKind !== "MATRIX") return false;
+  if (user.parentOrganizationId !== null) return false;
 
-  if (organizationKind === "CLIENT_WORKSPACE") return false;
-  if (organizationKind !== "MATRIX" && organizationKind !== "DIRECT") return false;
   return user.rootResellerPartner === true;
 }
 

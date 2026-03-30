@@ -70,17 +70,29 @@ export function MainLayout() {
     };
   }, [accessToken]);
 
+  /**
+   * /revenda: bloqueio imediato sem confiar em estado parcial.
+   * Sem `memberships` carregados (ou vazios), não-plataforma não entra — evita menu fantasma com JWT/user antigo.
+   */
+  useEffect(() => {
+    if (!accessToken || !user) return;
+    const path = location.pathname;
+    if (path !== "/revenda" && !path.startsWith("/revenda/")) return;
+    if (user.platformAdmin === true) return;
+    if (!memberships || memberships.length === 0) {
+      navigate("/dashboard", { replace: true });
+      return;
+    }
+    if (!canAccessMatrizResellerNav(user, memberships)) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [accessToken, location.pathname, navigate, user, memberships]);
+
   /** Deep links: agência filial e workspace cliente só em rotas permitidas; /admin só para perfis autorizados. */
   useEffect(() => {
     if (!accessToken || !user) return;
     const mode = resolveAppNavMode(user);
     const path = location.pathname;
-    if (path === "/revenda" || path.startsWith("/revenda/")) {
-      if (!canAccessMatrizResellerNav(user, memberships)) {
-        navigate("/dashboard", { replace: true });
-        return;
-      }
-    }
     if (shouldEnforceAgencyBranchRouteGuard(user) && !isPathAllowedForAgencyBranch(path)) {
       navigate("/dashboard", { replace: true });
       return;
