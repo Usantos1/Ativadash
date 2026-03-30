@@ -1,3 +1,4 @@
+import type { OrganizationKind } from "@prisma/client";
 import { prisma } from "./prisma.js";
 
 /** Sobe até a organização raiz (sem pai). */
@@ -15,13 +16,20 @@ export async function getOrganizationRootId(organizationId: string): Promise<str
   return null;
 }
 
-/** Indica se a raiz do ecossistema está habilitada para revenda de planos / agências. */
+/**
+ * Pode exibir/usar painel de matriz **neste contexto JWT** (org ativa).
+ * Nunca herdar da raiz do ecossistema: filial/workspace cliente deve ser sempre false.
+ *
+ * Regra: só a própria org, sem pai, não é workspace de cliente, e `resellerPartner` na linha dela.
+ */
 export async function getRootResellerPartnerFlag(organizationId: string): Promise<boolean> {
-  const rootId = await getOrganizationRootId(organizationId);
-  if (!rootId) return false;
-  const r = await prisma.organization.findFirst({
-    where: { id: rootId, deletedAt: null },
-    select: { resellerPartner: true },
-  });
-  return r?.resellerPartner === true;
+  const row: { parentOrganizationId: string | null; resellerPartner: boolean; organizationKind: OrganizationKind } | null =
+    await prisma.organization.findFirst({
+      where: { id: organizationId, deletedAt: null },
+      select: { parentOrganizationId: true, resellerPartner: true, organizationKind: true },
+    });
+  if (!row) return false;
+  if (row.parentOrganizationId !== null) return false;
+  if (row.organizationKind === "CLIENT_WORKSPACE") return false;
+  return row.resellerPartner === true;
 }
