@@ -23,13 +23,13 @@ export function RevendaLayout() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-6 pb-10">
       <AnalyticsPageHeader
-        title="Painel master de revenda"
-        subtitle="Governança multiempresa, planos, equipes e trilha administrativa — disponível na empresa matriz."
+        title="Painel da matriz (empresa principal)"
+        subtitle="Aqui você gerencia o ecossistema: agências, empresas cliente, planos e equipes. O dia a dia de anúncios e métricas fica no Dashboard e no Painel ADS. Use o seletor de empresa no topo para entrar numa filial e operar como dono daquela agência ou empresa."
       />
 
       <nav
         className="flex flex-wrap gap-1 rounded-xl border border-border/60 bg-card/80 p-1 shadow-sm ring-1 ring-black/[0.04] dark:ring-white/[0.06]"
-        aria-label="Seções do painel de revenda"
+        aria-label="Seções do painel da matriz"
       >
         {NAV.map(({ to, end, label, icon: Icon }) => (
           <NavLink

@@ -25,7 +25,7 @@ function collectOptions(
       map.set(o.id, {
         id: o.id,
         label: o.name,
-        subtitle: "Organização filha · revenda",
+        subtitle: "Filial da matriz · operar como esta empresa",
       });
     }
   }

@@ -63,7 +63,7 @@ export function resolveTopbarCrumbs(pathname: string): TopbarCrumb[] {
     ];
   }
   if (p === "/perfil") return [{ label: "Perfil" }];
-  if (p === "/revenda" || p === "/assinatura") return [{ label: "Gestão de workspaces" }];
+  if (p === "/revenda" || p === "/assinatura") return [{ label: "Matriz e filiais" }];
   if (p === "/plataforma") return [{ label: "Plataforma" }];
   if (p === "/admin") return [{ label: "Administração" }];
 

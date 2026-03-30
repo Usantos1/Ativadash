@@ -70,7 +70,8 @@ const navGroups: NavGroup[] = [
   {
     label: "Conta",
     items: [
-      { to: "/revenda", label: "Painel revenda", icon: Layers },
+      /** Governança na empresa raiz (matriz): agências e empresas cliente — não é o painel de uma filial isolada. */
+      { to: "/revenda", label: "Matriz e filiais", icon: Layers },
       { to: "/configuracoes", label: "Configurações", icon: Settings },
     ],
   },
@@ -94,8 +95,8 @@ function NavBlock({
     ? [
         ...navGroups,
         {
-          label: "Plataforma",
-          items: [{ to: "/plataforma", label: "Administração", icon: Shield }],
+          label: "Ativa Dash (interno)",
+          items: [{ to: "/plataforma", label: "Admin global do produto", icon: Shield }],
         },
       ]
     : navGroups;

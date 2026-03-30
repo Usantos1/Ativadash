@@ -519,7 +519,7 @@ export function SettingsHubPage() {
               </Button>
               {!ctx?.parentOrganization ? (
                 <Button variant="outline" size="sm" className="h-8 rounded-md text-xs whitespace-nowrap" asChild>
-                  <Link to="/revenda">Filhos</Link>
+                  <Link to="/revenda">Matriz e filiais</Link>
                 </Button>
               ) : null}
             </div>
