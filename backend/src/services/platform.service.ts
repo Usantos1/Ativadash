@@ -244,6 +244,7 @@ export async function createRootOrganization(data: {
         resellerOrgKind: null,
         workspaceStatus: "ACTIVE",
         organizationKind: "MATRIX",
+        resellerPartner: true,
       },
     });
 
