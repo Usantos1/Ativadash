@@ -65,19 +65,31 @@ export function CompanySettingsPage() {
           </Link>
         </Button>
         <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-primary/80">Conta</p>
-        <h1 className="text-2xl font-bold tracking-tight">Empresa e revenda</h1>
+        <h1 className="text-2xl font-bold tracking-tight">
+          {ctx?.parentOrganization ? "Empresa" : "Empresa e revenda"}
+        </h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          A <strong className="font-medium text-foreground">empresa ativa</strong> é o ambiente isolado (integrações,
-          marketing, menu Clientes, projetos). Agências podem criar <strong className="font-medium text-foreground">empresas filhas</strong>{" "}
-          abaixo — cada filha é outro ambiente completo, diferente dos registros do menu{" "}
-          <strong className="font-medium text-foreground">Clientes</strong>.{" "}
-          <Link
-            to="/configuracoes#como-funciona-conta"
-            className="font-medium text-primary underline-offset-4 hover:underline"
-          >
-            Resumo do modelo
-          </Link>
-          .
+          {ctx?.parentOrganization ? (
+            <>
+              Esta é a <strong className="font-medium text-foreground">empresa ativa</strong> da sua agência: integrações,
+              metas e clientes vinculados a este contexto. Plano e cotas da rede são tratados pela matriz.
+            </>
+          ) : (
+            <>
+              A <strong className="font-medium text-foreground">empresa ativa</strong> é o ambiente isolado (integrações,
+              marketing, menu Clientes, projetos). Agências podem criar{" "}
+              <strong className="font-medium text-foreground">empresas filhas</strong> abaixo — cada filha é outro
+              ambiente completo, diferente dos registros do menu{" "}
+              <strong className="font-medium text-foreground">Clientes</strong>.{" "}
+              <Link
+                to="/configuracoes#como-funciona-conta"
+                className="font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Resumo do modelo
+              </Link>
+              .
+            </>
+          )}
         </p>
       </div>
 

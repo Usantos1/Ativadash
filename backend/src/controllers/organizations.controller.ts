@@ -85,8 +85,8 @@ export async function createManagedOrganization(req: Request, res: Response) {
 export async function listChildrenPortfolioHandler(req: Request, res: Response) {
   const { user } = req as AuthRequest;
   try {
-    const rows = await listChildOrganizationsPortfolio(user.organizationId, user.userId);
-    return res.json({ organizations: rows });
+    const data = await listChildOrganizationsPortfolio(user.organizationId, user.userId);
+    return res.json(data);
   } catch (e) {
     return res.status(403).json({
       message: e instanceof Error ? e.message : "Sem permissão",

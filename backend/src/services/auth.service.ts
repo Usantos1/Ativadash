@@ -29,6 +29,10 @@ export type AuthUserDto = {
   firstName: string | null;
   organizationId: string;
   organization: AuthOrganizationDto;
+  /** Tipo de tenant da organização ativa (JWT). */
+  organizationKind: import("@prisma/client").OrganizationKind;
+  /** Se não nulo, a org ativa é filha na hierarquia (ex.: agência filial). */
+  parentOrganizationId: string | null;
   /** Raiz do ecossistema habilitada para revenda (painel matriz / filhos). */
   rootResellerPartner: boolean;
 };
@@ -47,14 +51,29 @@ export type AuthProfileExtendedDto = AuthUserDto & {
   platformAdmin: boolean;
 };
 
-async function organizationToDto(organizationId: string): Promise<AuthOrganizationDto> {
+async function loadOrgTenantFields(organizationId: string): Promise<{
+  organization: AuthOrganizationDto;
+  organizationKind: import("@prisma/client").OrganizationKind;
+  parentOrganizationId: string | null;
+}> {
   const org = await prisma.organization.findFirst({
     where: { id: organizationId, deletedAt: null },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      organizationKind: true,
+      parentOrganizationId: true,
+    },
   });
   if (!org) {
     throw new Error("Organização não encontrada");
   }
-  return { id: org.id, name: org.name, slug: org.slug };
+  return {
+    organization: { id: org.id, name: org.name, slug: org.slug },
+    organizationKind: org.organizationKind,
+    parentOrganizationId: org.parentOrganizationId,
+  };
 }
 
 async function buildAuthUserDto(
@@ -64,7 +83,7 @@ async function buildAuthUserDto(
   organizationId: string,
   firstName: string | null
 ): Promise<AuthUserDto> {
-  const organization = await organizationToDto(organizationId);
+  const tenant = await loadOrgTenantFields(organizationId);
   const rootResellerPartner = await getRootResellerPartnerFlag(organizationId);
   return {
     id: userId,
@@ -72,7 +91,9 @@ async function buildAuthUserDto(
     name,
     firstName,
     organizationId,
-    organization,
+    organization: tenant.organization,
+    organizationKind: tenant.organizationKind,
+    parentOrganizationId: tenant.parentOrganizationId,
     rootResellerPartner,
   };
 }
@@ -483,6 +504,8 @@ export async function getAuthProfile(userId: string, organizationId: string): Pr
         name: membership.organization.name,
         slug: membership.organization.slug,
       },
+      organizationKind: membership.organization.organizationKind,
+      parentOrganizationId: membership.organization.parentOrganizationId,
       rootResellerPartner,
     };
   }
@@ -512,6 +535,8 @@ export async function getAuthProfile(userId: string, organizationId: string): Pr
       name: org.name,
       slug: org.slug,
     },
+    organizationKind: org.organizationKind,
+    parentOrganizationId: org.parentOrganizationId,
     rootResellerPartner,
   };
 }

@@ -138,18 +138,38 @@ export async function createManagedOrganization(
   });
 }
 
-export async function fetchChildrenPortfolio(): Promise<{
-  organizations: Array<{
-    id: string;
-    name: string;
-    slug: string;
-    inheritPlanFromParent: boolean;
-    connectedIntegrations: number;
-    lastIntegrationSyncAt: string | null;
-    createdAt: string;
-    workspaceStatus?: "ACTIVE" | "PAUSED" | "ARCHIVED";
-  }>;
-}> {
+export type AgencyPortfolioCplStatus = "on_target" | "above_target" | "below_target" | "unknown";
+
+export type AgencyPortfolioChildRow = {
+  id: string;
+  name: string;
+  slug: string;
+  inheritPlanFromParent: boolean;
+  connectedIntegrations: number;
+  lastIntegrationSyncAt: string | null;
+  createdAt: string;
+  workspaceStatus: WorkspaceStatus;
+  metaAdsConnected: boolean;
+  googleAdsConnected: boolean;
+  marketing30d: ChildMarketingRollup30d | null;
+  metricsUnavailable: boolean;
+  integrationStale: boolean;
+  metricsOrSyncIssue: boolean;
+  targetCpaBrl: number | null;
+  cplStatus: AgencyPortfolioCplStatus;
+};
+
+export type AgencyPortfolioResponse = {
+  organizations: AgencyPortfolioChildRow[];
+  summary: {
+    totalSpend30dBrl: number;
+    totalLeads30d: number;
+    portfolioHealth: { withinTarget: number; withGoal: number };
+    clientsWithIntegrationAttention: number;
+  };
+};
+
+export async function fetchChildrenPortfolio(): Promise<AgencyPortfolioResponse> {
   return api.get("/organization/children/portfolio");
 }
 

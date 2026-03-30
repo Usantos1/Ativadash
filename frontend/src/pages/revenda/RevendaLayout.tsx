@@ -29,6 +29,11 @@ export function RevendaLayout() {
   useEffect(() => {
     if (!accessToken || !user) return;
     if (user.platformAdmin) return;
+    /** Filial: painel matriz só na raiz do ecossistema. */
+    if (user.parentOrganizationId != null) {
+      navigate("/dashboard", { replace: true });
+      return;
+    }
     if (user.rootResellerPartner === true) return;
     if (user.rootResellerPartner === false) {
       navigate("/dashboard", { replace: true });

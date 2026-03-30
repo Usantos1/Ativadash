@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Outlet } from "react-router-dom";
+import { useNavigate, Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { AppTopbar } from "@/components/layout/AppTopbar";
 import { AppShell } from "@/components/shell/AppShell";
@@ -8,13 +8,24 @@ import { useAuthStore, type AuthMeResponse } from "@/stores/auth-store";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { AnalyticsShell } from "@/components/analytics/AnalyticsShell";
+import {
+  resolveAppNavMode,
+  isPathAllowedForAgencyBranch,
+  isPathBlockedForClientWorkspaceClients,
+  canAccessAdminPage,
+  shouldEnforceAgencyBranchRouteGuard,
+  shouldEnforceClientWorkspaceClientsGuard,
+} from "@/lib/navigation-mode";
 
 export function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const accessToken = useAuthStore((s) => s.accessToken);
+  const user = useAuthStore((s) => s.user);
+  const memberships = useAuthStore((s) => s.memberships);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
+  const location = useLocation();
 
   function handleLogout() {
     logout();
@@ -38,10 +49,13 @@ export function MainLayout() {
             id: profile.id,
             email: profile.email,
             name: profile.name,
+            firstName: profile.firstName,
             organizationId: profile.organizationId,
             organization: profile.organization,
             platformAdmin: profile.platformAdmin,
             rootResellerPartner: profile.rootResellerPartner,
+            organizationKind: profile.organizationKind,
+            parentOrganizationId: profile.parentOrganizationId,
           },
           memberships: profile.memberships,
           managedOrganizations: profile.managedOrganizations,
@@ -54,6 +68,24 @@ export function MainLayout() {
       cancelled = true;
     };
   }, [accessToken]);
+
+  /** Deep links: agência filial e workspace cliente só em rotas permitidas; /admin só para perfis autorizados. */
+  useEffect(() => {
+    if (!accessToken || !user) return;
+    const mode = resolveAppNavMode(user);
+    const path = location.pathname;
+    if (shouldEnforceAgencyBranchRouteGuard(user) && !isPathAllowedForAgencyBranch(path)) {
+      navigate("/dashboard", { replace: true });
+      return;
+    }
+    if (shouldEnforceClientWorkspaceClientsGuard(user) && isPathBlockedForClientWorkspaceClients(path)) {
+      navigate("/dashboard", { replace: true });
+      return;
+    }
+    if (path === "/admin" && !canAccessAdminPage(user, memberships, mode)) {
+      navigate("/configuracoes", { replace: true });
+    }
+  }, [accessToken, location.pathname, navigate, user, memberships]);
 
   useEffect(() => {
     if (!sidebarOpen) return;

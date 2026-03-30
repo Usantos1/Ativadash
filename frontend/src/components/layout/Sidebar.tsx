@@ -21,9 +21,11 @@ import {
   Users2,
   Layers,
   Shield,
+  SlidersHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { resolveSidebarNavVariant, type SidebarNavVariant } from "@/lib/navigation-mode";
 
 const SIDEBAR_WIDTH = 220;
 const SIDEBAR_COLLAPSED = 56;
@@ -37,7 +39,9 @@ type NavItem = {
 
 type NavGroup = { label: string; items: NavItem[] };
 
-const navGroups: NavGroup[] = [
+const NAV_ICON_CLASS = "h-[18px] w-[18px] shrink-0";
+
+const FULL_NAV_GROUPS: NavGroup[] = [
   {
     label: "Visão geral",
     items: [{ to: "/dashboard", label: "Dashboard", icon: LayoutDashboard }],
@@ -67,15 +71,53 @@ const navGroups: NavGroup[] = [
       { to: "/usuarios", label: "Equipe", icon: Users2 },
     ],
   },
-  {
-    label: "Conta",
-    items: [
-      /** Governança na empresa raiz (matriz): agências e empresas cliente — não é o painel de uma filial isolada. */
-      { to: "/revenda", label: "Matriz e filiais", icon: Layers },
-      { to: "/configuracoes", label: "Configurações", icon: Settings },
-    ],
-  },
 ];
+
+function buildNavGroups(
+  variant: SidebarNavVariant,
+  opts: { showMatrizNav: boolean; platformAdmin: boolean }
+): NavGroup[] {
+  const contaItems: NavItem[] = [];
+  if (opts.showMatrizNav) {
+    contaItems.push({ to: "/revenda", label: "Matriz e filiais", icon: Layers });
+  }
+  contaItems.push({ to: "/configuracoes", label: "Configurações", icon: Settings });
+
+  if (variant === "agency_branch") {
+    return [
+      {
+        label: "Visão geral",
+        items: [{ to: "/dashboard", label: "Visão geral", icon: LayoutDashboard }],
+      },
+      {
+        label: "Operação",
+        items: [{ to: "/clientes", label: "Clientes", icon: Users }],
+      },
+      {
+        label: "Conexões",
+        items: [
+          { to: "/marketing/integracoes", label: "Integrações", icon: Plug },
+          { to: "/ads/metas-alertas", label: "Metas e alertas", icon: Wrench },
+          { to: "/marketing/configuracoes", label: "Automações (Marketing)", icon: SlidersHorizontal },
+        ],
+      },
+      { label: "Conta", items: contaItems },
+    ];
+  }
+
+  if (variant === "client_workspace") {
+    return [
+      ...FULL_NAV_GROUPS.filter((g) => g.label !== "Operação"),
+      {
+        label: "Operação",
+        items: [{ to: "/usuarios", label: "Equipe", icon: Users2 }],
+      },
+      { label: "Conta", items: contaItems },
+    ];
+  }
+
+  return [...FULL_NAV_GROUPS, { label: "Conta", items: contaItems }];
+}
 
 interface SidebarProps {
   mobileOpen?: boolean;
@@ -89,14 +131,15 @@ function NavBlock({
   showLabels: boolean;
   onLinkClick?: () => void;
 }) {
-  const platformAdmin = useAuthStore((s) => s.user?.platformAdmin);
-  const rootResellerPartner = useAuthStore((s) => s.user?.rootResellerPartner);
-  const showMatrizNav = platformAdmin === true || rootResellerPartner === true;
-  const iconClass = "h-[18px] w-[18px] shrink-0";
-  const baseNav: NavGroup[] = navGroups.map((g) => ({
-    ...g,
-    items: g.items.filter((item) => item.to !== "/revenda" || showMatrizNav),
-  }));
+  const user = useAuthStore((s) => s.user);
+  const platformAdmin = user?.platformAdmin === true;
+  const rootResellerPartner = user?.rootResellerPartner === true;
+  const isActiveOrgRoot = user?.parentOrganizationId == null;
+  const showMatrizNav = platformAdmin || (rootResellerPartner && isActiveOrgRoot);
+
+  const variant = resolveSidebarNavVariant(user ?? null);
+  const baseNav = buildNavGroups(variant, { showMatrizNav, platformAdmin });
+
   const groups: NavGroup[] = platformAdmin
     ? [
         ...baseNav,
@@ -140,7 +183,7 @@ function NavBlock({
                 title={!showLabels ? item.label : undefined}
                 className={({ isActive: active }) => cn(navItemClass(active))}
               >
-                <item.icon className={iconClass} />
+                <item.icon className={NAV_ICON_CLASS} />
                 {showLabels ? <span className="truncate">{item.label}</span> : null}
               </NavLink>
             ))}

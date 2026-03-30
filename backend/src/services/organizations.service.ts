@@ -1075,7 +1075,45 @@ export async function listChildOrganizationsOperationsDashboard(
   };
 }
 
-export async function listChildOrganizationsPortfolio(parentOrganizationId: string, userId: string) {
+export type AgencyPortfolioCplStatus = "on_target" | "above_target" | "below_target" | "unknown";
+
+export type AgencyPortfolioChildRow = {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+  inheritPlanFromParent: boolean;
+  workspaceStatus: WorkspaceStatus;
+  connectedIntegrations: number;
+  lastIntegrationSyncAt: string | null;
+  metaAdsConnected: boolean;
+  googleAdsConnected: boolean;
+  marketing30d: ChildMarketingRollup30d | null;
+  /** Integração ligada mas rollup falhou (ex.: token/API). */
+  metricsUnavailable: boolean;
+  /** Última sync há mais de 72h (contas conectadas). */
+  integrationStale: boolean;
+  metricsOrSyncIssue: boolean;
+  targetCpaBrl: number | null;
+  cplStatus: AgencyPortfolioCplStatus;
+};
+
+export type AgencyPortfolioResponse = {
+  organizations: AgencyPortfolioChildRow[];
+  summary: {
+    totalSpend30dBrl: number;
+    totalLeads30d: number;
+    portfolioHealth: { withinTarget: number; withGoal: number };
+    clientsWithIntegrationAttention: number;
+  };
+};
+
+const INTEGRATION_STALE_MS = 72 * 3600 * 1000;
+
+export async function listChildOrganizationsPortfolio(
+  parentOrganizationId: string,
+  userId: string
+): Promise<AgencyPortfolioResponse> {
   await assertDirectOrgAdmin(userId, parentOrganizationId);
   const children = await prisma.organization.findMany({
     where: { parentOrganizationId, deletedAt: null },
@@ -1090,24 +1128,138 @@ export async function listChildOrganizationsPortfolio(parentOrganizationId: stri
     orderBy: { name: "asc" },
   });
 
-  return Promise.all(
-    children.map(async (c) => {
-      const integrations = await prisma.integration.findMany({
-        where: { organizationId: c.id, status: "connected" },
-        select: { lastSyncAt: true },
-      });
-      let lastIntegrationSyncAt: string | null = null;
-      for (const i of integrations) {
-        if (!i.lastSyncAt) continue;
-        const iso = i.lastSyncAt.toISOString();
-        if (!lastIntegrationSyncAt || iso > lastIntegrationSyncAt) lastIntegrationSyncAt = iso;
-      }
-      return {
-        ...c,
-        createdAt: c.createdAt.toISOString(),
-        connectedIntegrations: integrations.length,
-        lastIntegrationSyncAt,
-      };
-    })
+  const childIds = children.map((c) => c.id);
+  if (childIds.length === 0) {
+    return {
+      organizations: [],
+      summary: {
+        totalSpend30dBrl: 0,
+        totalLeads30d: 0,
+        portfolioHealth: { withinTarget: 0, withGoal: 0 },
+        clientsWithIntegrationAttention: 0,
+      },
+    };
+  }
+
+  const [adIntegrations, connectedCounts, settingsRows] = await Promise.all([
+    prisma.integration.findMany({
+      where: {
+        organizationId: { in: childIds },
+        slug: { in: ["meta", "google-ads"] },
+      },
+      select: { organizationId: true, slug: true, status: true, lastSyncAt: true },
+    }),
+    prisma.integration.groupBy({
+      by: ["organizationId"],
+      where: { organizationId: { in: childIds }, status: "connected" },
+      _count: { _all: true },
+    }),
+    prisma.marketingSettings.findMany({
+      where: { organizationId: { in: childIds } },
+      select: { organizationId: true, targetCpaBrl: true },
+    }),
+  ]);
+
+  const connectedMap = new Map(connectedCounts.map((r) => [r.organizationId, r._count._all]));
+  const settingsMap = new Map(
+    settingsRows.map((s) => [s.organizationId, s.targetCpaBrl != null ? Number(s.targetCpaBrl) : null])
   );
+
+  function adRow(orgId: string, slug: string) {
+    return adIntegrations.find((i) => i.organizationId === orgId && i.slug === slug);
+  }
+
+  const rollupInputs = children.map((c) => {
+    const meta = adRow(c.id, "meta");
+    const google = adRow(c.id, "google-ads");
+    return {
+      id: c.id,
+      workspaceStatus: c.workspaceStatus,
+      metaAdsConnected: meta?.status === "connected",
+      googleAdsConnected: google?.status === "connected",
+    };
+  });
+
+  const rollups = await rollupMarketing30dForChildren(rollupInputs, 4);
+  const now = Date.now();
+
+  const organizations: AgencyPortfolioChildRow[] = children.map((c) => {
+    const metaInt = adRow(c.id, "meta");
+    const googleInt = adRow(c.id, "google-ads");
+    const metaAdsConnected = metaInt?.status === "connected";
+    const googleAdsConnected = googleInt?.status === "connected";
+    const rollup = rollups.get(c.id) ?? null;
+    const metricsUnavailable =
+      c.workspaceStatus === "ACTIVE" && (metaAdsConnected || googleAdsConnected) && rollup === null;
+
+    let lastIntegrationSyncAt: string | null = null;
+    for (const i of adIntegrations) {
+      if (i.organizationId !== c.id || i.status !== "connected") continue;
+      if (!i.lastSyncAt) continue;
+      const iso = i.lastSyncAt.toISOString();
+      if (!lastIntegrationSyncAt || iso > lastIntegrationSyncAt) lastIntegrationSyncAt = iso;
+    }
+
+    const staleSync =
+      (metaAdsConnected || googleAdsConnected) &&
+      lastIntegrationSyncAt != null &&
+      now - new Date(lastIntegrationSyncAt).getTime() > INTEGRATION_STALE_MS;
+
+    const metricsOrSyncIssue = metricsUnavailable || staleSync;
+    const targetCpaBrl = settingsMap.get(c.id) ?? null;
+    const cpl = rollup?.cpl ?? null;
+    let cplStatus: AgencyPortfolioCplStatus = "unknown";
+    if (cpl != null && targetCpaBrl != null && targetCpaBrl > 0) {
+      if (cpl < targetCpaBrl * 0.95) cplStatus = "below_target";
+      else if (cpl <= targetCpaBrl * 1.05) cplStatus = "on_target";
+      else cplStatus = "above_target";
+    }
+
+    return {
+      id: c.id,
+      name: c.name,
+      slug: c.slug,
+      createdAt: c.createdAt.toISOString(),
+      inheritPlanFromParent: c.inheritPlanFromParent,
+      workspaceStatus: c.workspaceStatus,
+      connectedIntegrations: connectedMap.get(c.id) ?? 0,
+      lastIntegrationSyncAt,
+      metaAdsConnected,
+      googleAdsConnected,
+      marketing30d: rollup,
+      metricsUnavailable,
+      integrationStale: staleSync,
+      metricsOrSyncIssue,
+      targetCpaBrl,
+      cplStatus,
+    };
+  });
+
+  let totalSpend30dBrl = 0;
+  let totalLeads30d = 0;
+  let withGoal = 0;
+  let withinTarget = 0;
+  let clientsWithIntegrationAttention = 0;
+
+  for (const o of organizations) {
+    if (o.marketing30d) {
+      totalSpend30dBrl += o.marketing30d.spend;
+      totalLeads30d += o.marketing30d.leads;
+    }
+    if (o.targetCpaBrl != null && o.marketing30d?.cpl != null) {
+      withGoal += 1;
+      if (o.cplStatus === "on_target" || o.cplStatus === "below_target") withinTarget += 1;
+    }
+    if (o.metricsOrSyncIssue) clientsWithIntegrationAttention += 1;
+  }
+
+  return {
+    organizations,
+    summary: {
+      totalSpend30dBrl,
+      totalLeads30d,
+      portfolioHealth: { withinTarget, withGoal },
+      clientsWithIntegrationAttention,
+    },
+  };
 }

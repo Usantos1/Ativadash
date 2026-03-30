@@ -8,10 +8,14 @@ export interface OrganizationSummary {
   slug: string;
 }
 
+export type MembershipOrganizationKind = "MATRIX" | "DIRECT" | "CLIENT_WORKSPACE";
+
 export interface MembershipSummary {
   organizationId: string;
   role: string;
   organization: OrganizationSummary;
+  /** Tipo de tenant (enviado pelo GET /auth/me). */
+  organizationKind?: MembershipOrganizationKind;
 }
 
 export interface User {
@@ -27,6 +31,10 @@ export interface User {
   platformAdmin?: boolean;
   /** Raiz do ecossistema habilitada como parceiro de revenda (admin global define na empresa raiz). */
   rootResellerPartner?: boolean;
+  /** Tipo de tenant da organização ativa (JWT). */
+  organizationKind?: MembershipOrganizationKind;
+  /** Se definido, a org ativa é filha na hierarquia (ex.: agência filial). */
+  parentOrganizationId?: string | null;
 }
 
 /** Resposta de GET /auth/me */

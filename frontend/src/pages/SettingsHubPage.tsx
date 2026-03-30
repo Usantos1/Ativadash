@@ -36,6 +36,7 @@ import {
   type MemberRow,
   type ClientAccount,
 } from "@/lib/workspace-api";
+import { resolveSidebarNavVariant } from "@/lib/navigation-mode";
 
 const ROLE_QUICK: Record<string, string> = {
   owner: "Proprietário",
@@ -108,6 +109,9 @@ export function SettingsHubPage() {
     for (const o of managed ?? []) opts.add(o.id);
     return opts.size > 1;
   }, [memberships, managed]);
+
+  const sidebarVariant = useMemo(() => resolveSidebarNavVariant(authUser ?? null), [authUser]);
+  const isAgencyBranchNav = sidebarVariant === "agency_branch";
 
   const [ctx, setCtx] = useState<OrganizationContext | null>(null);
   const [members, setMembers] = useState<MemberRow[] | null>(null);
@@ -447,9 +451,11 @@ export function SettingsHubPage() {
               <Button size="sm" className="h-8 rounded-md text-xs" asChild>
                 <Link to="/marketing/configuracoes">Editar metas</Link>
               </Button>
-              <Button variant="outline" size="sm" className="h-8 rounded-md text-xs" asChild>
-                <Link to="/marketing">Painel ADS</Link>
-              </Button>
+              {!isAgencyBranchNav ? (
+                <Button variant="outline" size="sm" className="h-8 rounded-md text-xs" asChild>
+                  <Link to="/marketing">Painel ADS</Link>
+                </Button>
+              ) : null}
             </div>
           </div>
         </SettingsHubSection>
@@ -486,46 +492,57 @@ export function SettingsHubPage() {
 
       {/* Plano | Segurança */}
       <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
-        <SettingsHubSection kicker="Assinatura" title="Plano e limites">
-          <div className="p-3 md:flex md:items-start md:justify-between md:gap-4 md:p-4">
-            <div className="min-w-0 flex-1 space-y-0">
-              <HubRow label="Plano" value={loading && !ctx ? "…" : planName} />
-              <HubRow
-                label="Usuários"
-                value={usage && limits ? `${usage.directMembers} / ${formatPlanCap(limits.maxUsers)}` : "—"}
-              />
-              <HubRow
-                label="Integrações"
-                value={usage && limits ? `${usage.integrations} / ${formatPlanCap(limits.maxIntegrations)}` : "—"}
-              />
-              <HubRow
-                label="Workspaces"
-                value={
-                  usage && limits
-                    ? `${usage.childOrganizations} / ${formatPlanLimit(limits.maxChildOrganizations, { zeroMeansNotIncluded: true })}`
-                    : "—"
-                }
-              />
-              {ctx?.limitsHaveOverrides ? (
-                <p className="flex items-center gap-1.5 pt-2 text-xs font-medium text-primary">
-                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                  Limites customizados
-                </p>
-              ) : null}
+        {ctx?.parentOrganization ? (
+          <SettingsHubSection kicker="Assinatura" title="Plano e limites">
+            <div className="p-3 text-sm leading-relaxed text-muted-foreground md:p-4">
+              <p>
+                Plano, faturação e cotas da rede são definidos pela{" "}
+                <span className="font-medium text-foreground">matriz</span>. Em caso de dúvida, fale com o administrador
+                da empresa principal.
+              </p>
             </div>
-            <div className="mt-3 flex shrink-0 flex-col gap-1.5 md:mt-0">
-              <Button size="sm" className="h-8 rounded-md text-xs whitespace-nowrap" asChild>
-                <Link to="/configuracoes/empresa">Plano</Link>
-              </Button>
-              {!ctx?.parentOrganization &&
-              (ctx?.rootResellerPartner === true || authUser?.platformAdmin === true) ? (
-                <Button variant="outline" size="sm" className="h-8 rounded-md text-xs whitespace-nowrap" asChild>
-                  <Link to="/revenda">Matriz e filiais</Link>
+          </SettingsHubSection>
+        ) : (
+          <SettingsHubSection kicker="Assinatura" title="Plano e limites">
+            <div className="p-3 md:flex md:items-start md:justify-between md:gap-4 md:p-4">
+              <div className="min-w-0 flex-1 space-y-0">
+                <HubRow label="Plano" value={loading && !ctx ? "…" : planName} />
+                <HubRow
+                  label="Usuários"
+                  value={usage && limits ? `${usage.directMembers} / ${formatPlanCap(limits.maxUsers)}` : "—"}
+                />
+                <HubRow
+                  label="Integrações"
+                  value={usage && limits ? `${usage.integrations} / ${formatPlanCap(limits.maxIntegrations)}` : "—"}
+                />
+                <HubRow
+                  label="Workspaces"
+                  value={
+                    usage && limits
+                      ? `${usage.childOrganizations} / ${formatPlanLimit(limits.maxChildOrganizations, { zeroMeansNotIncluded: true })}`
+                      : "—"
+                  }
+                />
+                {ctx?.limitsHaveOverrides ? (
+                  <p className="flex items-center gap-1.5 pt-2 text-xs font-medium text-primary">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    Limites customizados
+                  </p>
+                ) : null}
+              </div>
+              <div className="mt-3 flex shrink-0 flex-col gap-1.5 md:mt-0">
+                <Button size="sm" className="h-8 rounded-md text-xs whitespace-nowrap" asChild>
+                  <Link to="/configuracoes/empresa">Plano</Link>
                 </Button>
-              ) : null}
+                {(ctx?.rootResellerPartner === true || authUser?.platformAdmin === true) ? (
+                  <Button variant="outline" size="sm" className="h-8 rounded-md text-xs whitespace-nowrap" asChild>
+                    <Link to="/revenda">Matriz e filiais</Link>
+                  </Button>
+                ) : null}
+              </div>
             </div>
-          </div>
-        </SettingsHubSection>
+          </SettingsHubSection>
+        )}
 
         <SettingsHubSection kicker="Acesso" title="Segurança">
           <div className="flex flex-col gap-3 p-3 md:flex-row md:items-center md:justify-between md:p-4">
