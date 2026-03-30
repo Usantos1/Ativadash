@@ -11,6 +11,7 @@ const ORGANIZATION_PLATFORM_SELECT = {
   name: true,
   slug: true,
   workspaceStatus: true,
+  resellerPartner: true,
   inheritPlanFromParent: true,
   parentOrganizationId: true,
   planId: true,
@@ -287,7 +288,7 @@ export async function createRootOrganization(data: {
 
 export async function updateOrganizationProfile(
   organizationId: string,
-  data: { name?: string; slug?: string; workspaceStatus?: WorkspaceStatus },
+  data: { name?: string; slug?: string; workspaceStatus?: WorkspaceStatus; resellerPartner?: boolean },
   actorUserId?: string | null
 ) {
   const org = await prisma.organization.findFirst({
@@ -314,6 +315,16 @@ export async function updateOrganizationProfile(
   }
   if (data.workspaceStatus !== undefined) {
     patch.workspaceStatus = data.workspaceStatus;
+  }
+  if (data.resellerPartner !== undefined) {
+    const orgRoot = await prisma.organization.findFirst({
+      where: { id: organizationId, deletedAt: null },
+      select: { parentOrganizationId: true },
+    });
+    if (orgRoot?.parentOrganizationId != null) {
+      throw new Error("Revenda só pode ser configurada na organização raiz (sem empresa pai)");
+    }
+    patch.resellerPartner = data.resellerPartner;
   }
   await prisma.organization.update({ where: { id: organizationId }, data: patch });
   if (

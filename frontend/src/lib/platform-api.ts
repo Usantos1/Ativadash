@@ -65,6 +65,8 @@ export type PlatformOrgRow = {
   name: string;
   slug: string;
   workspaceStatus: WorkspaceStatusDto;
+  /** Raiz: habilitada para revenda de planos e painel matriz. */
+  resellerPartner: boolean;
   inheritPlanFromParent: boolean;
   parentOrganizationId: string | null;
   planId: string | null;
@@ -108,7 +110,12 @@ export async function createPlatformOrganization(
 
 export async function patchPlatformOrganization(
   organizationId: string,
-  body: { name?: string; slug?: string; workspaceStatus?: WorkspaceStatusDto }
+  body: {
+    name?: string;
+    slug?: string;
+    workspaceStatus?: WorkspaceStatusDto;
+    resellerPartner?: boolean;
+  }
 ): Promise<{ organization: PlatformOrgRow }> {
   return api.patch(`/platform/organizations/${organizationId}`, body);
 }

@@ -77,6 +77,7 @@ export function PlatformPage() {
   const [orgEditName, setOrgEditName] = useState("");
   const [orgEditSlug, setOrgEditSlug] = useState("");
   const [orgEditStatus, setOrgEditStatus] = useState<WorkspaceStatusDto>("ACTIVE");
+  const [orgEditResellerPartner, setOrgEditResellerPartner] = useState(false);
   const [orgEditSaving, setOrgEditSaving] = useState(false);
 
   const [planEditor, setPlanEditor] = useState<PlanRow | null>(null);
@@ -218,6 +219,7 @@ export function PlatformPage() {
     setOrgEditName(o.name);
     setOrgEditSlug(o.slug);
     setOrgEditStatus(o.workspaceStatus);
+    setOrgEditResellerPartner(o.resellerPartner ?? false);
     setOrgEditor(o);
   }
 
@@ -399,6 +401,7 @@ export function PlatformPage() {
         name: orgEditName.trim(),
         slug: orgEditSlug.trim().toLowerCase(),
         workspaceStatus: orgEditStatus,
+        ...(orgEditor.parentOrganizationId == null ? { resellerPartner: orgEditResellerPartner } : {}),
       });
       setOrgEditor(null);
       await load();
@@ -661,6 +664,26 @@ export function PlatformPage() {
                   <option value="ARCHIVED">Arquivada</option>
                 </select>
               </div>
+              {orgEditor.parentOrganizationId == null ? (
+                <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/30 p-3">
+                  <input
+                    id="org-reseller-partner"
+                    type="checkbox"
+                    checked={orgEditResellerPartner}
+                    onChange={(e) => setOrgEditResellerPartner(e.target.checked)}
+                    className="mt-0.5 h-4 w-4"
+                  />
+                  <div className="min-w-0">
+                    <Label htmlFor="org-reseller-partner" className="font-medium leading-snug">
+                      Parceiro de revenda (matriz)
+                    </Label>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Se ativo, esta empresa raiz pode usar o painel &quot;Matriz e filiais&quot;, revender planos e
+                      cadastrar agências/empresas. Se desativado, o cliente opera só a própria conta.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => setOrgEditor(null)}>
                   Cancelar

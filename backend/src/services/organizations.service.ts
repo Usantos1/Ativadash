@@ -1,6 +1,8 @@
 import type { ResellerOrgKind, WorkspaceStatus } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../utils/prisma.js";
+import { getOrganizationRootId, getRootResellerPartnerFlag } from "../utils/org-hierarchy.js";
+import { isPlatformAdminEmail } from "../utils/platform-admin.js";
 import { slugifyOrganizationName, uniqueOrganizationSlug } from "../utils/org-slug.js";
 import { assertDirectOrgAdmin, canManageOrganization } from "./auth.service.js";
 import { userHasEffectiveAccess } from "./tenancy-access.service.js";
@@ -14,6 +16,27 @@ import { mergePlanFeaturesWithOverrides } from "../utils/plan-features.js";
 import { syncSubscriptionFromOrgPlan } from "./platform.service.js";
 import { appendAuditLog } from "./audit-log.service.js";
 import { rollupMarketing30dForChildren, type ChildMarketingRollup30d } from "./child-workspace-marketing-rollup.service.js";
+
+/** Raiz autorizada a revenda (painel matriz, APIs /reseller, filhos). Platform admin ignora. */
+export async function assertRootMayResellPlans(rootOrganizationId: string, actorUserId: string): Promise<void> {
+  const actor = await prisma.user.findFirst({
+    where: { id: actorUserId, deletedAt: null },
+    select: { email: true },
+  });
+  if (actor?.email && isPlatformAdminEmail(actor.email)) return;
+  const row = await prisma.organization.findFirst({
+    where: { id: rootOrganizationId, deletedAt: null, parentOrganizationId: null },
+    select: { resellerPartner: true },
+  });
+  if (!row) {
+    throw new Error("Organização raiz não encontrada");
+  }
+  if (!row.resellerPartner) {
+    throw new Error(
+      "Esta conta não está habilitada para revenda de planos e gestão de agências. Entre em contato com a Ativa Dash."
+    );
+  }
+}
 
 export async function getOrganizationContext(organizationId: string, userId: string) {
   const allowed = await userHasEffectiveAccess(userId, organizationId);
@@ -100,6 +123,7 @@ export async function getOrganizationContext(organizationId: string, userId: str
   }
 
   const enabledFeatures = mergePlanFeaturesWithOverrides(templatePlan, org.featureOverrides);
+  const rootResellerPartner = await getRootResellerPartnerFlag(organizationId);
 
   return {
     id: org.id,
@@ -114,6 +138,7 @@ export async function getOrganizationContext(organizationId: string, userId: str
     usage: planContext.usage,
     subscription,
     enabledFeatures,
+    rootResellerPartner,
   };
 }
 
@@ -150,6 +175,11 @@ export async function createChildOrganization(
   }
 ) {
   await assertDirectOrgAdmin(userId, parentOrganizationId);
+  const rootId = await getOrganizationRootId(parentOrganizationId);
+  if (!rootId) {
+    throw new Error("Organização pai inválida");
+  }
+  await assertRootMayResellPlans(rootId, userId);
   await assertCanAddChildOrganization(parentOrganizationId, userId);
   const inherit = options?.inheritPlanFromParent !== false;
   const parent = await prisma.organization.findFirst({
@@ -347,6 +377,7 @@ export async function createDescendantByMatrixAdmin(
   }
 ) {
   await assertDirectOrgAdmin(actorUserId, matrixOrganizationId);
+  await assertRootMayResellPlans(matrixOrganizationId, actorUserId);
   const matrixRow = await prisma.organization.findFirst({
     where: { id: matrixOrganizationId, deletedAt: null },
     select: { organizationKind: true },

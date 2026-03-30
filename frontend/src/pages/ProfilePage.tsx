@@ -73,6 +73,7 @@ export function ProfilePage() {
           organizationId: out.organizationId,
           organization: out.organization,
           platformAdmin: out.platformAdmin,
+          rootResellerPartner: out.rootResellerPartner,
         },
         out.accessToken,
         out.refreshToken,

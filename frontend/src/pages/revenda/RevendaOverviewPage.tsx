@@ -44,6 +44,7 @@ function Kpi({
 
 export function RevendaOverviewPage() {
   const [ctxOk, setCtxOk] = useState<boolean | null>(null);
+  const [ctxBlock, setCtxBlock] = useState<"partner" | "plan" | null>(null);
   const [dash, setDash] = useState<ChildrenOperationsDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,10 +54,15 @@ export function RevendaOverviewPage() {
     setError(null);
     try {
       const ctx = await fetchOrganizationContext();
-      const enabled =
+      const planOk =
         ctx.enabledFeatures.multiOrganization === true &&
         (ctx.limits.maxChildOrganizations == null || ctx.limits.maxChildOrganizations > 0);
+      const partnerOk = ctx.rootResellerPartner === true;
+      const enabled = partnerOk && planOk;
       setCtxOk(enabled);
+      if (!partnerOk) setCtxBlock("partner");
+      else if (!planOk) setCtxBlock("plan");
+      else setCtxBlock(null);
       if (!enabled) {
         setDash(null);
         return;
@@ -97,7 +103,9 @@ export function RevendaOverviewPage() {
         <CardHeader>
           <CardTitle className="text-base">Revenda não habilitada</CardTitle>
           <CardDescription>
-            O painel master exige o recurso multiempresa e cota de empresas filhas no plano da matriz.
+            {ctxBlock === "partner"
+              ? "A empresa raiz deste ecossistema não está designada como parceira de revenda. Peça ao administrador global do produto para ativar em Plataforma → empresas (raiz)."
+              : "O painel matriz exige o recurso multiempresa e cota de empresas filhas no plano da raiz."}
           </CardDescription>
         </CardHeader>
       </Card>

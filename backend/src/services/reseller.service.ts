@@ -5,6 +5,7 @@ import { appendResellerAudit } from "../utils/reseller-audit.js";
 import { assertDirectOrgAdmin } from "./auth.service.js";
 import { demoteOwnerRoleForMove } from "../constants/roles.js";
 import {
+  assertRootMayResellPlans,
   collectDescendantOrganizationIds,
   createDescendantByMatrixAdmin,
   type OrganizationClientProfile,
@@ -53,6 +54,7 @@ export async function resolveResellerMatrixOrganizationId(
     }
     if (row.parentOrganizationId === null) {
       await assertDirectOrgAdmin(userId, row.id);
+      await assertRootMayResellPlans(row.id, userId);
       return row.id;
     }
     walk = row.parentOrganizationId;

@@ -517,7 +517,8 @@ export function SettingsHubPage() {
               <Button size="sm" className="h-8 rounded-md text-xs whitespace-nowrap" asChild>
                 <Link to="/configuracoes/empresa">Plano</Link>
               </Button>
-              {!ctx?.parentOrganization ? (
+              {!ctx?.parentOrganization &&
+              (ctx?.rootResellerPartner === true || authUser?.platformAdmin === true) ? (
                 <Button variant="outline" size="sm" className="h-8 rounded-md text-xs whitespace-nowrap" asChild>
                   <Link to="/revenda">Matriz e filiais</Link>
                 </Button>

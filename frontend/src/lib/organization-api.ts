@@ -93,6 +93,8 @@ export type OrganizationContext = {
   usage: PlanUsage;
   subscription: SubscriptionView | null;
   enabledFeatures: EnabledFeatures;
+  /** Na raiz do ecossistema: empresa designada para revenda / painel matriz. */
+  rootResellerPartner: boolean;
 };
 
 export async function fetchOrganizationContext(): Promise<OrganizationContext> {

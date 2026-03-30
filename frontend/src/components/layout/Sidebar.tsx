@@ -90,16 +90,22 @@ function NavBlock({
   onLinkClick?: () => void;
 }) {
   const platformAdmin = useAuthStore((s) => s.user?.platformAdmin);
+  const rootResellerPartner = useAuthStore((s) => s.user?.rootResellerPartner);
+  const showMatrizNav = platformAdmin === true || rootResellerPartner === true;
   const iconClass = "h-[18px] w-[18px] shrink-0";
+  const baseNav: NavGroup[] = navGroups.map((g) => ({
+    ...g,
+    items: g.items.filter((item) => item.to !== "/revenda" || showMatrizNav),
+  }));
   const groups: NavGroup[] = platformAdmin
     ? [
-        ...navGroups,
+        ...baseNav,
         {
           label: "Ativa Dash (interno)",
           items: [{ to: "/plataforma", label: "Admin global do produto", icon: Shield }],
         },
       ]
-    : navGroups;
+    : baseNav;
 
   const navItemClass = (active: boolean) =>
     cn(

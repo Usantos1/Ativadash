@@ -58,6 +58,8 @@ const organizationPatchSchema = z
     name: z.string().min(2).max(120).optional(),
     slug: z.string().min(1).max(64).regex(/^[a-z0-9-]+$/).optional(),
     workspaceStatus: z.enum(["ACTIVE", "PAUSED", "ARCHIVED"]).optional(),
+    /** Somente para organização raiz: permite painel matriz / revenda de planos. */
+    resellerPartner: z.boolean().optional(),
   })
   .refine((d) => Object.keys(d).length > 0, { message: "Envie ao menos um campo" });
 

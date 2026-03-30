@@ -1,4 +1,6 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { useEffect } from "react";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useAuthStore } from "@/stores/auth-store";
 import { LayoutDashboard, Building2, Users, CreditCard, Puzzle, HeartPulse, ScrollText, Store } from "lucide-react";
 import { AnalyticsPageHeader } from "@/components/analytics/AnalyticsPageHeader";
 import { cn } from "@/lib/utils";
@@ -20,6 +22,19 @@ const NAV: {
 ];
 
 export function RevendaLayout() {
+  const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
+  const accessToken = useAuthStore((s) => s.accessToken);
+
+  useEffect(() => {
+    if (!accessToken || !user) return;
+    if (user.platformAdmin) return;
+    if (user.rootResellerPartner === true) return;
+    if (user.rootResellerPartner === false) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [accessToken, user, navigate]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-6 pb-10">
       <AnalyticsPageHeader

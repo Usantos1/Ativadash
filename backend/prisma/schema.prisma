@@ -90,6 +90,8 @@ model Organization {
   workspaceNote   String?         @db.Text
   /// Filho: agência revenda vs empresa final. Matriz: null.
   resellerOrgKind ResellerOrgKind?
+  /// Na raiz (sem pai): habilita revenda de planos, painel matriz e criação de filhos na hierarquia.
+  resellerPartner Boolean @default(false)
   /// Razão social (opcional)
   legalName String?
   /// CNPJ — armazenado somente com dígitos

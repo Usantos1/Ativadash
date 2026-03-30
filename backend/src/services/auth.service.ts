@@ -15,6 +15,7 @@ import {
   isWorkspaceTeamManagerRole,
 } from "../constants/roles.js";
 import { resolveBillingOrganizationId, resolveEffectivePlan } from "./plan-limits.service.js";
+import { getRootResellerPartnerFlag } from "../utils/org-hierarchy.js";
 
 const SALT_ROUNDS = 10;
 
@@ -28,6 +29,8 @@ export type AuthUserDto = {
   firstName: string | null;
   organizationId: string;
   organization: AuthOrganizationDto;
+  /** Raiz do ecossistema habilitada para revenda (painel matriz / filhos). */
+  rootResellerPartner: boolean;
 };
 
 export type MembershipSummaryDto = {
@@ -62,6 +65,7 @@ async function buildAuthUserDto(
   firstName: string | null
 ): Promise<AuthUserDto> {
   const organization = await organizationToDto(organizationId);
+  const rootResellerPartner = await getRootResellerPartnerFlag(organizationId);
   return {
     id: userId,
     email,
@@ -69,6 +73,7 @@ async function buildAuthUserDto(
     firstName,
     organizationId,
     organization,
+    rootResellerPartner,
   };
 }
 
@@ -466,6 +471,7 @@ export async function getAuthProfile(userId: string, organizationId: string): Pr
     include: { user: true, organization: true },
   });
   if (membership?.user && !membership.user.deletedAt && !membership.organization.deletedAt) {
+    const rootResellerPartner = await getRootResellerPartnerFlag(membership.organization.id);
     return {
       id: membership.user.id,
       email: membership.user.email,
@@ -477,6 +483,7 @@ export async function getAuthProfile(userId: string, organizationId: string): Pr
         name: membership.organization.name,
         slug: membership.organization.slug,
       },
+      rootResellerPartner,
     };
   }
 
@@ -493,6 +500,7 @@ export async function getAuthProfile(userId: string, organizationId: string): Pr
   });
   if (!user) return null;
 
+  const rootResellerPartner = await getRootResellerPartnerFlag(org.id);
   return {
     id: user.id,
     email: user.email,
@@ -504,6 +512,7 @@ export async function getAuthProfile(userId: string, organizationId: string): Pr
       name: org.name,
       slug: org.slug,
     },
+    rootResellerPartner,
   };
 }
 
@@ -569,6 +578,7 @@ export type MeContextDto = {
   billingOrganizationId: string;
   plan: { slug: string; name: string } | null;
   platformAdmin: boolean;
+  rootResellerPartner: boolean;
 };
 
 export async function getMeContext(userId: string, organizationId: string): Promise<MeContextDto | null> {
@@ -580,6 +590,7 @@ export async function getMeContext(userId: string, organizationId: string): Prom
     select: { organizationKind: true },
   });
   const { plan } = await resolveEffectivePlan(organizationId);
+  const rootResellerPartner = await getRootResellerPartnerFlag(organizationId);
   return {
     user: profile,
     memberships: await listMembershipSummaries(userId),
@@ -589,6 +600,7 @@ export async function getMeContext(userId: string, organizationId: string): Prom
     billingOrganizationId,
     plan: plan ? { slug: plan.slug, name: plan.name } : null,
     platformAdmin: isPlatformAdminEmail(profile.email),
+    rootResellerPartner,
   };
 }
 

@@ -25,6 +25,8 @@ export interface User {
   organization?: OrganizationSummary;
   /** Gestão global (PLATFORM_ADMIN_EMAILS no servidor) */
   platformAdmin?: boolean;
+  /** Raiz do ecossistema habilitada como parceiro de revenda (admin global define na empresa raiz). */
+  rootResellerPartner?: boolean;
 }
 
 /** Resposta de GET /auth/me */
