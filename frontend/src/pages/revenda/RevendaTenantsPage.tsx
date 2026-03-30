@@ -168,6 +168,8 @@ export function RevendaTenantsPage({ kind }: Props) {
     kind === "AGENCY"
       ? "Parceiros e agências no ecossistema: plano próprio, equipe e empresas vinculadas."
       : "Empresas finais (clientes) operando com dados isolados sob a matriz ou sob uma agência.";
+  /** Cadastro com administrador (e-mail, senha, WhatsApp) — obrigatório para cliente e para nova agência. */
+  const needsOwnerBootstrap = kind === "CLIENT" || kind === "AGENCY";
 
   const matrixOrg = useMemo(() => ecosystem.find((o) => o.isMatrix) ?? null, [ecosystem]);
   const agencyOptions = useMemo(
@@ -273,7 +275,7 @@ export function RevendaTenantsPage({ kind }: Props) {
 
   async function submitCreate() {
     if (!createName.trim()) return;
-    if (kind === "CLIENT" && !isClientCreateFormValid(clientCadastro)) return;
+    if (needsOwnerBootstrap && !isClientCreateFormValid(clientCadastro)) return;
     setCreateSubmitting(true);
     setActionError(null);
     try {
@@ -286,7 +288,7 @@ export function RevendaTenantsPage({ kind }: Props) {
         resellerOrgKind: kind,
       };
       await resellerCreateChild(
-        kind === "CLIENT"
+        needsOwnerBootstrap
           ? {
               ...base,
               legalName: clientCadastro.legalName.trim() || null,
@@ -497,6 +499,7 @@ export function RevendaTenantsPage({ kind }: Props) {
                 <thead>
                   <tr className="border-b text-left text-xs font-semibold uppercase text-muted-foreground">
                     <th className="py-2 pr-3">Nome</th>
+                    <th className="py-2 pr-3">Vinculada a</th>
                     <th className="py-2 pr-3">Status</th>
                     <th className="py-2 pr-3">Plano</th>
                     <th className="py-2 pr-3">Membros</th>
@@ -508,6 +511,9 @@ export function RevendaTenantsPage({ kind }: Props) {
                   {filtered.map((r) => (
                     <tr key={r.id} className="border-b border-border/50">
                       <td className="py-3 pr-3 font-medium">{r.name}</td>
+                      <td className="py-3 pr-3 text-muted-foreground">
+                        {r.parentOrganization?.name ?? "—"}
+                      </td>
                       <td className="py-3 pr-3">{STATUS_PT[r.workspaceStatus]}</td>
                       <td className="py-3 pr-3 text-muted-foreground">{r.plan?.name ?? "—"}</td>
                       <td className="py-3 pr-3 tabular-nums">{r.memberCount}</td>
@@ -620,20 +626,28 @@ export function RevendaTenantsPage({ kind }: Props) {
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1 [-webkit-overflow-scrolling:touch] sm:space-y-5">
             <div className="space-y-2">
               <Label htmlFor="cn">
-                {kind === "CLIENT" ? "Nome fantasia / marca" : "Nome"}
+                {kind === "CLIENT" ? "Nome fantasia / marca" : kind === "AGENCY" ? "Nome da agência" : "Nome"}
               </Label>
               <Input
                 id="cn"
                 value={createName}
                 onChange={(e) => setCreateName(e.target.value)}
-                placeholder={kind === "CLIENT" ? "Como a empresa aparece no painel" : "Nome exibido"}
+                placeholder={
+                  kind === "CLIENT"
+                    ? "Como a empresa aparece no painel"
+                    : kind === "AGENCY"
+                      ? "Nome exibido no painel da agência"
+                      : "Nome exibido"
+                }
               />
             </div>
 
-            {kind === "CLIENT" ? (
+            {needsOwnerBootstrap ? (
               <>
                 <div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-4">
-                  <p className="text-sm font-semibold text-foreground">Dados da empresa</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {kind === "AGENCY" ? "Dados da agência (opcional)" : "Dados da empresa"}
+                  </p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="space-y-2 sm:col-span-2">
                       <Label htmlFor="c-legal">Razão social (opcional)</Label>
@@ -668,7 +682,9 @@ export function RevendaTenantsPage({ kind }: Props) {
                 </div>
 
                 <div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-4">
-                  <p className="text-sm font-semibold text-foreground">Administrador (primeiro acesso)</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {kind === "AGENCY" ? "Responsável pela agência (primeiro acesso)" : "Administrador (primeiro acesso)"}
+                  </p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="c-mail">E-mail de login</Label>
@@ -831,7 +847,7 @@ export function RevendaTenantsPage({ kind }: Props) {
                 disabled={
                   createSubmitting ||
                   !createName.trim() ||
-                  (kind === "CLIENT" && !isClientCreateFormValid(clientCadastro)) ||
+                  (needsOwnerBootstrap && !isClientCreateFormValid(clientCadastro)) ||
                   (!createInherit && !createPlanId)
                 }
                 onClick={() => void submitCreate()}

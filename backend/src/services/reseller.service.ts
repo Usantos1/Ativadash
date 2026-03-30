@@ -150,10 +150,9 @@ export async function resellerCreateChild(
   }
 ) {
   const matrixId = await resolveResellerMatrixOrganizationId(actorUserId, activeOrganizationId);
-  const parentId = data.parentOrganizationId ?? matrixId;
-
+  let parentId = data.parentOrganizationId ?? matrixId;
   if (data.resellerOrgKind === "AGENCY") {
-    throw new Error("Criação de agência filha não é permitida; use apenas workspaces cliente");
+    parentId = matrixId;
   }
 
   let clientProfile: OrganizationClientProfile | null = null;

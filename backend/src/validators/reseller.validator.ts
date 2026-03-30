@@ -56,13 +56,13 @@ export const resellerCreateChildSchema = z
     addressPostalCode: z.string().max(12).optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.resellerOrgKind === "AGENCY") {
+    const kind = data.resellerOrgKind ?? "CLIENT";
+    if (kind === "AGENCY" && data.parentOrganizationId?.trim()) {
       ctx.addIssue({
         code: "custom",
-        path: ["resellerOrgKind"],
-        message: "Tipo AGENCY não é permitido; crie apenas workspace cliente.",
+        path: ["parentOrganizationId"],
+        message: "Agências são criadas na matriz; não informe organização pai.",
       });
-      return;
     }
     const cnpj = (data.taxId ?? "").replace(/\D/g, "");
     if (cnpj.length > 0 && cnpj.length !== 14) {

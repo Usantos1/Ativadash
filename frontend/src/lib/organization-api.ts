@@ -163,6 +163,8 @@ export type ChildWorkspaceOperationsRow = {
   id: string;
   name: string;
   slug: string;
+  parentOrganizationId: string | null;
+  parentOrganization: { id: string; name: string } | null;
   createdAt: string;
   inheritPlanFromParent: boolean;
   workspaceStatus: WorkspaceStatus;

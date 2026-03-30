@@ -192,12 +192,12 @@ export async function canManageOrganization(userId: string, organizationId: stri
   return false;
 }
 
-/** Operações na conta da agência (listar/criar filhos): só admin/owner com membership na org atual. */
+/** Operações na conta da agência (listar/criar filhos): admin na org atual (matriz/agência ou conta principal). */
 export async function assertDirectOrgAdmin(userId: string, organizationId: string): Promise<void> {
   const m = await prisma.membership.findUnique({
     where: { userId_organizationId: { userId, organizationId } },
   });
-  if (!m || !isResellerMatrixAdminRole(m.role)) {
+  if (!m || (!isResellerMatrixAdminRole(m.role) && !isWorkspaceAdminRole(m.role))) {
     throw new Error("Sem permissão para gerenciar empresas vinculadas");
   }
 }

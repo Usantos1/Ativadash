@@ -256,9 +256,6 @@ export async function updateChildOrganizationByParent(
     patch.workspaceNote = n && n.length > 0 ? n : null;
   }
   if (data.resellerOrgKind !== undefined) {
-    if (data.resellerOrgKind === "AGENCY") {
-      throw new Error("Não é permitido alterar para tipo agência filha");
-    }
     patch.resellerOrgKind = data.resellerOrgKind;
   }
   if (data.featureOverrides !== undefined) {
@@ -354,14 +351,8 @@ export async function createDescendantByMatrixAdmin(
     where: { id: matrixOrganizationId, deletedAt: null },
     select: { organizationKind: true },
   });
-  if (matrixRow?.organizationKind !== "MATRIX") {
-    throw new Error("Operação válida apenas para organização matriz");
-  }
-  if (parentOrganizationId !== matrixOrganizationId) {
-    throw new Error("Novos workspaces devem ser filhos diretos da matriz");
-  }
-  if (options?.resellerOrgKind === "AGENCY") {
-    throw new Error("Não é permitido criar agência filha");
+  if (matrixRow?.organizationKind !== "MATRIX" && matrixRow?.organizationKind !== "DIRECT") {
+    throw new Error("Operação válida apenas para a empresa raiz (matriz ou conta principal)");
   }
 
   const parentOk = await isOrganizationUnderMatrix(parentOrganizationId, matrixOrganizationId);
@@ -377,7 +368,18 @@ export async function createDescendantByMatrixAdmin(
     throw new Error("Organização pai não encontrada");
   }
 
-  const resellerOrgKind: ResellerOrgKind = "CLIENT";
+  const requestedKind: ResellerOrgKind = options?.resellerOrgKind ?? "CLIENT";
+  if (requestedKind === "AGENCY") {
+    if (parentOrganizationId !== matrixOrganizationId) {
+      throw new Error("Agências devem ser criadas diretamente sob a matriz");
+    }
+  } else if (parentOrganizationId !== matrixOrganizationId) {
+    if (parent.resellerOrgKind !== "AGENCY") {
+      throw new Error("Empresas cliente só podem ser vinculadas à matriz ou a uma agência");
+    }
+  }
+
+  const resellerOrgKind: ResellerOrgKind = requestedKind;
 
   await assertCanAddChildOrganization(parentOrganizationId, actorUserId);
 
@@ -453,7 +455,7 @@ export async function createDescendantByMatrixAdmin(
         data: {
           userId: user.id,
           organizationId: o.id,
-          role: "workspace_owner",
+          role: resellerOrgKind === "AGENCY" ? "agency_owner" : "workspace_owner",
         },
       });
       return o;
@@ -513,9 +515,6 @@ export async function updateDescendantByMatrixAdmin(
     patch.workspaceNote = n && n.length > 0 ? n : null;
   }
   if (data.resellerOrgKind !== undefined) {
-    if (data.resellerOrgKind === "AGENCY") {
-      throw new Error("Não é permitido alterar para tipo agência filha");
-    }
     patch.resellerOrgKind = data.resellerOrgKind;
   }
   if (data.featureOverrides !== undefined) {
@@ -593,6 +592,8 @@ export async function listChildOrganizationsOperationsDashboard(
     id: string;
     name: string;
     slug: string;
+    parentOrganizationId: string | null;
+    parentOrganization: { id: string; name: string } | null;
     createdAt: string;
     inheritPlanFromParent: boolean;
     workspaceStatus: WorkspaceStatus;
@@ -656,44 +657,53 @@ export async function listChildOrganizationsOperationsDashboard(
   await assertDirectOrgAdmin(userId, parentOrganizationId);
   const planContext = await getOrganizationPlanContext(parentOrganizationId);
 
-  const children = await prisma.organization.findMany({
-    where: { parentOrganizationId, deletedAt: null },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      createdAt: true,
-      updatedAt: true,
-      inheritPlanFromParent: true,
-      workspaceStatus: true,
-      workspaceNote: true,
-      resellerOrgKind: true,
-      planId: true,
-      featureOverrides: true,
-      plan: { select: { id: true, name: true, slug: true } },
-      subscription: {
-        select: {
-          id: true,
-          billingMode: true,
-          status: true,
-          renewsAt: true,
-          startedAt: true,
-          planId: true,
-        },
-      },
-      limitsOverride: {
-        select: {
-          maxUsers: true,
-          maxIntegrations: true,
-          maxDashboards: true,
-          maxClientAccounts: true,
-          maxChildOrganizations: true,
-          notes: true,
-        },
-      },
-    },
-    orderBy: { name: "asc" },
-  });
+  const descendantIds = (await collectDescendantOrganizationIds(parentOrganizationId)).filter(
+    (id) => id !== parentOrganizationId
+  );
+
+  const children =
+    descendantIds.length === 0
+      ? []
+      : await prisma.organization.findMany({
+          where: { id: { in: descendantIds }, deletedAt: null },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            parentOrganizationId: true,
+            parentOrganization: { select: { id: true, name: true } },
+            createdAt: true,
+            updatedAt: true,
+            inheritPlanFromParent: true,
+            workspaceStatus: true,
+            workspaceNote: true,
+            resellerOrgKind: true,
+            planId: true,
+            featureOverrides: true,
+            plan: { select: { id: true, name: true, slug: true } },
+            subscription: {
+              select: {
+                id: true,
+                billingMode: true,
+                status: true,
+                renewsAt: true,
+                startedAt: true,
+                planId: true,
+              },
+            },
+            limitsOverride: {
+              select: {
+                maxUsers: true,
+                maxIntegrations: true,
+                maxDashboards: true,
+                maxClientAccounts: true,
+                maxChildOrganizations: true,
+                notes: true,
+              },
+            },
+          },
+          orderBy: { name: "asc" },
+        });
 
   const childIds = children.map((c) => c.id);
   const now = new Date();
@@ -928,6 +938,8 @@ export async function listChildOrganizationsOperationsDashboard(
       id: c.id,
       name: c.name,
       slug: c.slug,
+      parentOrganizationId: c.parentOrganizationId,
+      parentOrganization: c.parentOrganization,
       createdAt: c.createdAt.toISOString(),
       inheritPlanFromParent: c.inheritPlanFromParent,
       workspaceStatus: c.workspaceStatus,

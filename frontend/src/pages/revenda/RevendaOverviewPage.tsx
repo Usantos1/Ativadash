@@ -116,7 +116,8 @@ export function RevendaOverviewPage() {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Confirme que você está na empresa matriz (sem empresa pai) e possui papel de administrador ou proprietário.
+            Confirme que você está na empresa raiz (matriz ou conta principal, sem empresa pai) e possui papel de
+            administrador ou proprietário (inclui proprietário de workspace na conta principal).
           </p>
         </CardContent>
       </Card>

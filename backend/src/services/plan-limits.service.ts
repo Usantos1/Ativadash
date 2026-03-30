@@ -239,13 +239,17 @@ export async function assertCanAddChildOrganization(
 
   const parentOrg = await prisma.organization.findFirst({
     where: { id: parentOrganizationId, deletedAt: null },
-    select: { organizationKind: true },
+    select: { organizationKind: true, resellerOrgKind: true },
   });
   if (!parentOrg) {
     throw new Error("Organização pai não encontrada");
   }
-  if (parentOrg.organizationKind !== "MATRIX") {
-    throw new Error("Apenas a matriz pode criar workspaces filhos");
+  const canReceiveChildren =
+    parentOrg.organizationKind === "MATRIX" ||
+    parentOrg.organizationKind === "DIRECT" ||
+    (parentOrg.organizationKind === "CLIENT_WORKSPACE" && parentOrg.resellerOrgKind === "AGENCY");
+  if (!canReceiveChildren) {
+    throw new Error("Apenas a matriz, a conta principal ou uma agência podem receber workspaces filhos");
   }
 
   const limits = await getEffectivePlanLimits(parentOrganizationId);
