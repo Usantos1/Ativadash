@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Navigate } from "react-router-dom";
 import { Ban, FileText, Pencil, PlayCircle, Search, Trash2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -524,15 +525,7 @@ export function PlatformPage() {
   }
 
   if (!platformAdmin) {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Plataforma</h1>
-        <p className="text-sm text-muted-foreground">
-          Área restrita. Defina <code className="rounded bg-muted px-1">PLATFORM_ADMIN_EMAILS</code> no servidor com o seu
-          e-mail e faça login novamente.
-        </p>
-      </div>
-    );
+    return <Navigate to="/revenda" replace />;
   }
 
   return (

@@ -354,6 +354,21 @@ export async function collectDescendantOrganizationIds(matrixId: string): Promis
   return [...seen];
 }
 
+/**
+ * Contexto JWT em `managerOrganizationId`: `target` deve ser a própria org ou um descendente
+ * (ex.: agência/matriz gerindo workspace cliente sem trocar de empresa no token).
+ */
+export async function assertManagedDescendantOrganization(
+  managerOrganizationId: string,
+  targetOrganizationId: string
+): Promise<void> {
+  if (targetOrganizationId === managerOrganizationId) return;
+  const descendants = await collectDescendantOrganizationIds(managerOrganizationId);
+  if (!descendants.includes(targetOrganizationId)) {
+    throw new Error("Empresa fora da hierarquia que você gerencia");
+  }
+}
+
 /** Dados fiscais/contato/endereço da empresa cliente (revenda). */
 export type OrganizationClientProfile = {
   legalName?: string | null;

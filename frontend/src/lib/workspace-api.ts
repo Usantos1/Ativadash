@@ -40,6 +40,9 @@ export type MemberRow = {
   name: string;
   role: string;
   joinedAt: string;
+  /** Conta suspensa (login bloqueado) */
+  suspended?: boolean;
+  suspendedAt?: string | null;
   /** direct = membro da org; agency = admin/owner da agência com acesso à empresa cliente */
   source?: "direct" | "agency";
 };
@@ -108,8 +111,9 @@ export async function deleteLaunch(id: string): Promise<void> {
   return api.delete(`/workspace/launches/${id}`);
 }
 
-export async function fetchMembers(): Promise<MemberRow[]> {
-  return api.get<MemberRow[]>("/workspace/members");
+export async function fetchMembers(organizationId?: string): Promise<MemberRow[]> {
+  const q = organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : "";
+  return api.get<MemberRow[]>(`/workspace/members${q}`);
 }
 
 export type InvitationRow = {
@@ -120,27 +124,67 @@ export type InvitationRow = {
   createdAt: string;
 };
 
-export async function fetchPendingInvitations(): Promise<InvitationRow[]> {
-  return api.get<InvitationRow[]>("/workspace/invitations");
+export async function fetchPendingInvitations(organizationId?: string): Promise<InvitationRow[]> {
+  const q = organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : "";
+  return api.get<InvitationRow[]>(`/workspace/invitations${q}`);
 }
 
 export async function createInvitation(
   email: string,
-  role: "admin" | "member" | "media_manager" | "analyst" = "member"
+  role: "admin" | "member" | "media_manager" | "analyst" = "member",
+  organizationId?: string
 ): Promise<{ invitation: InvitationRow; inviteLink: string }> {
-  return api.post("/workspace/invitations", { email, role });
+  return api.post("/workspace/invitations", {
+    email,
+    role,
+    ...(organizationId ? { organizationId } : {}),
+  });
 }
 
 export async function revokeInvitation(id: string): Promise<void> {
   return api.delete(`/workspace/invitations/${id}`);
 }
 
-export async function patchMemberRole(userId: string, role: string): Promise<void> {
-  await api.patch(`/workspace/members/${userId}`, { role });
+export type PatchMemberPayload = {
+  role?: string;
+  email?: string;
+  name?: string;
+  suspended?: boolean;
+};
+
+export async function patchMember(
+  userId: string,
+  data: PatchMemberPayload,
+  organizationId?: string
+): Promise<void> {
+  const q = organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : "";
+  await api.patch(`/workspace/members/${userId}${q}`, data);
 }
 
-export async function removeMember(userId: string): Promise<void> {
-  await api.delete(`/workspace/members/${userId}`);
+export async function patchMemberRole(userId: string, role: string, organizationId?: string): Promise<void> {
+  await patchMember(userId, { role }, organizationId);
+}
+
+export async function createWorkspaceMember(
+  body: { email: string; name: string; password: string; role: string },
+  organizationId?: string
+): Promise<MemberRow> {
+  const q = organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : "";
+  return api.post<MemberRow>(`/workspace/members${q}`, body);
+}
+
+export async function resetMemberPassword(
+  userId: string,
+  body: { newPassword: string; forcePasswordChange?: boolean },
+  organizationId?: string
+): Promise<void> {
+  const q = organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : "";
+  await api.post(`/workspace/members/${userId}/password${q}`, body);
+}
+
+export async function removeMember(userId: string, organizationId?: string): Promise<void> {
+  const q = organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : "";
+  await api.delete(`/workspace/members/${userId}${q}`);
 }
 
 export type AcceptInviteResponse = AuthMeResponse & {

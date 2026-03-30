@@ -1,5 +1,12 @@
+import bcrypt from "bcryptjs";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../utils/prisma.js";
-import { assertCanAddClientAccount } from "./plan-limits.service.js";
+import { assertCanAddClientAccount, assertCanAddDirectMemberOrInvitation } from "./plan-limits.service.js";
+import { assertOrgAdminOrParentAgency } from "./auth.service.js";
+import { ASSIGNABLE_MEMBER_ROLES } from "../constants/roles.js";
+import { updateMemberRole } from "./members.service.js";
+
+const SALT_ROUNDS = 10;
 
 export async function listClients(organizationId: string) {
   return prisma.clientAccount.findMany({
@@ -210,6 +217,8 @@ type MemberListItem = {
   name: string;
   role: string;
   joinedAt: string;
+  suspended: boolean;
+  suspendedAt: string | null;
   /** Membro direto da empresa vs acesso via agência (revenda) */
   source: "direct" | "agency";
 };
@@ -224,7 +233,7 @@ export async function listOrganizationMembers(organizationId: string): Promise<M
     where: { organizationId },
     include: {
       user: {
-        select: { id: true, email: true, name: true, deletedAt: true },
+        select: { id: true, email: true, name: true, deletedAt: true, suspendedAt: true },
       },
     },
     orderBy: { createdAt: "asc" },
@@ -239,6 +248,8 @@ export async function listOrganizationMembers(organizationId: string): Promise<M
       name: m.user.name,
       role: m.role,
       joinedAt: m.createdAt.toISOString(),
+      suspended: m.user.suspendedAt != null,
+      suspendedAt: m.user.suspendedAt?.toISOString() ?? null,
       source: "direct" as const,
     }));
 
@@ -257,7 +268,7 @@ export async function listOrganizationMembers(organizationId: string): Promise<M
     },
     include: {
       user: {
-        select: { id: true, email: true, name: true, deletedAt: true },
+        select: { id: true, email: true, name: true, deletedAt: true, suspendedAt: true },
       },
     },
     orderBy: { createdAt: "asc" },
@@ -272,8 +283,154 @@ export async function listOrganizationMembers(organizationId: string): Promise<M
       name: m.user.name,
       role: m.role,
       joinedAt: m.createdAt.toISOString(),
+      suspended: m.user.suspendedAt != null,
+      suspendedAt: m.user.suspendedAt?.toISOString() ?? null,
       source: "agency" as const,
     }));
 
   return [...direct, ...agency];
+}
+
+export async function createWorkspaceDirectMember(
+  organizationId: string,
+  actorUserId: string,
+  data: { email: string; name: string; password: string; role: string }
+): Promise<MemberListItem> {
+  await assertOrgAdminOrParentAgency(actorUserId, organizationId);
+  await assertCanAddDirectMemberOrInvitation(organizationId);
+
+  const norm = data.email.trim().toLowerCase();
+  const existing = await prisma.user.findUnique({ where: { email: norm } });
+  if (existing) {
+    throw new Error("Já existe usuário com este e-mail");
+  }
+
+  const r = data.role.trim();
+  if (!(ASSIGNABLE_MEMBER_ROLES as readonly string[]).includes(r)) {
+    throw new Error("Papel inválido");
+  }
+
+  const hashed = await bcrypt.hash(data.password, SALT_ROUNDS);
+  const user = await prisma.user.create({
+    data: {
+      email: norm,
+      name: data.name.trim(),
+      password: hashed,
+      mustChangePassword: true,
+    },
+  });
+
+  const membership = await prisma.membership.create({
+    data: {
+      userId: user.id,
+      organizationId,
+      role: r,
+    },
+  });
+
+  return {
+    membershipId: membership.id,
+    userId: user.id,
+    email: user.email,
+    name: user.name,
+    role: membership.role,
+    joinedAt: membership.createdAt.toISOString(),
+    suspended: false,
+    suspendedAt: null,
+    source: "direct",
+  };
+}
+
+export async function patchWorkspaceMember(
+  organizationId: string,
+  actorUserId: string,
+  targetUserId: string,
+  patch: { role?: string; email?: string; name?: string; suspended?: boolean }
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  await assertOrgAdminOrParentAgency(actorUserId, organizationId);
+
+  const targetMembership = await prisma.membership.findUnique({
+    where: { userId_organizationId: { userId: targetUserId, organizationId } },
+  });
+  if (!targetMembership) {
+    return { ok: false, message: "Membro não encontrado nesta empresa" };
+  }
+
+  if (patch.suspended === true && targetUserId === actorUserId) {
+    return { ok: false, message: "Não é possível suspender a si mesmo" };
+  }
+
+  if (patch.email !== undefined || patch.name !== undefined || patch.suspended !== undefined) {
+    const user = await prisma.user.findFirst({
+      where: { id: targetUserId, deletedAt: null },
+    });
+    if (!user) {
+      return { ok: false, message: "Usuário não encontrado" };
+    }
+
+    if (patch.email !== undefined && patch.email.trim().toLowerCase() !== user.email.toLowerCase()) {
+      const nextEmail = patch.email.trim().toLowerCase();
+      const taken = await prisma.user.findFirst({
+        where: { email: nextEmail, NOT: { id: targetUserId } },
+      });
+      if (taken) {
+        return { ok: false, message: "E-mail já em uso" };
+      }
+    }
+
+    const data: Prisma.UserUpdateInput = {};
+    if (patch.email !== undefined) {
+      data.email = patch.email.trim().toLowerCase();
+    }
+    if (patch.name !== undefined) {
+      data.name = patch.name.trim();
+    }
+    if (patch.suspended === true) {
+      data.suspendedAt = new Date();
+    } else if (patch.suspended === false) {
+      data.suspendedAt = null;
+    }
+
+    await prisma.user.update({ where: { id: targetUserId }, data });
+  }
+
+  if (patch.role !== undefined) {
+    const roleResult = await updateMemberRole(organizationId, actorUserId, targetUserId, patch.role);
+    if (!roleResult.ok) {
+      return roleResult;
+    }
+  }
+
+  return { ok: true };
+}
+
+export async function resetWorkspaceMemberPassword(
+  organizationId: string,
+  actorUserId: string,
+  targetUserId: string,
+  newPassword: string,
+  options?: { forcePasswordChange?: boolean }
+): Promise<void> {
+  await assertOrgAdminOrParentAgency(actorUserId, organizationId);
+
+  if (targetUserId === actorUserId) {
+    throw new Error("Use a página de perfil para alterar sua própria senha");
+  }
+
+  const m = await prisma.membership.findUnique({
+    where: { userId_organizationId: { userId: targetUserId, organizationId } },
+  });
+  if (!m) {
+    throw new Error("Membro não encontrado nesta empresa");
+  }
+
+  const forceNext = options?.forcePasswordChange !== false;
+  const hashed = await bcrypt.hash(newPassword, SALT_ROUNDS);
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: targetUserId },
+      data: { password: hashed, mustChangePassword: forceNext },
+    }),
+    prisma.refreshToken.deleteMany({ where: { userId: targetUserId } }),
+  ]);
 }

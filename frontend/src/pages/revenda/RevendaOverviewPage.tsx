@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Loader2, AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { fetchOrganizationContext } from "@/lib/organization-api";
 import { fetchResellerOverview } from "@/lib/revenda-api";
 import type { ChildrenOperationsDashboard } from "@/lib/organization-api";
@@ -16,7 +17,7 @@ function Kpi({
 }: {
   label: string;
   value: string;
-  hint: string;
+  hint?: string;
   tone?: "neutral" | "amber" | "rose" | "emerald";
 }) {
   const border =
@@ -37,7 +38,7 @@ function Kpi({
     >
       <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
       <p className="mt-1.5 text-2xl font-bold tabular-nums text-foreground">{value}</p>
-      <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{hint}</p>
+      {hint ? <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
@@ -53,7 +54,20 @@ export function RevendaOverviewPage() {
     setLoading(true);
     setError(null);
     try {
-      const ctx = await fetchOrganizationContext();
+      const [ctxRes, overviewRes] = await Promise.allSettled([
+        fetchOrganizationContext(),
+        fetchResellerOverview(),
+      ]);
+
+      if (ctxRes.status === "rejected") {
+        const e = ctxRes.reason;
+        setError(e instanceof Error ? e.message : "Não foi possível carregar o contexto da empresa.");
+        setCtxOk(null);
+        setDash(null);
+        return;
+      }
+
+      const ctx = ctxRes.value;
       const planOk =
         ctx.enabledFeatures.multiOrganization === true &&
         (ctx.limits.maxChildOrganizations == null || ctx.limits.maxChildOrganizations > 0);
@@ -63,14 +77,22 @@ export function RevendaOverviewPage() {
       if (!partnerOk) setCtxBlock("partner");
       else if (!planOk) setCtxBlock("plan");
       else setCtxBlock(null);
+
       if (!enabled) {
         setDash(null);
         return;
       }
-      const d = await fetchResellerOverview();
-      setDash(d);
+
+      if (overviewRes.status === "rejected") {
+        const e = overviewRes.reason;
+        setError(e instanceof Error ? e.message : "Não foi possível carregar o painel.");
+        setDash(null);
+        return;
+      }
+
+      setDash(overviewRes.value);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Não foi possível carregar o painel master.");
+      setError(e instanceof Error ? e.message : "Não foi possível carregar o painel.");
       setDash(null);
     } finally {
       setLoading(false);
@@ -90,9 +112,17 @@ export function RevendaOverviewPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center gap-2 py-20 text-muted-foreground">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        Carregando visão geral…
+      <div className="space-y-8 animate-in fade-in-0 duration-200">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-[108px] rounded-xl" />
+          ))}
+        </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Skeleton className="min-h-[280px] rounded-xl" />
+          <Skeleton className="min-h-[280px] rounded-xl" />
+        </div>
+        <Skeleton className="h-40 rounded-xl" />
       </div>
     );
   }
@@ -104,8 +134,8 @@ export function RevendaOverviewPage() {
           <CardTitle className="text-base">Revenda não habilitada</CardTitle>
           <CardDescription>
             {ctxBlock === "partner"
-              ? "A empresa raiz deste ecossistema não está designada como parceira de revenda. Peça ao administrador global do produto para ativar em Plataforma → empresas (raiz)."
-              : "O painel matriz exige o recurso multiempresa e cota de empresas filhas no plano da raiz."}
+              ? "A raiz deste ecossistema não está habilitada como parceira de revenda. Solicite à equipe Ativa Dash ou ao administrador global do produto."
+              : "É necessário multiempresa e cota de contas filhas no plano da matriz."}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -118,14 +148,13 @@ export function RevendaOverviewPage() {
         <CardHeader className="flex flex-row items-start gap-2">
           <AlertTriangle className="mt-0.5 h-5 w-5 text-destructive" />
           <div>
-            <CardTitle className="text-base">Acesso ao painel master</CardTitle>
+            <CardTitle className="text-base">Não foi possível carregar a rede</CardTitle>
             <CardDescription className="text-destructive">{error}</CardDescription>
           </div>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Confirme que você está na empresa raiz (matriz ou conta principal, sem empresa pai) e possui papel de
-            administrador ou proprietário (inclui proprietário de workspace na conta principal).
+            Use o seletor de empresa no topo na conta matriz (sem empresa pai) e um perfil de administrador ou proprietário.
           </p>
         </CardContent>
       </Card>
@@ -141,24 +170,15 @@ export function RevendaOverviewPage() {
     <div className="space-y-8">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi
-          label="Empresas no ecossistema"
+          label="Contas"
           value={String(summary.totalWorkspaces)}
-          hint={`${summary.activeWorkspaces} ativas · ${summary.pausedWorkspaces} pausadas · ${summary.archivedWorkspaces} arquivadas`}
+          hint={`${summary.activeWorkspaces} ativas · ${summary.pausedWorkspaces} paus. · ${summary.archivedWorkspaces} arq.`}
         />
+        <Kpi label="Usuários" value={String(summary.usersTotalAcrossChildren)} />
+        <Kpi label="Integrações" value={String(summary.integrationsTotalAcrossChildren)} />
         <Kpi
-          label="Usuários (filhos)"
-          value={String(summary.usersTotalAcrossChildren)}
-          hint="Membros diretos nas empresas vinculadas à matriz"
-        />
-        <Kpi
-          label="Integrações conectadas"
-          value={String(summary.integrationsTotalAcrossChildren)}
-          hint="Total agregado nas empresas filhas"
-        />
-        <Kpi
-          label="Alertas operacionais"
+          label="Alertas"
           value={String(alertCount)}
-          hint="Itens que exigem revisão na fila de atenção"
           tone={alertCount > 0 ? "amber" : "emerald"}
         />
       </div>
@@ -167,7 +187,6 @@ export function RevendaOverviewPage() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Fila de atenção</CardTitle>
-            <CardDescription>Priorização sugerida a partir de riscos operacionais.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {attention.length === 0 ? (
@@ -196,15 +215,14 @@ export function RevendaOverviewPage() {
               to="/revenda/saude"
               className="inline-block text-sm font-semibold text-primary underline-offset-4 hover:underline"
             >
-              Abrir saúde operacional
+              Saúde
             </Link>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Últimas empresas (por atividade)</CardTitle>
-            <CardDescription>Atalhos para governança e consumo.</CardDescription>
+            <CardTitle className="text-base">Atividade recente</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {recentOrgs.map((o) => (
@@ -218,12 +236,20 @@ export function RevendaOverviewPage() {
                     {o.plan?.name ?? "Sem plano"} · {o.memberCount} membros · {o.connectedIntegrations} integrações
                   </p>
                 </div>
-                <Link
-                  to={o.resellerOrgKind === "AGENCY" ? "/revenda/agencias" : "/revenda/empresas"}
-                  className="text-xs font-semibold text-primary underline-offset-4 hover:underline"
-                >
-                  Ver lista
-                </Link>
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  <Link
+                    to={o.resellerOrgKind === "AGENCY" ? "/revenda/agencias" : "/revenda/empresas"}
+                    className="text-xs font-semibold text-primary underline-offset-4 hover:underline"
+                  >
+                    Lista
+                  </Link>
+                  <Link
+                    to={`/revenda/usuarios?organizationId=${encodeURIComponent(o.id)}`}
+                    className="text-xs font-semibold text-primary underline-offset-4 hover:underline"
+                  >
+                    Usuários
+                  </Link>
+                </div>
               </div>
             ))}
           </CardContent>
@@ -232,12 +258,11 @@ export function RevendaOverviewPage() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Consumo global (matriz)</CardTitle>
-          <CardDescription>Cotas efetivas da empresa matriz e uso atual.</CardDescription>
+          <CardTitle className="text-base">Cotas</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 text-sm">
           <div>
-            <p className="text-xs font-semibold uppercase text-muted-foreground">Workspaces filhos</p>
+            <p className="text-xs font-semibold uppercase text-muted-foreground">Contas filhas (limite)</p>
             <p className="mt-1 text-lg font-bold tabular-nums">
               {summary.childSlotsUsed}
               <span className="text-sm font-normal text-muted-foreground">

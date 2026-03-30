@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Ban, Link2Off, Loader2, LogIn, Pencil, PlayCircle, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +33,7 @@ import {
   type PlanLimitFieldKey,
 } from "@/lib/revenda-api";
 import { useAuthStore } from "@/stores/auth-store";
+import { PageHint } from "@/pages/revenda/PageHint";
 
 const STATUS_PT: Record<WorkspaceStatus, string> = {
   ACTIVE: "Ativa",
@@ -163,11 +164,7 @@ export function RevendaTenantsPage({ kind }: Props) {
   const [rowActionId, setRowActionId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const title = kind === "AGENCY" ? "Agências" : "Empresas";
-  const description =
-    kind === "AGENCY"
-      ? "Parceiros e agências no ecossistema: plano próprio, equipe e empresas vinculadas."
-      : "Empresas finais (clientes) operando com dados isolados sob a matriz ou sob uma agência.";
+  const title = kind === "AGENCY" ? "Agências" : "Clientes";
   /** Cadastro com administrador (e-mail, senha, WhatsApp) — obrigatório para cliente e para nova agência. */
   const needsOwnerBootstrap = kind === "CLIENT" || kind === "AGENCY";
 
@@ -242,7 +239,7 @@ export function RevendaTenantsPage({ kind }: Props) {
       })
       .catch(() => {
         if (!cancelled) {
-          setActionError("Não foi possível carregar detalhes de governança (módulos/limites).");
+          setActionError("Não foi possível carregar módulos e limites desta conta.");
           setFeatureDraft({ ...FALLBACK_ENABLED });
           setLimitDraft({ ...EMPTY_LIMIT_DRAFT });
         }
@@ -409,7 +406,7 @@ export function RevendaTenantsPage({ kind }: Props) {
     if (
       !window.confirm(
         `Desvincular "${row.name}" da matriz?\n\n` +
-          "A empresa passa a ser organização independente com painel próprio, some desta listagem e deixa de herdar a governança da matriz. " +
+          "A empresa fica independente, com painel próprio, some desta lista e deixa de seguir plano e regras da matriz. " +
           "Quem acessava só pela matriz deixa de ver esta empresa; quem é membro direto mantém o login. " +
           "Não pode haver filiais vinculadas a ela."
       )
@@ -443,18 +440,14 @@ export function RevendaTenantsPage({ kind }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
-          <div className="mt-1 max-w-2xl space-y-1">
-            <p className="text-sm text-muted-foreground">{description}</p>
-            {kind === "CLIENT" ? (
-              <p className="text-xs text-muted-foreground">
-                Empresas listadas aqui estão sob a matriz. Se uma empresa é independente (ex.: outro CNPJ/contrato), use
-                &quot;Desvincular&quot; para ela ter painel próprio e sair desta visão.
-              </p>
-            ) : null}
-          </div>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-1">
+          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+          <PageHint>
+            {kind === "AGENCY"
+              ? "Filiais com equipe própria e clientes por baixo."
+              : "Marcas com dados separados. CNPJ/contrato próprio: use Desvincular para painel independente."}
+          </PageHint>
         </div>
         <Button
           type="button"
@@ -478,10 +471,7 @@ export function RevendaTenantsPage({ kind }: Props) {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Listagem</CardTitle>
-          <CardDescription>
-            {filtered.length} registro(s) · plano, status e consumo resumidos.
-          </CardDescription>
+          <CardTitle className="text-base">Lista ({filtered.length})</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -863,7 +853,7 @@ export function RevendaTenantsPage({ kind }: Props) {
         <DialogContent
           alignTop
           className="flex max-h-[calc(100dvh-2rem)] w-[min(100vw-1rem,42rem)] max-w-2xl flex-col overflow-y-auto"
-          title="Governança"
+          title="Editar conta"
         >
           {editRow ? (
             <>

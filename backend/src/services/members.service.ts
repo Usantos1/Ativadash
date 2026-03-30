@@ -1,20 +1,8 @@
 import { prisma } from "../utils/prisma.js";
 import { assertOrgAdminOrParentAgency } from "./auth.service.js";
-import { isPrimaryOwnerRole } from "../constants/roles.js";
+import { ASSIGNABLE_MEMBER_ROLES, isPrimaryOwnerRole } from "../constants/roles.js";
 
-const ASSIGNABLE_ROLES = new Set([
-  "admin",
-  "member",
-  "media_manager",
-  "analyst",
-  "agency_admin",
-  "agency_ops",
-  "workspace_admin",
-  "report_viewer",
-  "media_meta_manager",
-  "media_google_manager",
-  "performance_analyst",
-]);
+const ASSIGNABLE_ROLES = new Set<string>(ASSIGNABLE_MEMBER_ROLES);
 
 export async function updateMemberRole(
   organizationId: string,

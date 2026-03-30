@@ -1,5 +1,22 @@
 /** Papéis canônicos + legado (`owner`/`admin`) aceitos até remoção total. */
 
+/** Papéis que admin de workspace pode atribuir ao criar membro ou alterar papel (não inclui owner). */
+export const ASSIGNABLE_MEMBER_ROLES = [
+  "admin",
+  "member",
+  "media_manager",
+  "analyst",
+  "agency_admin",
+  "agency_ops",
+  "workspace_admin",
+  "report_viewer",
+  "media_meta_manager",
+  "media_google_manager",
+  "performance_analyst",
+] as const;
+
+export type AssignableMemberRole = (typeof ASSIGNABLE_MEMBER_ROLES)[number];
+
 export const LEGACY_OWNER_ADMIN = ["owner", "admin"] as const;
 
 export const MATRIX_ADMIN_ROLES = ["agency_owner", "agency_admin", ...LEGACY_OWNER_ADMIN] as const;

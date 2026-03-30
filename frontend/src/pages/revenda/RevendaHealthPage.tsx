@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHint } from "@/pages/revenda/PageHint";
 import { fetchResellerOperationalHealth, type ResellerOperationalHealth } from "@/lib/revenda-api";
 
 const SEVERITY_PT: Record<string, string> = {
@@ -34,11 +35,9 @@ export function RevendaHealthPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-semibold tracking-tight">Saúde operacional</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Fila priorizada de alertas e empresas que exigem ação imediata ou acompanhamento.
-        </p>
+      <div className="flex items-center gap-1">
+        <h2 className="text-lg font-semibold tracking-tight">Saúde</h2>
+        <PageHint>Alertas e contas com problema: integração, equipe vazia, etc.</PageHint>
       </div>
 
       <Card>
@@ -78,8 +77,7 @@ export function RevendaHealthPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Alertas priorizados</CardTitle>
-          <CardDescription>Ordenação: criticidade decrescente.</CardDescription>
+          <CardTitle className="text-base">Alertas</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           {!data?.prioritizedAlerts.length ? (
@@ -105,12 +103,11 @@ export function RevendaHealthPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Empresas que exigem atenção</CardTitle>
-          <CardDescription>Flag consolidada de risco operacional.</CardDescription>
+          <CardTitle className="text-base">Em atenção</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           {!data?.organizationsNeedingAttention.length ? (
-            <p className="text-sm text-muted-foreground">Nenhuma empresa na fila.</p>
+            <p className="text-sm text-muted-foreground">Nenhuma conta na fila.</p>
           ) : (
             data.organizationsNeedingAttention.map((o) => (
               <div key={o.id} className="rounded-lg border border-border/50 px-3 py-2 text-sm">

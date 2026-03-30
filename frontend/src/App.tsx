@@ -80,11 +80,12 @@ export default function App() {
             <Route path="modulos" element={<RevendaModulesPage />} />
             <Route path="saude" element={<RevendaHealthPage />} />
             <Route path="auditoria" element={<RevendaAuditPage />} />
+            <Route path="plataforma" element={<PlatformPage />} />
           </Route>
           <Route path="assinatura" element={<Navigate to="/revenda" replace />} />
           <Route path="planos" element={<Navigate to="/revenda" replace />} />
           <Route path="admin" element={<AdminPage />} />
-          <Route path="plataforma" element={<PlatformPage />} />
+          <Route path="plataforma" element={<Navigate to="/revenda/plataforma" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
       </Routes>

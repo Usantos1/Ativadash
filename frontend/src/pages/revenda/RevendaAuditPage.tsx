@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHint } from "@/pages/revenda/PageHint";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fetchResellerAudit, type ResellerAuditRow } from "@/lib/revenda-api";
@@ -60,18 +61,14 @@ export function RevendaAuditPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-semibold tracking-tight">Auditoria</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Trilha de ações administrativas do painel master (matriz). Filtre por ação, tipo de entidade, autor e intervalo
-          (ISO 8601).
-        </p>
+      <div className="flex items-center gap-1">
+        <h2 className="text-lg font-semibold tracking-tight">Auditoria</h2>
+        <PageHint>Histórico de mudanças. Datas em ISO 8601 (ex.: 2026-03-01T00:00:00.000Z).</PageHint>
       </div>
 
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Filtros</CardTitle>
-          <CardDescription>Datas em formato ISO, ex.: 2025-03-01T00:00:00.000Z</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
           <div className="space-y-1">
@@ -135,7 +132,6 @@ export function RevendaAuditPage() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Eventos</CardTitle>
-          <CardDescription>Ordenados do mais recente ao mais antigo.</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (

@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { ASSIGNABLE_MEMBER_ROLES } from "../constants/roles.js";
 
+const assignableRoleSchema = z.enum(ASSIGNABLE_MEMBER_ROLES);
 export const createClientSchema = z.object({
   name: z.string().min(1, "Nome obrigatório").max(200),
 });
@@ -35,12 +37,39 @@ export const updateLaunchSchema = z.object({
 export const createInvitationSchema = z.object({
   email: z.string().email("E-mail inválido"),
   role: z.enum(["admin", "member", "media_manager", "analyst"]).optional(),
+  /** Workspace onde o membro será vinculado (filho na hierarquia). Se omitido, usa a org do JWT. */
+  organizationId: z.string().min(1).optional(),
 });
 
+/** @deprecated use patchWorkspaceMemberSchema */
 export const updateMemberRoleSchema = z.object({
   role: z.enum(["admin", "member", "media_manager", "analyst"]),
 });
 
+export const createWorkspaceMemberSchema = z.object({
+  email: z.string().email("E-mail inválido"),
+  name: z.string().min(1, "Nome obrigatório").max(200),
+  password: z.string().min(8, "Senha deve ter pelo menos 8 caracteres").max(128),
+  role: assignableRoleSchema,
+});
+
+export const patchWorkspaceMemberSchema = z
+  .object({
+    role: assignableRoleSchema.optional(),
+    email: z.string().email("E-mail inválido").optional(),
+    name: z.string().min(1).max(200).optional(),
+    suspended: z.boolean().optional(),
+  })
+  .refine(
+    (b) =>
+      b.role !== undefined || b.email !== undefined || b.name !== undefined || b.suspended !== undefined,
+    { message: "Informe pelo menos um campo para atualizar" }
+  );
+
+export const resetWorkspaceMemberPasswordSchema = z.object({
+  newPassword: z.string().min(8, "Senha deve ter pelo menos 8 caracteres").max(128),
+  forcePasswordChange: z.boolean().optional(),
+});
 export const updateProfileSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres").max(120),
 });

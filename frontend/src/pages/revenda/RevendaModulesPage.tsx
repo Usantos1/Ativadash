@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHint } from "@/pages/revenda/PageHint";
 
 const EXAMPLES = [
   "marketing",
@@ -19,30 +20,24 @@ const EXAMPLES = [
 
 export function RevendaModulesPage() {
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-semibold tracking-tight">Módulos e limites</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Flags de módulo vêm do plano e podem ser parcialmente sobrescritas por organização (
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">featureOverrides</code>
-          ). Limites numéricos podem ser ajustados via override de assinatura na governança (API{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">limitsOverride</code>).
-        </p>
+    <div className="space-y-4">
+      <div className="flex items-center gap-1">
+        <h2 className="text-lg font-semibold tracking-tight">Limites</h2>
+        <PageHint>
+          Nomes usados nos planos. Por conta, edite o cliente ou a agência. API:{" "}
+          <code className="rounded bg-muted px-1">PATCH …/governance</code>.
+        </PageHint>
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Chaves de recurso (exemplos)</CardTitle>
-          <CardDescription>
-            O merge é feito no servidor sobre o JSON <code className="text-xs">features</code> do plano. Use o painel de
-            governança (via API) para gravar overrides por empresa.
-          </CardDescription>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Chaves</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
           {EXAMPLES.map((k) => (
             <span
               key={k}
-              className="rounded-full border border-border/70 bg-muted/40 px-3 py-1 text-xs font-medium text-foreground"
+              className="rounded-full border border-border/70 bg-muted/40 px-2.5 py-0.5 text-xs font-medium text-foreground"
             >
               {k}
             </span>
@@ -50,19 +45,15 @@ export function RevendaModulesPage() {
         </CardContent>
       </Card>
 
-      <p className="text-sm text-muted-foreground">
-        Para aplicar overrides hoje, use{" "}
-        <Link to="/revenda/empresas" className="font-semibold text-primary underline-offset-4 hover:underline">
-          Empresas
+      <p className="text-xs text-muted-foreground">
+        Atalho:{" "}
+        <Link to="/revenda/empresas" className="font-medium text-primary underline-offset-4 hover:underline">
+          Clientes
         </Link>{" "}
-        ou{" "}
-        <Link to="/revenda/agencias" className="font-semibold text-primary underline-offset-4 hover:underline">
+        ·{" "}
+        <Link to="/revenda/agencias" className="font-medium text-primary underline-offset-4 hover:underline">
           Agências
-        </Link>{" "}
-        e a API <code className="rounded bg-muted px-1 text-xs">PATCH /api/reseller/children/:id/governance</code> com{" "}
-        <code className="rounded bg-muted px-1 text-xs">featureOverrides</code> e{" "}
-        <code className="rounded bg-muted px-1 text-xs">limitsOverride</code>. Editor visual dedicado pode ser adicionado
-        na sequência.
+        </Link>
       </p>
     </div>
   );

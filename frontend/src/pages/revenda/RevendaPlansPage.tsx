@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Copy, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { PageHint } from "@/pages/revenda/PageHint";
 import {
   resellerCreatePlan,
   resellerDeletePlan,
@@ -340,13 +341,10 @@ export function RevendaPlansPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight">Planos e assinaturas</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Catálogo completo: criar, editar, ativar/desativar, duplicar e excluir (quando não houver uso). Limites e módulos
-            base alimentam a herança nas empresas; overrides ficam na governança de cada filial.
-          </p>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-1">
+          <h2 className="text-lg font-semibold tracking-tight">Planos</h2>
+          <PageHint>Catálogo da matriz. Ajuste fino por conta: edição do cliente ou da agência.</PageHint>
         </div>
         <Button type="button" className="gap-2" onClick={openCreate}>
           <Plus className="h-4 w-4" />
@@ -363,7 +361,6 @@ export function RevendaPlansPage() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Catálogo</CardTitle>
-          <CardDescription>Inclui planos inativos. Para atribuição rápida em telas filhas, só entram os ativos.</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (

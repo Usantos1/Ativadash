@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Loader2, MailPlus, Pencil, KeyRound, UserPlus, UserMinus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PageHint } from "@/pages/revenda/PageHint";
 import {
   fetchResellerEcosystemOrganizations,
   fetchResellerEcosystemUsers,
@@ -42,6 +44,7 @@ function roleLabelPt(role: string): string {
 }
 
 export function RevendaUsersPage() {
+  const [searchParams] = useSearchParams();
   const [users, setUsers] = useState<EcosystemUserRow[]>([]);
   const [orgs, setOrgs] = useState<{ id: string; name: string; isMatrix: boolean }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -119,6 +122,14 @@ export function RevendaUsersPage() {
   useEffect(() => {
     void loadOrgs();
   }, [loadOrgs]);
+
+  useEffect(() => {
+    const oid = searchParams.get("organizationId");
+    if (!oid?.trim()) return;
+    setFilterOrgId(oid.trim());
+    setCreateOrgId(oid.trim());
+    setInviteOrgId(oid.trim());
+  }, [searchParams]);
 
   useEffect(() => {
     const delay = q.trim() ? 320 : 0;
@@ -245,13 +256,13 @@ export function RevendaUsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight">Usuários do ecossistema</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Membros da matriz e de todas as empresas filhas. Criação com senha, convite por e-mail, edição de conta,
-            redefinição de senha e remoção de vínculo.
-          </p>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-1">
+          <h2 className="text-lg font-semibold tracking-tight">Usuários</h2>
+          <PageHint>
+            Acesso à matriz e às contas filhas: convite por e-mail, cadastro com senha, papel, suspensão e remoção do
+            vínculo.
+          </PageHint>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="secondary" className="gap-2" onClick={() => setInviteOpen(true)}>
@@ -274,7 +285,6 @@ export function RevendaUsersPage() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Filtros</CardTitle>
-          <CardDescription>Empresa, tipo, papel, suspensão e busca.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
           <Select value={filterOrgId} onValueChange={setFilterOrgId}>
@@ -341,8 +351,7 @@ export function RevendaUsersPage() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Listagem</CardTitle>
-          <CardDescription>{users.length} vínculo(s) (usuário × empresa).</CardDescription>
+          <CardTitle className="text-base">Pessoas ({users.length})</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (

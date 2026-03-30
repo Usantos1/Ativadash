@@ -26,7 +26,9 @@ router.delete("/launches/:id", workspace.launchesDelete);
 router.get("/goals", workspace.goalsList);
 
 router.get("/members", workspace.membersList);
-router.patch("/members/:userId", workspace.membersPatchRole);
+router.post("/members", workspace.membersCreate);
+router.patch("/members/:userId", workspace.membersPatch);
+router.post("/members/:userId/password", workspace.membersResetPassword);
 router.delete("/members/:userId", workspace.membersRemove);
 
 router.post("/invitations", workspace.invitationsCreate);

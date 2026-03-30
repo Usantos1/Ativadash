@@ -122,6 +122,15 @@ export async function listPendingInvitations(organizationId: string, actorUserId
   }));
 }
 
+/** Convite ainda não aceito (inclui expirado — pode ser revogado para limpar a lista). */
+export async function getPendingInvitationOrganizationId(invitationId: string): Promise<string | null> {
+  const row = await prisma.invitation.findFirst({
+    where: { id: invitationId, acceptedAt: null },
+    select: { organizationId: true },
+  });
+  return row?.organizationId ?? null;
+}
+
 export async function revokeInvitation(
   organizationId: string,
   actorUserId: string,

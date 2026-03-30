@@ -15,6 +15,9 @@ import {
   deleteLaunch,
   listGoals,
   listOrganizationMembers,
+  createWorkspaceDirectMember,
+  patchWorkspaceMember,
+  resetWorkspaceMemberPassword,
 } from "../services/workspace.service.js";
 import {
   createClientSchema,
@@ -24,16 +27,31 @@ import {
   createLaunchSchema,
   updateLaunchSchema,
   createInvitationSchema,
-  updateMemberRoleSchema,
+  createWorkspaceMemberSchema,
+  patchWorkspaceMemberSchema,
+  resetWorkspaceMemberPasswordSchema,
 } from "../validators/workspace.validator.js";
 import {
   createInvitation,
   listPendingInvitations,
   revokeInvitation,
+  getPendingInvitationOrganizationId,
 } from "../services/invitations.service.js";
-import { updateMemberRole, removeMember } from "../services/members.service.js";
+import { removeMember } from "../services/members.service.js";
+import { assertManagedDescendantOrganization } from "../services/organizations.service.js";
 
 type AuthRequest = Request & { user: JwtPayload };
+
+/** Query `organizationId`: org alvo (filha); padrão = org do JWT. */
+async function scopedWorkspaceOrganizationId(req: AuthRequest): Promise<string> {
+  const jwtOrg = req.user.organizationId;
+  const raw = typeof req.query.organizationId === "string" ? req.query.organizationId.trim() : "";
+  const target = raw.length > 0 ? raw : jwtOrg;
+  if (target !== jwtOrg) {
+    await assertManagedDescendantOrganization(jwtOrg, target);
+  }
+  return target;
+}
 
 function parseDateInput(v: string | null | undefined): Date | null | undefined {
   if (v === undefined) return undefined;
@@ -233,36 +251,44 @@ export async function goalsList(req: Request, res: Response) {
 // —— Members ——
 
 export async function membersList(req: Request, res: Response) {
-  const { organizationId } = (req as AuthRequest).user;
-  const list = await listOrganizationMembers(organizationId);
-  return res.json(list);
+  const authReq = req as AuthRequest;
+  try {
+    const orgId = await scopedWorkspaceOrganizationId(authReq);
+    const list = await listOrganizationMembers(orgId);
+    return res.json(list);
+  } catch (e) {
+    return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
+  }
 }
 
 export async function invitationsCreate(req: Request, res: Response) {
-  const { organizationId, userId } = (req as AuthRequest).user;
+  const { organizationId: jwtOrg, userId } = (req as AuthRequest).user;
   const parsed = createInvitationSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Dados inválidos" });
   }
+  const bodyOrg = parsed.data.organizationId?.trim();
+  const targetOrg = bodyOrg && bodyOrg.length > 0 ? bodyOrg : jwtOrg;
   try {
-    const out = await createInvitation(
-      organizationId,
-      userId,
-      parsed.data.email,
-      parsed.data.role ?? "member"
-    );
+    if (targetOrg !== jwtOrg) {
+      await assertManagedDescendantOrganization(jwtOrg, targetOrg);
+    }
+    const out = await createInvitation(targetOrg, userId, parsed.data.email, parsed.data.role ?? "member");
     return res.status(201).json(out);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro ao convidar";
-    const code = msg.includes("Limite") || msg.includes("plano") ? 403 : 400;
+    const code =
+      msg.includes("Limite") || msg.includes("plano") || msg.includes("hierarquia") ? 403 : 400;
     return res.status(code).json({ message: msg });
   }
 }
 
 export async function invitationsList(req: Request, res: Response) {
-  const { organizationId, userId } = (req as AuthRequest).user;
+  const authReq = req as AuthRequest;
+  const { userId } = authReq.user;
   try {
-    const list = await listPendingInvitations(organizationId, userId);
+    const orgId = await scopedWorkspaceOrganizationId(authReq);
+    const list = await listPendingInvitations(orgId, userId);
     return res.json(list);
   } catch (e) {
     return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
@@ -270,10 +296,18 @@ export async function invitationsList(req: Request, res: Response) {
 }
 
 export async function invitationsRevoke(req: Request, res: Response) {
-  const { organizationId, userId } = (req as AuthRequest).user;
+  const { organizationId: jwtOrg, userId } = (req as AuthRequest).user;
   const { id } = req.params;
+  if (!id) {
+    return res.status(400).json({ message: "ID obrigatório" });
+  }
   try {
-    const ok = await revokeInvitation(organizationId, userId, id);
+    const invOrg = await getPendingInvitationOrganizationId(id);
+    if (!invOrg) {
+      return res.status(404).json({ message: "Convite não encontrado" });
+    }
+    await assertManagedDescendantOrganization(jwtOrg, invOrg);
+    const ok = await revokeInvitation(invOrg, userId, id);
     if (!ok) return res.status(404).json({ message: "Convite não encontrado" });
     return res.status(204).send();
   } catch (e) {
@@ -281,26 +315,79 @@ export async function invitationsRevoke(req: Request, res: Response) {
   }
 }
 
-export async function membersPatchRole(req: Request, res: Response) {
-  const { organizationId, userId } = (req as AuthRequest).user;
-  const { userId: targetUserId } = req.params;
-  const parsed = updateMemberRoleSchema.safeParse(req.body);
+export async function membersCreate(req: Request, res: Response) {
+  const authReq = req as AuthRequest;
+  const { userId } = authReq.user;
+  const parsed = createWorkspaceMemberSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Dados inválidos" });
   }
-  const result = await updateMemberRole(organizationId, userId, targetUserId, parsed.data.role);
-  if (!result.ok) {
-    return res.status(400).json({ message: result.message });
+  try {
+    const orgId = await scopedWorkspaceOrganizationId(authReq);
+    const row = await createWorkspaceDirectMember(orgId, userId, parsed.data);
+    return res.status(201).json(row);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Erro ao criar membro";
+    const code =
+      msg.includes("Limite") || msg.includes("plano") || msg.includes("hierarquia") ? 403 : 400;
+    return res.status(code).json({ message: msg });
   }
-  return res.json({ success: true });
+}
+
+export async function membersPatch(req: Request, res: Response) {
+  const authReq = req as AuthRequest;
+  const { userId } = authReq.user;
+  const { userId: targetUserId } = req.params;
+  const parsed = patchWorkspaceMemberSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Dados inválidos" });
+  }
+  try {
+    const orgId = await scopedWorkspaceOrganizationId(authReq);
+    const result = await patchWorkspaceMember(orgId, userId, targetUserId, parsed.data);
+    if (!result.ok) {
+      return res.status(400).json({ message: result.message });
+    }
+    return res.json({ success: true });
+  } catch (e) {
+    return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
+  }
+}
+
+export async function membersResetPassword(req: Request, res: Response) {
+  const authReq = req as AuthRequest;
+  const { userId } = authReq.user;
+  const { userId: targetUserId } = req.params;
+  const parsed = resetWorkspaceMemberPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Dados inválidos" });
+  }
+  try {
+    const orgId = await scopedWorkspaceOrganizationId(authReq);
+    await resetWorkspaceMemberPassword(orgId, userId, targetUserId, parsed.data.newPassword, {
+      forcePasswordChange: parsed.data.forcePasswordChange,
+    });
+    return res.json({ success: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Erro";
+    const status =
+      msg.includes("perfil") || msg.includes("não encontrado") || msg.includes("Membro não") ? 400 : 403;
+    return res.status(status).json({ message: msg });
+  }
 }
 
 export async function membersRemove(req: Request, res: Response) {
-  const { organizationId, userId } = (req as AuthRequest).user;
+  const authReq = req as AuthRequest;
+  const { userId } = authReq.user;
   const { userId: targetUserId } = req.params;
-  const result = await removeMember(organizationId, userId, targetUserId);
-  if (!result.ok) {
-    return res.status(400).json({ message: result.message });
+  try {
+    const orgId = await scopedWorkspaceOrganizationId(authReq);
+    const result = await removeMember(orgId, userId, targetUserId);
+    if (!result.ok) {
+      return res.status(400).json({ message: result.message });
+    }
+    return res.status(204).send();
+  } catch (e) {
+    return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
   }
-  return res.status(204).send();
 }

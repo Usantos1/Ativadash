@@ -20,7 +20,6 @@ import {
   X,
   Users2,
   Layers,
-  Shield,
   SlidersHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -79,11 +78,11 @@ const FULL_NAV_GROUPS: NavGroup[] = [
 
 function buildNavGroups(
   variant: SidebarNavVariant,
-  opts: { showMatrizNav: boolean; platformAdmin: boolean }
+  opts: { showMatrizNav: boolean }
 ): NavGroup[] {
   const contaItems: NavItem[] = [];
   if (opts.showMatrizNav) {
-    contaItems.push({ to: "/revenda", label: "Matriz e filiais", icon: Layers });
+    contaItems.push({ to: "/revenda", label: "Revenda", icon: Layers });
   }
   contaItems.push({ to: "/configuracoes", label: "Configurações", icon: Settings });
 
@@ -137,21 +136,12 @@ function NavBlock({
 }) {
   const user = useAuthStore((s) => s.user);
   const memberships = useAuthStore((s) => s.memberships);
-  const platformAdmin = user?.platformAdmin === true;
   const showMatrizNav = canAccessMatrizResellerNav(user ?? null, memberships);
 
   const variant = resolveSidebarNavVariant(user ?? null);
-  const baseNav = buildNavGroups(variant, { showMatrizNav, platformAdmin });
+  const baseNav = buildNavGroups(variant, { showMatrizNav });
 
-  const groups: NavGroup[] = platformAdmin
-    ? [
-        ...baseNav,
-        {
-          label: "Ativa Dash (interno)",
-          items: [{ to: "/plataforma", label: "Admin global do produto", icon: Shield }],
-        },
-      ]
-    : baseNav;
+  const groups: NavGroup[] = baseNav;
 
   const navItemClass = (active: boolean) =>
     cn(

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Building2, Loader2, Mail, Users2 } from "lucide-react";
+import { Building2, Loader2, Mail, UserPlus, Users2 } from "lucide-react";
 import { ScrollRegion } from "@/components/ui/scroll-region";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import {
   createInvitation,
   revokeInvitation,
   patchMemberRole,
+  createWorkspaceMember,
   removeMember,
   fetchClients,
   type MemberRow,
@@ -59,6 +60,12 @@ export function TeamPage() {
   const [inviteRole, setInviteRole] = useState<"admin" | "member" | "media_manager" | "analyst">("member");
   const [inviteBusy, setInviteBusy] = useState(false);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [regName, setRegName] = useState("");
+  const [regEmail, setRegEmail] = useState("");
+  const [regPassword, setRegPassword] = useState("");
+  const [regPassword2, setRegPassword2] = useState("");
+  const [regRole, setRegRole] = useState<"admin" | "member" | "media_manager" | "analyst">("member");
+  const [regBusy, setRegBusy] = useState(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [detailMember, setDetailMember] = useState<MemberRow | null>(null);
 
@@ -91,6 +98,37 @@ export function TeamPage() {
   const maxUsersLabel = orgCtx ? formatPlanCap(orgCtx.limits.maxUsers) : "—";
   const planNote =
     orgCtx?.planSource === "parent" ? " Limites herdados da organização matriz." : "";
+
+  async function handleRegister(e: React.FormEvent) {
+    e.preventDefault();
+    setActionMsg(null);
+    if (regPassword.length < 8) {
+      setActionMsg("A senha deve ter pelo menos 8 caracteres.");
+      return;
+    }
+    if (regPassword !== regPassword2) {
+      setActionMsg("Confirmação da senha não confere.");
+      return;
+    }
+    setRegBusy(true);
+    try {
+      await createWorkspaceMember({
+        email: regEmail.trim(),
+        name: regName.trim(),
+        password: regPassword,
+        role: regRole,
+      });
+      setRegName("");
+      setRegEmail("");
+      setRegPassword("");
+      setRegPassword2("");
+      await load();
+    } catch (err) {
+      setActionMsg(err instanceof Error ? err.message : "Erro ao cadastrar");
+    } finally {
+      setRegBusy(false);
+    }
+  }
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault();
@@ -247,6 +285,97 @@ export function TeamPage() {
         ) : null}
       </div>
 
+      <div className="overflow-hidden rounded-2xl border border-border/50 bg-card/40 shadow-[var(--shadow-surface-sm)]">
+        <div className="border-b border-border/45 px-4 py-3 sm:px-5">
+          <h2 className="text-sm font-bold tracking-tight text-foreground">Cadastrar com senha</h2>
+          <p className="text-xs text-muted-foreground">
+            Cria o usuário e o vínculo na hora, sem convite por link. No primeiro acesso pode ser solicitada troca de
+            senha.
+          </p>
+        </div>
+        <form onSubmit={handleRegister} className="flex flex-col gap-3 p-4 sm:flex-wrap sm:p-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="reg-name" className="text-xs font-semibold">
+                Nome
+              </Label>
+              <Input
+                id="reg-name"
+                value={regName}
+                onChange={(ev) => setRegName(ev.target.value)}
+                required
+                className="h-10 rounded-xl border-border/60"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="reg-email" className="text-xs font-semibold">
+                E-mail
+              </Label>
+              <Input
+                id="reg-email"
+                type="email"
+                value={regEmail}
+                onChange={(ev) => setRegEmail(ev.target.value)}
+                required
+                className="h-10 rounded-xl border-border/60"
+              />
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="reg-pass" className="text-xs font-semibold">
+                Senha
+              </Label>
+              <Input
+                id="reg-pass"
+                type="password"
+                autoComplete="new-password"
+                value={regPassword}
+                onChange={(ev) => setRegPassword(ev.target.value)}
+                required
+                minLength={8}
+                className="h-10 rounded-xl border-border/60"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="reg-pass2" className="text-xs font-semibold">
+                Confirmar senha
+              </Label>
+              <Input
+                id="reg-pass2"
+                type="password"
+                autoComplete="new-password"
+                value={regPassword2}
+                onChange={(ev) => setRegPassword2(ev.target.value)}
+                required
+                minLength={8}
+                className="h-10 rounded-xl border-border/60"
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="w-full space-y-1.5 sm:w-48">
+              <Label className="text-xs font-semibold">Papel</Label>
+              <Select value={regRole} onValueChange={(v) => setRegRole(v as typeof regRole)}>
+                <SelectTrigger className="h-10 rounded-xl border-border/60">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="member">Membro</SelectItem>
+                  <SelectItem value="analyst">Analista</SelectItem>
+                  <SelectItem value="media_manager">Gestor de mídia</SelectItem>
+                  <SelectItem value="admin">Administrador</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button type="submit" disabled={regBusy} className="h-10 shrink-0 rounded-xl sm:min-w-[180px]">
+              {regBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+              Cadastrar usuário
+            </Button>
+          </div>
+        </form>
+      </div>
+
       {invites.length > 0 && (
         <div className="rounded-2xl border border-border/50 bg-card/30 px-4 py-3 sm:px-5">
           <p className="text-sm font-bold text-foreground">Aguardando aceite ({pendingCount})</p>
@@ -310,6 +439,11 @@ export function TeamPage() {
                       <StatusBadge tone={row.source === "agency" ? "alert" : "healthy"} dot>
                         {roleLabel[row.role] ?? row.role}
                       </StatusBadge>
+                      {row.suspended ? (
+                        <StatusBadge tone="alert" dot>
+                          Bloqueado
+                        </StatusBadge>
+                      ) : null}
                       <span className="text-xs text-muted-foreground">
                         Clientes (contas na org): <strong className="text-foreground">{clientAccountsCount ?? "—"}</strong>
                       </span>
@@ -359,6 +493,8 @@ export function TeamPage() {
         member={detailMember}
         linkedClientsCount={clientAccountsCount}
         formatDate={formatMemberDate}
+        currentUserId={currentUserId}
+        onMemberUpdated={() => load()}
       />
     </div>
   );

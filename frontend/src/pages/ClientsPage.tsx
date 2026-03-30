@@ -14,6 +14,7 @@ import {
   Settings,
   TrendingUp,
   UserCog,
+  Users2,
   LogIn,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,7 @@ import {
 import { getWorkspaceHealth } from "@/lib/revenda-workspace-metrics";
 import { OperationsModuleNav } from "@/components/operations/operations-module-nav";
 import { ClientDetailDialog } from "@/components/operations/client-detail-dialog";
+import { ClientWorkspaceTeamDialog } from "@/components/operations/ClientWorkspaceTeamDialog";
 import { useAuthStore } from "@/stores/auth-store";
 import { AGENCY_WORKSPACE_ROLE_LABEL, AGENCY_WORKSPACE_ROLE_ORDER } from "@/lib/agency-workspace-roles";
 import { ApiClientError } from "@/lib/api";
@@ -103,6 +105,7 @@ export function ClientsPage() {
   const [editName, setEditName] = useState("");
   const [editStatus, setEditStatus] = useState<WorkspaceStatus>("ACTIVE");
   const [editSaving, setEditSaving] = useState(false);
+  const [teamRow, setTeamRow] = useState<ChildWorkspaceOperationsRow | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -425,6 +428,16 @@ export function ClientsPage() {
                   </div>
                   <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
                     <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-10 rounded-xl"
+                      disabled={busy}
+                      onClick={() => setTeamRow(row)}
+                    >
+                      <Users2 className="mr-2 h-4 w-4" />
+                      Equipe
+                    </Button>
+                    <Button
                       className="h-10 rounded-xl"
                       disabled={busy}
                       onClick={() => void switchToClient(row.id, "/marketing")}
@@ -455,10 +468,17 @@ export function ClientsPage() {
                           </DropdownMenu.Item>
                           <DropdownMenu.Item
                             className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
+                            onSelect={() => setTeamRow(row)}
+                          >
+                            <Users2 className="h-4 w-4 opacity-70" />
+                            Equipe deste cliente
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Item
+                            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
                             onSelect={() => void switchToClient(row.id, "/usuarios")}
                           >
                             <UserCog className="h-4 w-4 opacity-70" />
-                            Gerenciar acessos
+                            Entrar e abrir Usuários
                           </DropdownMenu.Item>
                           <DropdownMenu.Item
                             className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
@@ -537,6 +557,17 @@ export function ClientsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {teamRow ? (
+        <ClientWorkspaceTeamDialog
+          open={!!teamRow}
+          onOpenChange={(v) => {
+            if (!v) setTeamRow(null);
+          }}
+          workspaceId={teamRow.id}
+          workspaceName={teamRow.name}
+        />
+      ) : null}
 
       {detailRow ? (
         <ClientDetailDialog

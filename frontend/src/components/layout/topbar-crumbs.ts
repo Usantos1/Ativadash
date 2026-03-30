@@ -63,8 +63,28 @@ export function resolveTopbarCrumbs(pathname: string): TopbarCrumb[] {
     ];
   }
   if (p === "/perfil") return [{ label: "Perfil" }];
-  if (p === "/revenda" || p === "/assinatura") return [{ label: "Matriz e filiais" }];
-  if (p === "/plataforma") return [{ label: "Plataforma" }];
+  if (p === "/revenda" || p === "/assinatura") return [{ label: "Revenda" }];
+
+  const revendaSection: Record<string, string> = {
+    "/revenda/empresas": "Clientes",
+    "/revenda/agencias": "Agências",
+    "/revenda/usuarios": "Usuários",
+    "/revenda/planos": "Planos",
+    "/revenda/modulos": "Limites",
+    "/revenda/saude": "Saúde",
+    "/revenda/auditoria": "Auditoria",
+  };
+  if (revendaSection[p]) {
+    return [{ label: "Revenda", href: "/revenda" }, { label: revendaSection[p] }];
+  }
+
+  if (p === "/revenda/plataforma") {
+    return [
+      { label: "Revenda", href: "/revenda" },
+      { label: "Produto (global)" },
+    ];
+  }
+  if (p === "/plataforma") return [{ label: "Revenda", href: "/revenda" }];
   if (p === "/admin") return [{ label: "Administração" }];
 
   return [];
