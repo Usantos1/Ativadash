@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../utils/prisma.js";
+import { isPlatformAdminEmail } from "../utils/platform-admin.js";
 import { appendResellerAudit } from "../utils/reseller-audit.js";
 import { assertDirectOrgAdmin } from "./auth.service.js";
 import { demoteOwnerRoleForMove } from "../constants/roles.js";
@@ -36,13 +37,19 @@ const SALT_ROUNDS = 10;
 type GovernanceBody = z.infer<typeof resellerGovernancePatchSchema>;
 
 /**
- * Painel revenda / APIs de matriz: o JWT deve estar no contexto da **raiz** do ecossistema
- * (sem `parentOrganizationId`), nunca numa filial nem num workspace de cliente.
+ * Painel revenda / APIs /reseller/*: JWT na org raiz, tipo MATRIX (igual a `matrizNavEligible`),
+ * exceto staff global da plataforma em contexto de suporte (DIRECT raiz ainda permitido só para eles).
  */
 export async function resolveResellerMatrixOrganizationId(
   userId: string,
   activeOrganizationId: string
 ): Promise<string> {
+  const actor = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
+    select: { email: true },
+  });
+  const platformStaff = actor?.email ? isPlatformAdminEmail(actor.email) : false;
+
   const row: { id: string; parentOrganizationId: string | null; organizationKind: string } | null =
     await prisma.organization.findFirst({
       where: { id: activeOrganizationId, deletedAt: null },
@@ -56,6 +63,9 @@ export async function resolveResellerMatrixOrganizationId(
   }
   if (row.organizationKind === "CLIENT_WORKSPACE") {
     throw new Error("Esta área não está disponível para workspaces de cliente.");
+  }
+  if (!platformStaff && row.organizationKind !== "MATRIX") {
+    throw new Error("Apenas a conta matriz (tipo MATRIX) pode usar o painel de revenda e o catálogo de planos.");
   }
   await assertDirectOrgAdmin(userId, row.id);
   await assertRootMayResellPlans(row.id, userId);
