@@ -8,6 +8,10 @@
 # Opcional: URL da API para o build Vite (padrão produção)
 #   VITE_API_URL=https://api.ativadash.com /ativadash/deploy.sh
 #
+# Se o git pull falhar ("local changes would be overwritten" em deploy.sh):
+#   cd /ativadash && git checkout -- deploy.sh && git pull origin main && ./deploy.sh
+# (Descarta edições locais só nesse ficheiro; não use se tiveres customizações a preservar — use stash.)
+#
 set -euo pipefail
 
 # Raiz do repo = pasta onde está este script (ex.: /ativadash)
