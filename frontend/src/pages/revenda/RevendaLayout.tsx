@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/auth-store";
+import { canAccessMatrizResellerNav } from "@/lib/navigation-mode";
 import { LayoutDashboard, Building2, Users, CreditCard, Puzzle, HeartPulse, ScrollText, Store } from "lucide-react";
 import { AnalyticsPageHeader } from "@/components/analytics/AnalyticsPageHeader";
 import { cn } from "@/lib/utils";
@@ -24,21 +25,15 @@ const NAV: {
 export function RevendaLayout() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
+  const memberships = useAuthStore((s) => s.memberships);
   const accessToken = useAuthStore((s) => s.accessToken);
 
   useEffect(() => {
     if (!accessToken || !user) return;
-    if (user.platformAdmin) return;
-    /** Filial: painel matriz só na raiz do ecossistema. */
-    if (user.parentOrganizationId != null) {
-      navigate("/dashboard", { replace: true });
-      return;
-    }
-    if (user.rootResellerPartner === true) return;
-    if (user.rootResellerPartner === false) {
+    if (!canAccessMatrizResellerNav(user, memberships)) {
       navigate("/dashboard", { replace: true });
     }
-  }, [accessToken, user, navigate]);
+  }, [accessToken, user, memberships, navigate]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-6 pb-10">

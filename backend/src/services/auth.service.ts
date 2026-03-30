@@ -42,6 +42,8 @@ export type MembershipSummaryDto = {
   role: string;
   organization: AuthOrganizationDto;
   organizationKind: import("@prisma/client").OrganizationKind;
+  /** Filial na hierarquia quando não nulo (espelha a org do vínculo). */
+  parentOrganizationId: string | null;
 };
 
 export type AuthProfileExtendedDto = AuthUserDto & {
@@ -115,6 +117,7 @@ async function listMembershipSummaries(userId: string): Promise<MembershipSummar
         slug: m.organization.slug,
       },
       organizationKind: m.organization.organizationKind,
+      parentOrganizationId: m.organization.parentOrganizationId,
     }));
 }
 

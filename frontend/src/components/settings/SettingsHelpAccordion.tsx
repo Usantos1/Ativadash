@@ -1,11 +1,17 @@
 import { Link } from "react-router-dom";
 import { ChevronDown, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/stores/auth-store";
+import { canAccessMatrizResellerNav } from "@/lib/navigation-mode";
 
 /**
  * Ajuda contextual compacta. Mantém id `como-funciona-conta` para âncoras de outras telas.
  */
 export function SettingsHelpAccordion({ className }: { className?: string }) {
+  const user = useAuthStore((s) => s.user);
+  const memberships = useAuthStore((s) => s.memberships);
+  const showRevendaLink = canAccessMatrizResellerNav(user, memberships);
+
   return (
     <details
       id="como-funciona-conta"
@@ -47,10 +53,14 @@ export function SettingsHelpAccordion({ className }: { className?: string }) {
           <li>
             <span className="font-medium text-foreground">Workspaces filhos (revenda)</span> — ambientes isolados para
             cada cliente; operação em{" "}
-            <Link to="/revenda" className="font-medium text-primary underline-offset-4 hover:underline">
-              Gestão de workspaces
-            </Link>
-            . Nome da matriz em{" "}
+            {showRevendaLink ? (
+              <Link to="/revenda" className="font-medium text-primary underline-offset-4 hover:underline">
+                Gestão de workspaces
+              </Link>
+            ) : (
+              <span className="font-medium text-foreground">Gestão de workspaces</span>
+            )}{" "}
+            (na empresa raiz). Nome da matriz em{" "}
             <Link to="/configuracoes/empresa" className="font-medium text-primary underline-offset-4 hover:underline">
               Empresa
             </Link>

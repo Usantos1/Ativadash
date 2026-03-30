@@ -36,30 +36,30 @@ const SALT_ROUNDS = 10;
 type GovernanceBody = z.infer<typeof resellerGovernancePatchSchema>;
 
 /**
- * JWT e contexto ativo podem estar na matriz ou numa filial (após "entrar" na empresa).
- * O painel master sempre opera sobre a matriz: resolve o ID raiz e exige admin/owner nela.
+ * Painel revenda / APIs de matriz: o JWT deve estar no contexto da **raiz** do ecossistema
+ * (sem `parentOrganizationId`), nunca numa filial nem num workspace de cliente.
  */
 export async function resolveResellerMatrixOrganizationId(
   userId: string,
   activeOrganizationId: string
 ): Promise<string> {
-  let walk: string | null = activeOrganizationId;
-  for (let i = 0; i < 32 && walk; i++) {
-    const row: { id: string; parentOrganizationId: string | null } | null = await prisma.organization.findFirst({
-      where: { id: walk, deletedAt: null },
-      select: { id: true, parentOrganizationId: true },
+  const row: { id: string; parentOrganizationId: string | null; organizationKind: string } | null =
+    await prisma.organization.findFirst({
+      where: { id: activeOrganizationId, deletedAt: null },
+      select: { id: true, parentOrganizationId: true, organizationKind: true },
     });
-    if (!row) {
-      throw new Error("Organização não encontrada");
-    }
-    if (row.parentOrganizationId === null) {
-      await assertDirectOrgAdmin(userId, row.id);
-      await assertRootMayResellPlans(row.id, userId);
-      return row.id;
-    }
-    walk = row.parentOrganizationId;
+  if (!row) {
+    throw new Error("Organização não encontrada");
   }
-  throw new Error("Hierarquia de organizações inválida ou muito profunda");
+  if (row.parentOrganizationId !== null) {
+    throw new Error("Painel da matriz só pode ser usado no contexto da empresa raiz.");
+  }
+  if (row.organizationKind === "CLIENT_WORKSPACE") {
+    throw new Error("Esta área não está disponível para workspaces de cliente.");
+  }
+  await assertDirectOrgAdmin(userId, row.id);
+  await assertRootMayResellPlans(row.id, userId);
+  return row.id;
 }
 
 async function ecosystemOrganizationIds(matrixId: string): Promise<string[]> {

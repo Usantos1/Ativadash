@@ -59,6 +59,35 @@ export function getActiveMembership(
   return memberships.find((m) => m.organizationId === oid) ?? null;
 }
 
+/**
+ * Painel /revenda ("Matriz e filiais"): só staff global, tenant raiz (sem pai) e tipo operacional da matriz.
+ * Não usar só `rootResellerPartner` — ele reflete a raiz do ecossistema e é verdadeiro também em workspaces cliente.
+ */
+export function canAccessMatrizResellerNav(
+  user: User | null,
+  memberships: MembershipSummary[] | null
+): boolean {
+  if (!user?.organizationId) return false;
+  if (user.platformAdmin === true) return true;
+
+  const active = getActiveMembership(user, memberships);
+  const parentFromMembership = active?.parentOrganizationId;
+  const parentOrganizationId =
+    parentFromMembership !== undefined ? parentFromMembership : (user.parentOrganizationId ?? null);
+
+  if (parentOrganizationId != null) return false;
+
+  const kindFromMembership = active?.organizationKind;
+  const organizationKind =
+    kindFromMembership === "MATRIX" || kindFromMembership === "DIRECT" || kindFromMembership === "CLIENT_WORKSPACE"
+      ? kindFromMembership
+      : resolveOrganizationKind(user);
+
+  if (organizationKind === "CLIENT_WORKSPACE") return false;
+  if (organizationKind !== "MATRIX" && organizationKind !== "DIRECT") return false;
+  return user.rootResellerPartner === true;
+}
+
 /** Rota `/admin`: só staff global ou admins no modo operacional completo (não filial/cliente). */
 export function canAccessAdminPage(
   user: User | null,

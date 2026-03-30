@@ -16,6 +16,8 @@ export interface MembershipSummary {
   organization: OrganizationSummary;
   /** Tipo de tenant (enviado pelo GET /auth/me). */
   organizationKind?: MembershipOrganizationKind;
+  /** Quando não nulo, esta org do vínculo é filha na hierarquia (matriz/agência). */
+  parentOrganizationId?: string | null;
 }
 
 export interface User {

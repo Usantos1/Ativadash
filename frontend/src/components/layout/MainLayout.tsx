@@ -15,6 +15,7 @@ import {
   canAccessAdminPage,
   shouldEnforceAgencyBranchRouteGuard,
   shouldEnforceClientWorkspaceClientsGuard,
+  canAccessMatrizResellerNav,
 } from "@/lib/navigation-mode";
 
 export function MainLayout() {
@@ -74,6 +75,12 @@ export function MainLayout() {
     if (!accessToken || !user) return;
     const mode = resolveAppNavMode(user);
     const path = location.pathname;
+    if (path === "/revenda" || path.startsWith("/revenda/")) {
+      if (!canAccessMatrizResellerNav(user, memberships)) {
+        navigate("/dashboard", { replace: true });
+        return;
+      }
+    }
     if (shouldEnforceAgencyBranchRouteGuard(user) && !isPathAllowedForAgencyBranch(path)) {
       navigate("/dashboard", { replace: true });
       return;

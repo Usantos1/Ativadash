@@ -25,7 +25,11 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { resolveSidebarNavVariant, type SidebarNavVariant } from "@/lib/navigation-mode";
+import {
+  resolveSidebarNavVariant,
+  canAccessMatrizResellerNav,
+  type SidebarNavVariant,
+} from "@/lib/navigation-mode";
 
 const SIDEBAR_WIDTH = 220;
 const SIDEBAR_COLLAPSED = 56;
@@ -132,10 +136,9 @@ function NavBlock({
   onLinkClick?: () => void;
 }) {
   const user = useAuthStore((s) => s.user);
+  const memberships = useAuthStore((s) => s.memberships);
   const platformAdmin = user?.platformAdmin === true;
-  const rootResellerPartner = user?.rootResellerPartner === true;
-  const isActiveOrgRoot = user?.parentOrganizationId == null;
-  const showMatrizNav = platformAdmin || (rootResellerPartner && isActiveOrgRoot);
+  const showMatrizNav = canAccessMatrizResellerNav(user ?? null, memberships);
 
   const variant = resolveSidebarNavVariant(user ?? null);
   const baseNav = buildNavGroups(variant, { showMatrizNav, platformAdmin });

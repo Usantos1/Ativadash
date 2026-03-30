@@ -36,7 +36,7 @@ import {
   type MemberRow,
   type ClientAccount,
 } from "@/lib/workspace-api";
-import { resolveSidebarNavVariant } from "@/lib/navigation-mode";
+import { resolveSidebarNavVariant, canAccessMatrizResellerNav } from "@/lib/navigation-mode";
 
 const ROLE_QUICK: Record<string, string> = {
   owner: "Proprietário",
@@ -534,7 +534,7 @@ export function SettingsHubPage() {
                 <Button size="sm" className="h-8 rounded-md text-xs whitespace-nowrap" asChild>
                   <Link to="/configuracoes/empresa">Plano</Link>
                 </Button>
-                {(ctx?.rootResellerPartner === true || authUser?.platformAdmin === true) ? (
+                {canAccessMatrizResellerNav(authUser ?? null, memberships) ? (
                   <Button variant="outline" size="sm" className="h-8 rounded-md text-xs whitespace-nowrap" asChild>
                     <Link to="/revenda">Matriz e filiais</Link>
                   </Button>
