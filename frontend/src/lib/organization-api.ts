@@ -138,7 +138,7 @@ export async function createManagedOrganization(
   });
 }
 
-export type AgencyPortfolioCplStatus = "on_target" | "above_target" | "below_target" | "unknown";
+export type AgencyPortfolioAlertLevel = "CRITICAL" | "WARNING" | "HEALTHY" | "PENDING" | "NO_METRICS";
 
 export type AgencyPortfolioChildRow = {
   id: string;
@@ -156,7 +156,8 @@ export type AgencyPortfolioChildRow = {
   integrationStale: boolean;
   metricsOrSyncIssue: boolean;
   targetCpaBrl: number | null;
-  cplStatus: AgencyPortfolioCplStatus;
+  alertLevel: AgencyPortfolioAlertLevel;
+  alertDetail: string | null;
 };
 
 export type AgencyPortfolioResponse = {
@@ -165,6 +166,7 @@ export type AgencyPortfolioResponse = {
     totalSpend30dBrl: number;
     totalLeads30d: number;
     portfolioHealth: { withinTarget: number; withGoal: number };
+    cplCriticalCount: number;
     clientsWithIntegrationAttention: number;
   };
 };

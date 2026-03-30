@@ -1075,7 +1075,8 @@ export async function listChildOrganizationsOperationsDashboard(
   };
 }
 
-export type AgencyPortfolioCplStatus = "on_target" | "above_target" | "below_target" | "unknown";
+/** Alerta de CPL (30d) vs meta em MarketingSettings.targetCpaBrl — não confundir com falhas de integração. */
+export type AgencyPortfolioAlertLevel = "CRITICAL" | "WARNING" | "HEALTHY" | "PENDING" | "NO_METRICS";
 
 export type AgencyPortfolioChildRow = {
   id: string;
@@ -1095,7 +1096,9 @@ export type AgencyPortfolioChildRow = {
   integrationStale: boolean;
   metricsOrSyncIssue: boolean;
   targetCpaBrl: number | null;
-  cplStatus: AgencyPortfolioCplStatus;
+  alertLevel: AgencyPortfolioAlertLevel;
+  /** Texto para tooltip (PT-BR), explicando o nível de alerta de CPL. */
+  alertDetail: string | null;
 };
 
 export type AgencyPortfolioResponse = {
@@ -1104,9 +1107,60 @@ export type AgencyPortfolioResponse = {
     totalSpend30dBrl: number;
     totalLeads30d: number;
     portfolioHealth: { withinTarget: number; withGoal: number };
+    /** Clientes com CPL > 20% acima da meta (30d). */
+    cplCriticalCount: number;
     clientsWithIntegrationAttention: number;
   };
 };
+
+function fmtBrlPortfolio(n: number): string {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
+}
+
+/**
+ * Compara CPL atual (rollup 30d) com meta.
+ * - HEALTHY: CPL <= meta
+ * - WARNING: meta < CPL <= meta * 1,2 (até 20% acima)
+ * - CRITICAL: CPL > meta * 1,2
+ * - PENDING: sem meta definida
+ * - NO_METRICS: meta definida mas sem CPL calculável
+ */
+export function computeAgencyPortfolioCplAlert(
+  targetCpaBrl: number | null,
+  cpl: number | null
+): { alertLevel: AgencyPortfolioAlertLevel; alertDetail: string | null } {
+  if (targetCpaBrl == null || targetCpaBrl <= 0 || !Number.isFinite(targetCpaBrl)) {
+    return {
+      alertLevel: "PENDING",
+      alertDetail:
+        "Defina a meta de CPL (CPA alvo) em Configurações → Marketing do workspace do cliente para ativar alertas.",
+    };
+  }
+  const target = targetCpaBrl;
+  if (cpl == null || !Number.isFinite(cpl)) {
+    return {
+      alertLevel: "NO_METRICS",
+      alertDetail: `Meta ${fmtBrlPortfolio(target)} — sem CPL nos últimos 30 dias (sem leads ou sem dados de mídia agregados).`,
+    };
+  }
+  if (cpl <= target) {
+    return {
+      alertLevel: "HEALTHY",
+      alertDetail: `CPL ${fmtBrlPortfolio(cpl)} está na meta ou abaixo (meta ${fmtBrlPortfolio(target)}).`,
+    };
+  }
+  const pctAbove = ((cpl - target) / target) * 100;
+  if (cpl > target * 1.2) {
+    return {
+      alertLevel: "CRITICAL",
+      alertDetail: `CPL ${fmtBrlPortfolio(cpl)} está ${pctAbove.toFixed(0)}% acima da meta de ${fmtBrlPortfolio(target)} (limite crítico: +20%).`,
+    };
+  }
+  return {
+    alertLevel: "WARNING",
+    alertDetail: `CPL ${fmtBrlPortfolio(cpl)} está ${pctAbove.toFixed(0)}% acima da meta de ${fmtBrlPortfolio(target)} (faixa de atenção: até +20%).`,
+  };
+}
 
 const INTEGRATION_STALE_MS = 72 * 3600 * 1000;
 
@@ -1136,6 +1190,7 @@ export async function listChildOrganizationsPortfolio(
         totalSpend30dBrl: 0,
         totalLeads30d: 0,
         portfolioHealth: { withinTarget: 0, withGoal: 0 },
+        cplCriticalCount: 0,
         clientsWithIntegrationAttention: 0,
       },
     };
@@ -1208,12 +1263,7 @@ export async function listChildOrganizationsPortfolio(
     const metricsOrSyncIssue = metricsUnavailable || staleSync;
     const targetCpaBrl = settingsMap.get(c.id) ?? null;
     const cpl = rollup?.cpl ?? null;
-    let cplStatus: AgencyPortfolioCplStatus = "unknown";
-    if (cpl != null && targetCpaBrl != null && targetCpaBrl > 0) {
-      if (cpl < targetCpaBrl * 0.95) cplStatus = "below_target";
-      else if (cpl <= targetCpaBrl * 1.05) cplStatus = "on_target";
-      else cplStatus = "above_target";
-    }
+    const { alertLevel, alertDetail } = computeAgencyPortfolioCplAlert(targetCpaBrl, cpl);
 
     return {
       id: c.id,
@@ -1231,7 +1281,8 @@ export async function listChildOrganizationsPortfolio(
       integrationStale: staleSync,
       metricsOrSyncIssue,
       targetCpaBrl,
-      cplStatus,
+      alertLevel,
+      alertDetail,
     };
   });
 
@@ -1239,6 +1290,7 @@ export async function listChildOrganizationsPortfolio(
   let totalLeads30d = 0;
   let withGoal = 0;
   let withinTarget = 0;
+  let cplCriticalCount = 0;
   let clientsWithIntegrationAttention = 0;
 
   for (const o of organizations) {
@@ -1246,10 +1298,11 @@ export async function listChildOrganizationsPortfolio(
       totalSpend30dBrl += o.marketing30d.spend;
       totalLeads30d += o.marketing30d.leads;
     }
-    if (o.targetCpaBrl != null && o.marketing30d?.cpl != null) {
+    if (o.targetCpaBrl != null && o.targetCpaBrl > 0 && o.marketing30d?.cpl != null) {
       withGoal += 1;
-      if (o.cplStatus === "on_target" || o.cplStatus === "below_target") withinTarget += 1;
+      if (o.alertLevel === "HEALTHY") withinTarget += 1;
     }
+    if (o.alertLevel === "CRITICAL") cplCriticalCount += 1;
     if (o.metricsOrSyncIssue) clientsWithIntegrationAttention += 1;
   }
 
@@ -1259,6 +1312,7 @@ export async function listChildOrganizationsPortfolio(
       totalSpend30dBrl,
       totalLeads30d,
       portfolioHealth: { withinTarget, withGoal },
+      cplCriticalCount,
       clientsWithIntegrationAttention,
     },
   };
