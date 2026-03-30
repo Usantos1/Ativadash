@@ -95,6 +95,8 @@ export type OrganizationContext = {
   enabledFeatures: EnabledFeatures;
   /** Na raiz do ecossistema: empresa designada para revenda / painel matriz. */
   rootResellerPartner: boolean;
+  /** Mesma regra que GET /auth/me — painel matriz neste contexto. */
+  matrizNavEligible: boolean;
 };
 
 export async function fetchOrganizationContext(): Promise<OrganizationContext> {

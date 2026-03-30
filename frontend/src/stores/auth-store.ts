@@ -33,6 +33,8 @@ export interface User {
   platformAdmin?: boolean;
   /** Raiz do ecossistema habilitada como parceiro de revenda (admin global define na empresa raiz). */
   rootResellerPartner?: boolean;
+  /** Calculado no servidor: pode mostrar menu / painel matriz neste contexto. */
+  matrizNavEligible?: boolean;
   /** Tipo de tenant da organização ativa (JWT). */
   organizationKind?: MembershipOrganizationKind;
   /** Se definido, a org ativa é filha na hierarquia (ex.: agência filial). */

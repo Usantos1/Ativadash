@@ -57,7 +57,7 @@ export function RevendaOverviewPage() {
       const planOk =
         ctx.enabledFeatures.multiOrganization === true &&
         (ctx.limits.maxChildOrganizations == null || ctx.limits.maxChildOrganizations > 0);
-      const partnerOk = ctx.rootResellerPartner === true;
+      const partnerOk = ctx.matrizNavEligible === true;
       const enabled = partnerOk && planOk;
       setCtxOk(enabled);
       if (!partnerOk) setCtxBlock("partner");

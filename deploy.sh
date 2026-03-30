@@ -35,8 +35,20 @@ npm run build
 echo "==> PM2: reiniciar API"
 pm2 restart "$PM2_NAME"
 
-echo "==> Concluído. Health check local:"
-curl -sS "http://127.0.0.1:3000/api/health" || true
+API_PORT=3000
+if [[ -f "$ROOT/backend/.env" ]]; then
+  _p="$(grep -E '^[[:space:]]*PORT=' "$ROOT/backend/.env" | tail -1 | cut -d= -f2- | tr -d '\r' | tr -d '"' | tr -d "'")"
+  [[ -n "${_p:-}" ]] && API_PORT="$_p"
+fi
+
+echo "==> Concluído. Health check local (PORT=$API_PORT):"
+sleep 2
+curl -sS "http://127.0.0.1:${API_PORT}/api/health" || true
 echo ""
-echo "Frontend em: $ROOT/frontend/dist (confirme que o Nginx root aponta para este diretório)"
-echo "Se usar CDN, faça purge do cache do app após o deploy."
+echo "Fingerprint do bundle (confirme após deploy / purge CDN):"
+ls -1 "$ROOT/frontend/dist/assets"/index-*.js 2>/dev/null | head -1 || true
+echo ""
+echo "Frontend em: $ROOT/frontend/dist"
+echo "  Verifique: sudo nginx -T 2>&1 | grep -E 'server_name app\\.|root .*dist'"
+echo "  O root do Nginx tem de ser esta pasta (ou copiar dist para o root configurado)."
+echo "  Cloudflare: Purge Cache no app.ativadash.com se o menu não atualizar."

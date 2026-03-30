@@ -2,6 +2,7 @@ import type { ResellerOrgKind, WorkspaceStatus } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../utils/prisma.js";
 import { getOrganizationRootId, getRootResellerPartnerFlag } from "../utils/org-hierarchy.js";
+import { computeMatrizNavEligible } from "../utils/matriz-nav-eligible.js";
 import { isPlatformAdminEmail } from "../utils/platform-admin.js";
 import { slugifyOrganizationName, uniqueOrganizationSlug } from "../utils/org-slug.js";
 import { assertDirectOrgAdmin, canManageOrganization } from "./auth.service.js";
@@ -124,6 +125,13 @@ export async function getOrganizationContext(organizationId: string, userId: str
 
   const enabledFeatures = mergePlanFeaturesWithOverrides(templatePlan, org.featureOverrides);
   const rootResellerPartner = await getRootResellerPartnerFlag(organizationId);
+  const actor = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
+    select: { email: true },
+  });
+  const matrizNavEligible = actor?.email
+    ? await computeMatrizNavEligible(organizationId, actor.email)
+    : false;
 
   return {
     id: org.id,
@@ -139,6 +147,7 @@ export async function getOrganizationContext(organizationId: string, userId: str
     subscription,
     enabledFeatures,
     rootResellerPartner,
+    matrizNavEligible,
   };
 }
 

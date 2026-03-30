@@ -16,6 +16,7 @@ import {
 } from "../constants/roles.js";
 import { resolveBillingOrganizationId, resolveEffectivePlan } from "./plan-limits.service.js";
 import { getRootResellerPartnerFlag } from "../utils/org-hierarchy.js";
+import { computeMatrizNavEligible } from "../utils/matriz-nav-eligible.js";
 
 const SALT_ROUNDS = 10;
 
@@ -35,6 +36,11 @@ export type AuthUserDto = {
   parentOrganizationId: string | null;
   /** Raiz do ecossistema habilitada para revenda (painel matriz / filhos). */
   rootResellerPartner: boolean;
+  /**
+   * Fonte única para UI: mostrar menu /revenda. Só true se a org do JWT for raiz MATRIX com revenda
+   * (ou utilizador platform admin). Não recalcular só no frontend.
+   */
+  matrizNavEligible: boolean;
 };
 
 export type MembershipSummaryDto = {
@@ -87,6 +93,7 @@ async function buildAuthUserDto(
 ): Promise<AuthUserDto> {
   const tenant = await loadOrgTenantFields(organizationId);
   const rootResellerPartner = await getRootResellerPartnerFlag(organizationId);
+  const matrizNavEligible = await computeMatrizNavEligible(organizationId, email);
   return {
     id: userId,
     email,
@@ -97,6 +104,7 @@ async function buildAuthUserDto(
     organizationKind: tenant.organizationKind,
     parentOrganizationId: tenant.parentOrganizationId,
     rootResellerPartner,
+    matrizNavEligible,
   };
 }
 
@@ -496,6 +504,10 @@ export async function getAuthProfile(userId: string, organizationId: string): Pr
   });
   if (membership?.user && !membership.user.deletedAt && !membership.organization.deletedAt) {
     const rootResellerPartner = await getRootResellerPartnerFlag(membership.organization.id);
+    const matrizNavEligible = await computeMatrizNavEligible(
+      membership.organization.id,
+      membership.user.email
+    );
     return {
       id: membership.user.id,
       email: membership.user.email,
@@ -510,6 +522,7 @@ export async function getAuthProfile(userId: string, organizationId: string): Pr
       organizationKind: membership.organization.organizationKind,
       parentOrganizationId: membership.organization.parentOrganizationId,
       rootResellerPartner,
+      matrizNavEligible,
     };
   }
 
@@ -527,6 +540,7 @@ export async function getAuthProfile(userId: string, organizationId: string): Pr
   if (!user) return null;
 
   const rootResellerPartner = await getRootResellerPartnerFlag(org.id);
+  const matrizNavEligible = await computeMatrizNavEligible(org.id, user.email);
   return {
     id: user.id,
     email: user.email,
@@ -541,6 +555,7 @@ export async function getAuthProfile(userId: string, organizationId: string): Pr
     organizationKind: org.organizationKind,
     parentOrganizationId: org.parentOrganizationId,
     rootResellerPartner,
+    matrizNavEligible,
   };
 }
 
@@ -607,6 +622,7 @@ export type MeContextDto = {
   plan: { slug: string; name: string } | null;
   platformAdmin: boolean;
   rootResellerPartner: boolean;
+  matrizNavEligible: boolean;
 };
 
 export async function getMeContext(userId: string, organizationId: string): Promise<MeContextDto | null> {
@@ -619,6 +635,7 @@ export async function getMeContext(userId: string, organizationId: string): Prom
   });
   const { plan } = await resolveEffectivePlan(organizationId);
   const rootResellerPartner = await getRootResellerPartnerFlag(organizationId);
+  const matrizNavEligible = profile.matrizNavEligible;
   return {
     user: profile,
     memberships: await listMembershipSummaries(userId),
@@ -629,6 +646,7 @@ export async function getMeContext(userId: string, organizationId: string): Prom
     plan: plan ? { slug: plan.slug, name: plan.name } : null,
     platformAdmin: isPlatformAdminEmail(profile.email),
     rootResellerPartner,
+    matrizNavEligible,
   };
 }
 

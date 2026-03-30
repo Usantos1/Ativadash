@@ -60,29 +60,13 @@ export function getActiveMembership(
 }
 
 /**
- * Painel /revenda: em caso de dúvida, esconder.
- * Só staff global ou org ativa explicitamente `MATRIX` na raiz (confirmada no vínculo + no user).
- * `rootResellerPartner` sozinho não basta (é herdado do ecossistema).
+ * Painel /revenda: usa só o boolean vindo da API (`matrizNavEligible`), calculado no servidor.
+ * Sem esse campo (bundles antigos) → negar.
  */
-export function canAccessMatrizResellerNav(
-  user: User | null,
-  memberships: MembershipSummary[] | null
-): boolean {
+export function canAccessMatrizResellerNav(user: User | null, _memberships: MembershipSummary[] | null): boolean {
   if (!user?.organizationId) return false;
   if (user.platformAdmin === true) return true;
-
-  if (!memberships || memberships.length === 0) return false;
-
-  const active = getActiveMembership(user, memberships);
-  if (!active) return false;
-
-  if (active.organizationKind !== "MATRIX") return false;
-  if (active.parentOrganizationId !== null) return false;
-
-  if (user.organizationKind !== "MATRIX") return false;
-  if (user.parentOrganizationId !== null) return false;
-
-  return user.rootResellerPartner === true;
+  return user.matrizNavEligible === true;
 }
 
 /** Rota `/admin`: só staff global ou admins no modo operacional completo (não filial/cliente). */

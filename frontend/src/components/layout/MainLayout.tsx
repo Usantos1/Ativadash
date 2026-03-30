@@ -55,6 +55,7 @@ export function MainLayout() {
             organization: profile.organization,
             platformAdmin: profile.platformAdmin,
             rootResellerPartner: profile.rootResellerPartner,
+            matrizNavEligible: profile.matrizNavEligible,
             organizationKind: profile.organizationKind,
             parentOrganizationId: profile.parentOrganizationId,
           },
@@ -70,19 +71,11 @@ export function MainLayout() {
     };
   }, [accessToken]);
 
-  /**
-   * /revenda: bloqueio imediato sem confiar em estado parcial.
-   * Sem `memberships` carregados (ou vazios), não-plataforma não entra — evita menu fantasma com JWT/user antigo.
-   */
+  /** /revenda: critério só `matrizNavEligible` da API (ou platformAdmin). */
   useEffect(() => {
     if (!accessToken || !user) return;
     const path = location.pathname;
     if (path !== "/revenda" && !path.startsWith("/revenda/")) return;
-    if (user.platformAdmin === true) return;
-    if (!memberships || memberships.length === 0) {
-      navigate("/dashboard", { replace: true });
-      return;
-    }
     if (!canAccessMatrizResellerNav(user, memberships)) {
       navigate("/dashboard", { replace: true });
     }

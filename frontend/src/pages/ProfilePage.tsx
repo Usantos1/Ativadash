@@ -75,6 +75,7 @@ export function ProfilePage() {
           organization: out.organization,
           platformAdmin: out.platformAdmin,
           rootResellerPartner: out.rootResellerPartner,
+          matrizNavEligible: out.matrizNavEligible,
           organizationKind: out.organizationKind,
           parentOrganizationId: out.parentOrganizationId,
         },
