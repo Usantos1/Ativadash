@@ -54,6 +54,7 @@ export type MarketingSettingsDto = {
   targetRoas: number | null;
   minResultsForCpa: number;
   minSpendForAlertsBrl: number | null;
+  dailyBudgetExpectedBrl: number | null;
   alertsEnabled: boolean;
   alertCpaAboveMax: boolean;
   alertCpaAboveTarget: boolean;
@@ -79,6 +80,9 @@ export type MarketingSettingsDto = {
     enabled: boolean;
     hourUtc: number;
     minuteUtc: number;
+    hourLocal: number;
+    minuteLocal: number;
+    timezone: string;
     extraPhones: string[];
   };
 };
@@ -196,20 +200,36 @@ function parseTemplatesRecordClient(raw: unknown): Record<string, string> {
   return out;
 }
 
-function parseDigestScheduleClient(json: unknown): {
-  enabled: boolean;
-  hourUtc: number;
-  minuteUtc: number;
-  extraPhones: string[];
-} {
-  const fb = { enabled: false, hourUtc: 9, minuteUtc: 0, extraPhones: [] as string[] };
+function parseDigestScheduleClient(json: unknown): MarketingSettingsDto["whatsappDigestSchedule"] {
+  const fb = {
+    enabled: false,
+    hourUtc: 9,
+    minuteUtc: 0,
+    hourLocal: 9,
+    minuteLocal: 0,
+    timezone: "America/Sao_Paulo",
+    extraPhones: [] as string[],
+  };
   if (json == null || typeof json !== "object" || Array.isArray(json)) return fb;
   const o = json as Record<string, unknown>;
   const phones = o.extraPhones;
+  const tz =
+    typeof o.timezone === "string" && o.timezone.trim() ? String(o.timezone).trim() : fb.timezone;
+  const hourUtc = Math.min(23, Math.max(0, Math.trunc(Number(o.hourUtc)) || 9));
+  const minuteUtc = Math.min(59, Math.max(0, Math.trunc(Number(o.minuteUtc)) || 0));
+  const hl = o.hourLocal;
+  const ml = o.minuteLocal;
+  const hourLocal =
+    typeof hl === "number" && Number.isFinite(hl) ? Math.min(23, Math.max(0, Math.trunc(hl))) : hourUtc;
+  const minuteLocal =
+    typeof ml === "number" && Number.isFinite(ml) ? Math.min(59, Math.max(0, Math.trunc(ml))) : minuteUtc;
   return {
     enabled: Boolean(o.enabled),
-    hourUtc: Math.min(23, Math.max(0, Math.trunc(Number(o.hourUtc)) || 9)),
-    minuteUtc: Math.min(59, Math.max(0, Math.trunc(Number(o.minuteUtc)) || 0)),
+    hourUtc,
+    minuteUtc,
+    hourLocal,
+    minuteLocal,
+    timezone: tz,
     extraPhones: Array.isArray(phones)
       ? phones.map((p) => String(p).trim()).filter(Boolean).slice(0, 5)
       : [],
@@ -334,6 +354,7 @@ export function normalizeMarketingSettingsDto(raw: unknown): MarketingSettingsDt
     targetRoas: legacyGoals.targetRoas,
     minResultsForCpa: minResultsForCpa,
     minSpendForAlertsBrl: legacyGoals.minSpendForAlertsBrl,
+    dailyBudgetExpectedBrl: numOrNull(r.dailyBudgetExpectedBrl),
     alertsEnabled: r.alertsEnabled !== false,
     alertCpaAboveMax: r.alertCpaAboveMax !== false,
     alertCpaAboveTarget: r.alertCpaAboveTarget !== false,
@@ -385,6 +406,7 @@ export type UpdateMarketingSettingsPayload = Partial<{
   targetRoas: number | null;
   minResultsForCpa: number;
   minSpendForAlertsBrl: number | null;
+  dailyBudgetExpectedBrl: number | null;
   alertsEnabled: boolean;
   alertCpaAboveMax: boolean;
   alertCpaAboveTarget: boolean;
@@ -404,8 +426,11 @@ export type UpdateMarketingSettingsPayload = Partial<{
   whatsappMessageTemplates: Record<string, string>;
   whatsappDigestSchedule: {
     enabled: boolean;
-    hourUtc: number;
-    minuteUtc: number;
+    hourUtc?: number;
+    minuteUtc?: number;
+    hourLocal?: number;
+    minuteLocal?: number;
+    timezone?: string;
     extraPhones: string[];
   };
 }>;

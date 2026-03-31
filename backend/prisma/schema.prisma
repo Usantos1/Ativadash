@@ -50,6 +50,8 @@ model User {
   mustChangePassword Boolean @default(false)
   /// Último login bem-sucedido (atualizado no auth)
   lastLoginAt DateTime?
+  /// WhatsApp com DDD (preferencialmente só dígitos, ex.: 5511999999999)
+  whatsappNumber String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   deletedAt DateTime?
@@ -220,6 +222,8 @@ model Invitation {
   token          String   @unique
   invitedByUserId String
   invitedBy      User     @relation("InvitationInvitedBy", fields: [invitedByUserId], references: [id], onDelete: Cascade)
+  /// WhatsApp sugerido pelo admin no convite (normalizado ao aceitar)
+  invitedWhatsappNumber String?
   expiresAt      DateTime
   acceptedAt     DateTime?
   createdAt      DateTime @default(now())
@@ -274,6 +278,8 @@ model MarketingSettings {
   minResultsForCpa     Int      @default(5)
   /// Gasto mínimo no período (BRL) para disparar alertas de CPA/ROAS
   minSpendForAlertsBrl Decimal? @db.Decimal(14, 2)
+  /// Orçamento diário esperado (BRL) — referência para alertas e painel
+  dailyBudgetExpectedBrl Decimal? @db.Decimal(14, 2)
 
   alertsEnabled        Boolean @default(true)
   alertCpaAboveMax     Boolean @default(true)
@@ -335,6 +341,16 @@ model AlertRule {
 
   /// Incluir esta regra em envios automáticos por WhatsApp (quando disparada)
   notifyWhatsapp Boolean @default(true)
+  /// whatsapp_alert | pause_campaign (futuro)
+  actionType String @default("whatsapp_alert") @db.VarChar(32)
+  /// Modelo de mensagem (placeholders internos: {{campaign_name}}, {{metric_value}}, …)
+  messageTemplate String? @db.Text
+  /// Destinatários: { jobTitleSlugs?: string[], userIds?: string[], customPhones?: string[] }
+  routing Json?
+  /// Horário preferencial de avaliação no fuso abaixo (HH:mm). Null = sem janela fixa.
+  evaluationTimeLocal String? @db.VarChar(5)
+  /// IANA (ex.: America/Sao_Paulo), enviado pelo browser ao salvar
+  evaluationTimezone String? @db.VarChar(80)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

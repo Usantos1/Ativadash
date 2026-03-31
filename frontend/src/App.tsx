@@ -14,6 +14,7 @@ import { WebhooksIntegrationPage } from "@/pages/integrations/WebhooksIntegratio
 import { IntegrationComingSoonPage } from "@/pages/integrations/IntegrationComingSoonPage";
 import { MarketingSettings } from "@/pages/MarketingSettings";
 import { MarketingAdsOperationalPage } from "@/pages/MarketingAdsOperationalPage";
+import { MetasAlertasPage } from "@/pages/MetasAlertasPage";
 import { MarketingFunnelPage } from "@/pages/MarketingFunnelPage";
 import { ClientsPage } from "@/pages/ClientsPage";
 import { ProjectsPage } from "@/pages/ProjectsPage";
@@ -63,7 +64,8 @@ export default function App() {
           <Route path="marketing/integracoes/webhook" element={<WebhooksIntegrationPage />} />
           <Route path="marketing/integracoes/:slug" element={<IntegrationComingSoonPage />} />
           <Route path="marketing/configuracoes" element={<MarketingSettings />} />
-          <Route path="ads/metas-alertas" element={<MarketingAdsOperationalPage />} />
+          <Route path="ads/metas-alertas" element={<MetasAlertasPage />} />
+          <Route path="ads/metas-operacao" element={<MarketingAdsOperationalPage />} />
           <Route path="clientes" element={<ClientsPage />} />
           <Route path="projetos" element={<ProjectsPage />} />
           <Route path="lancamentos" element={<LaunchesPage />} />

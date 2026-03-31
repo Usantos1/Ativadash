@@ -72,6 +72,10 @@ const whatsappDigestScheduleSchema = z.object({
   enabled: z.boolean().optional(),
   hourUtc: z.number().int().min(0).max(23).optional(),
   minuteUtc: z.number().int().min(0).max(59).optional(),
+  /** Preferência de UI: horário local + IANA; o servidor deriva UTC para jobs legados. */
+  hourLocal: z.number().int().min(0).max(23).optional(),
+  minuteLocal: z.number().int().min(0).max(59).optional(),
+  timezone: z.string().trim().max(80).optional(),
   extraPhones: z.array(z.string().max(32)).max(5).optional(),
 });
 
@@ -85,6 +89,8 @@ export const updateMarketingSettingsSchema = z
     targetRoas: z.number().positive().nullable().optional(),
     minResultsForCpa: z.number().int().min(1).max(500).optional(),
     minSpendForAlertsBrl: z.number().nonnegative().nullable().optional(),
+    /** Orçamento diário esperado (BRL), referência para alertas */
+    dailyBudgetExpectedBrl: z.number().nonnegative().nullable().optional(),
     alertsEnabled: z.boolean().optional(),
     alertCpaAboveMax: z.boolean().optional(),
     alertCpaAboveTarget: z.boolean().optional(),

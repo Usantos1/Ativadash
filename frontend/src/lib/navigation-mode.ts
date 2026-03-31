@@ -116,7 +116,7 @@ export function isPathAllowedForAgencyBranch(pathname: string): boolean {
   if (p === "/clientes") return true;
   if (p.startsWith("/marketing/integracoes")) return true;
   if (p === "/marketing/configuracoes") return true;
-  if (p === "/ads/metas-alertas") return true;
+  if (p === "/ads/metas-alertas" || p === "/ads/metas-operacao") return true;
   if (p === "/configuracoes" || p.startsWith("/configuracoes/")) return true;
   if (p === "/perfil") return true;
   return false;

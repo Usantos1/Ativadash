@@ -216,6 +216,7 @@ const OP_LABEL: Record<AlertRuleOperator, string> = {
   gte: "≥",
   lt: "<",
   lte: "≤",
+  outside_target: "fora da meta",
 };
 
 function OperationalAlertRulesCard({
@@ -579,8 +580,9 @@ export function MarketingAdsOperationalPage() {
   const [tplDefault, setTplDefault] = useState("• *{title}*\n{message}");
   const [tplCustomRule, setTplCustomRule] = useState("");
   const [digestEnabled, setDigestEnabled] = useState(false);
-  const [digestHourUtc, setDigestHourUtc] = useState("9");
-  const [digestMinuteUtc, setDigestMinuteUtc] = useState("0");
+  const [digestHourLocal, setDigestHourLocal] = useState("9");
+  const [digestMinuteLocal, setDigestMinuteLocal] = useState("0");
+  const [digestTimezone, setDigestTimezone] = useState("America/Sao_Paulo");
   const [digestExtraPhones, setDigestExtraPhones] = useState("");
   const [sendWaBusy, setSendWaBusy] = useState(false);
 
@@ -669,8 +671,9 @@ export function MarketingAdsOperationalPage() {
     setTplCustomRule(tm.CUSTOM_RULE ?? "");
     const dg = s.whatsappDigestSchedule;
     setDigestEnabled(dg.enabled);
-    setDigestHourUtc(String(dg.hourUtc));
-    setDigestMinuteUtc(String(dg.minuteUtc));
+    setDigestHourLocal(String(dg.hourLocal ?? dg.hourUtc));
+    setDigestMinuteLocal(String(dg.minuteLocal ?? dg.minuteUtc));
+    setDigestTimezone(dg.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Sao_Paulo");
     setDigestExtraPhones(dg.extraPhones?.length ? dg.extraPhones.join(", ") : "");
   }, []);
 
@@ -778,8 +781,9 @@ export function MarketingAdsOperationalPage() {
         })(),
         whatsappDigestSchedule: {
           enabled: digestEnabled,
-          hourUtc: Math.min(23, Math.max(0, Number.parseInt(digestHourUtc, 10) || 9)),
-          minuteUtc: Math.min(59, Math.max(0, Number.parseInt(digestMinuteUtc, 10) || 0)),
+          hourLocal: Math.min(23, Math.max(0, Number.parseInt(digestHourLocal, 10) || 9)),
+          minuteLocal: Math.min(59, Math.max(0, Number.parseInt(digestMinuteLocal, 10) || 0)),
+          timezone: digestTimezone.trim() || Intl.DateTimeFormat().resolvedOptions().timeZone,
           extraPhones: digestExtraPhones
             .split(/[;,]/)
             .map((x) => x.trim())
@@ -1428,8 +1432,8 @@ export function MarketingAdsOperationalPage() {
               <div className="space-y-3">
                 <p className="text-xs font-semibold uppercase text-muted-foreground">Resumo diário (preferências)</p>
                 <p className="text-[11px] text-muted-foreground">
-                  Horário em UTC. O disparo automático no servidor ainda será ligado ao job de agendamento; por enquanto
-                  use o botão &quot;Enviar alertas agora&quot; ou um cron que chame a API com{" "}
+                  Horário no seu fuso ({digestTimezone}). O agendamento no servidor usa a conversão automática; enquanto o
+                  job não existir, use o botão &quot;Enviar alertas agora&quot; ou integre via API com{" "}
                   <code className="rounded bg-muted px-1">sendWhatsappAlerts: true</code>.
                 </p>
                 <div className="flex flex-wrap items-center gap-3">
@@ -1440,23 +1444,23 @@ export function MarketingAdsOperationalPage() {
                 </div>
                 <div className="flex flex-wrap gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs">Hora UTC</Label>
+                    <Label className="text-xs">Hora (0–23)</Label>
                     <Input
                       className="h-10 w-20 rounded-xl"
                       inputMode="numeric"
-                      value={digestHourUtc}
+                      value={digestHourLocal}
                       disabled={!canEdit}
-                      onChange={(e) => setDigestHourUtc(e.target.value)}
+                      onChange={(e) => setDigestHourLocal(e.target.value)}
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Minuto</Label>
+                    <Label className="text-xs">Minuto (0–59)</Label>
                     <Input
                       className="h-10 w-20 rounded-xl"
                       inputMode="numeric"
-                      value={digestMinuteUtc}
+                      value={digestMinuteLocal}
                       disabled={!canEdit}
-                      onChange={(e) => setDigestMinuteUtc(e.target.value)}
+                      onChange={(e) => setDigestMinuteLocal(e.target.value)}
                     />
                   </div>
                 </div>

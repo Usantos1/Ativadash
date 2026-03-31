@@ -47,6 +47,8 @@ export const createInvitationSchema = z.object({
   role: z.enum(["admin", "member", "media_manager", "analyst"]).optional(),
   jobTitle: teamJobTitleFieldSchema.optional(),
   accessLevel: teamAccessLevelSchema.optional(),
+  /** WhatsApp com DDD (opcional) — aplicado ao usuário quando aceitar o convite. */
+  whatsappNumber: z.string().max(32).optional().nullable(),
   /** Workspace onde o membro será vinculado (filho na hierarquia). Se omitido, usa a org do JWT. */
   organizationId: z.string().min(1).optional(),
 });
@@ -62,6 +64,8 @@ export const createWorkspaceMemberSchema = z.object({
   password: z.string().min(8, "Senha deve ter pelo menos 8 caracteres").max(128),
   jobTitle: teamJobTitleFieldSchema,
   accessLevel: teamAccessLevelSchema,
+  /** WhatsApp com DDD (apenas dígitos ou com máscara — normalizado no servidor). */
+  whatsappNumber: z.string().max(32).optional().nullable(),
 });
 
 export const patchWorkspaceMemberSchema = z
@@ -72,6 +76,7 @@ export const patchWorkspaceMemberSchema = z
     suspended: z.boolean().optional(),
     jobTitle: z.union([teamJobTitleFieldSchema, z.literal("")]).optional(),
     accessLevel: teamAccessLevelSchema.optional(),
+    whatsappNumber: z.union([z.string().max(32), z.literal("")]).optional().nullable(),
   })
   .refine(
     (b) =>
@@ -80,7 +85,8 @@ export const patchWorkspaceMemberSchema = z
       b.name !== undefined ||
       b.suspended !== undefined ||
       b.jobTitle !== undefined ||
-      b.accessLevel !== undefined,
+      b.accessLevel !== undefined ||
+      b.whatsappNumber !== undefined,
     { message: "Informe pelo menos um campo para atualizar" }
   );
 

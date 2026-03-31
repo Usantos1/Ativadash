@@ -4,6 +4,7 @@ import { prisma } from "../utils/prisma.js";
 import { assertOrgAdminOrParentAgency } from "./auth.service.js";
 import { assertCanAddDirectMemberOrInvitation } from "./plan-limits.service.js";
 import { isValidTeamJobTitleSlug, teamAccessLevelToRole } from "../constants/team-job-titles.js";
+import { normalizeWhatsappDigits } from "../utils/whatsapp-normalize.js";
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const SALT_ROUNDS = 10;
@@ -60,9 +61,13 @@ export async function createInvitation(
   organizationId: string,
   actorUserId: string,
   email: string,
-  roleOrOpts: string | { legacyRole?: string; accessLevel?: string; jobTitle?: string }
+  roleOrOpts:
+    | string
+    | { legacyRole?: string; accessLevel?: string; jobTitle?: string; whatsappNumber?: string | null }
 ): Promise<{ invitation: InvitationRow; inviteLink: string }> {
   await assertOrgAdminOrParentAgency(actorUserId, organizationId);
+  const waInvite =
+    typeof roleOrOpts === "object" ? normalizeWhatsappDigits(roleOrOpts.whatsappNumber ?? null) : null;
   const { role: r, jobTitle: jtStored } =
     typeof roleOrOpts === "string"
       ? resolveInviteRoleAndJobTitle({ legacyRole: roleOrOpts })
@@ -108,6 +113,7 @@ export async function createInvitation(
       organizationId,
       role: r,
       jobTitle: jtStored,
+      invitedWhatsappNumber: waInvite,
       token,
       invitedByUserId: actorUserId,
       expiresAt,
@@ -268,6 +274,14 @@ export async function acceptInvitationExistingUser(token: string, userId: string
       jobTitle: inv.jobTitle ?? null,
     },
   });
+
+  const waInv = normalizeWhatsappDigits(inv.invitedWhatsappNumber ?? null);
+  if (waInv) {
+    const u = await prisma.user.findFirst({ where: { id: userId, deletedAt: null }, select: { whatsappNumber: true } });
+    if (u && !u.whatsappNumber?.trim()) {
+      await prisma.user.update({ where: { id: userId }, data: { whatsappNumber: waInv } });
+    }
+  }
 
   await prisma.invitation.update({
     where: { id: inv.id },

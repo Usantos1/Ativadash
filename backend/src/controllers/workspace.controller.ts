@@ -277,6 +277,7 @@ export async function invitationsCreate(req: Request, res: Response) {
       legacyRole: parsed.data.role,
       accessLevel: parsed.data.accessLevel,
       jobTitle: parsed.data.jobTitle,
+      whatsappNumber: parsed.data.whatsappNumber,
     });
     return res.status(201).json(out);
   } catch (e) {

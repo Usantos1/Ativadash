@@ -9,6 +9,7 @@ import {
   resolveNewMemberRoleAndJobTitle,
 } from "../constants/team-job-titles.js";
 import { updateMemberRole } from "./members.service.js";
+import { normalizeWhatsappDigits } from "../utils/whatsapp-normalize.js";
 
 const SALT_ROUNDS = 10;
 
@@ -221,6 +222,7 @@ type MemberListItem = {
   name: string;
   role: string;
   jobTitle: string | null;
+  whatsappNumber: string | null;
   joinedAt: string;
   lastLoginAt: string | null;
   suspended: boolean;
@@ -246,6 +248,7 @@ export async function listOrganizationMembers(organizationId: string): Promise<M
           deletedAt: true,
           suspendedAt: true,
           lastLoginAt: true,
+          whatsappNumber: true,
         },
       },
     },
@@ -261,6 +264,7 @@ export async function listOrganizationMembers(organizationId: string): Promise<M
       name: m.user.name,
       role: m.role,
       jobTitle: m.jobTitle ?? null,
+      whatsappNumber: m.user.whatsappNumber ?? null,
       joinedAt: m.createdAt.toISOString(),
       lastLoginAt: m.user.lastLoginAt?.toISOString() ?? null,
       suspended: m.user.suspendedAt != null,
@@ -290,6 +294,7 @@ export async function listOrganizationMembers(organizationId: string): Promise<M
           deletedAt: true,
           suspendedAt: true,
           lastLoginAt: true,
+          whatsappNumber: true,
         },
       },
     },
@@ -305,6 +310,7 @@ export async function listOrganizationMembers(organizationId: string): Promise<M
       name: m.user.name,
       role: m.role,
       jobTitle: m.jobTitle ?? null,
+      whatsappNumber: m.user.whatsappNumber ?? null,
       joinedAt: m.createdAt.toISOString(),
       lastLoginAt: m.user.lastLoginAt?.toISOString() ?? null,
       suspended: m.user.suspendedAt != null,
@@ -318,7 +324,14 @@ export async function listOrganizationMembers(organizationId: string): Promise<M
 export async function createWorkspaceDirectMember(
   organizationId: string,
   actorUserId: string,
-  data: { email: string; name: string; password: string; accessLevel: string; jobTitle: string }
+  data: {
+    email: string;
+    name: string;
+    password: string;
+    accessLevel: string;
+    jobTitle: string;
+    whatsappNumber?: string | null;
+  }
 ): Promise<MemberListItem> {
   await assertOrgAdminOrParentAgency(actorUserId, organizationId);
   await assertCanAddDirectMemberOrInvitation(organizationId);
@@ -335,12 +348,14 @@ export async function createWorkspaceDirectMember(
   }
 
   const hashed = await bcrypt.hash(data.password, SALT_ROUNDS);
+  const wa = normalizeWhatsappDigits(data.whatsappNumber ?? null);
   const user = await prisma.user.create({
     data: {
       email: norm,
       name: data.name.trim(),
       password: hashed,
       mustChangePassword: true,
+      ...(wa ? { whatsappNumber: wa } : {}),
     },
   });
 
@@ -360,6 +375,7 @@ export async function createWorkspaceDirectMember(
     name: user.name,
     role: membership.role,
     jobTitle: membership.jobTitle ?? null,
+    whatsappNumber: user.whatsappNumber ?? null,
     joinedAt: membership.createdAt.toISOString(),
     lastLoginAt: null,
     suspended: false,
@@ -379,6 +395,7 @@ export async function patchWorkspaceMember(
     suspended?: boolean;
     jobTitle?: string | null;
     accessLevel?: string;
+    whatsappNumber?: string | null;
   }
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   await assertOrgAdminOrParentAgency(actorUserId, organizationId);
@@ -447,6 +464,16 @@ export async function patchWorkspaceMember(
     }
 
     await prisma.user.update({ where: { id: targetUserId }, data });
+  }
+
+  if (patch.whatsappNumber !== undefined) {
+    const norm = normalizeWhatsappDigits(
+      patch.whatsappNumber === null || patch.whatsappNumber === "" ? null : patch.whatsappNumber
+    );
+    await prisma.user.update({
+      where: { id: targetUserId },
+      data: { whatsappNumber: norm },
+    });
   }
 
   if (patch.accessLevel !== undefined) {

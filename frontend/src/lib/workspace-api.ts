@@ -40,6 +40,7 @@ export type MemberRow = {
   name: string;
   role: string;
   jobTitle?: string | null;
+  whatsappNumber?: string | null;
   joinedAt: string;
   /** Último login bem-sucedido (quando disponível) */
   lastLoginAt?: string | null;
@@ -140,6 +141,7 @@ export async function createInvitation(opts: {
   role?: "admin" | "member" | "media_manager" | "analyst";
   jobTitle?: string;
   accessLevel?: "ADMIN" | "OPERADOR" | "VIEWER";
+  whatsappNumber?: string | null;
 }): Promise<{ invitation: InvitationRow; inviteLink: string }> {
   return api.post("/workspace/invitations", {
     email: opts.email,
@@ -147,6 +149,9 @@ export async function createInvitation(opts: {
     ...(opts.role ? { role: opts.role } : {}),
     ...(opts.jobTitle ? { jobTitle: opts.jobTitle } : {}),
     ...(opts.accessLevel ? { accessLevel: opts.accessLevel } : {}),
+    ...(opts.whatsappNumber !== undefined && opts.whatsappNumber !== ""
+      ? { whatsappNumber: opts.whatsappNumber }
+      : {}),
   });
 }
 
@@ -161,6 +166,7 @@ export type PatchMemberPayload = {
   suspended?: boolean;
   jobTitle?: string | null;
   accessLevel?: "ADMIN" | "OPERADOR" | "VIEWER";
+  whatsappNumber?: string | null | "";
 };
 
 export async function patchMember(
@@ -183,6 +189,7 @@ export async function createWorkspaceMember(
     password: string;
     jobTitle: string;
     accessLevel: "ADMIN" | "OPERADOR" | "VIEWER";
+    whatsappNumber?: string | null;
   },
   organizationId?: string
 ): Promise<MemberRow> {

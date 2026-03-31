@@ -1,8 +1,15 @@
 import { api } from "./api";
 
 export type AlertRuleMetric = "cpa" | "roas" | "spend" | "ctr";
-export type AlertRuleOperator = "gt" | "gte" | "lt" | "lte";
+export type AlertRuleOperator = "gt" | "gte" | "lt" | "lte" | "outside_target";
 export type AlertRuleSeverity = "warning" | "critical";
+export type AlertRuleActionType = "whatsapp_alert" | "pause_campaign";
+
+export type AlertRuleRoutingDto = {
+  jobTitleSlugs?: string[];
+  userIds?: string[];
+  customPhones?: string[];
+};
 
 export type AlertRuleDto = {
   id: string;
@@ -16,6 +23,11 @@ export type AlertRuleDto = {
   muteEndHour: number | null;
   appliesToChannel: string | null;
   notifyWhatsapp: boolean;
+  actionType: string;
+  messageTemplate: string | null;
+  routing: AlertRuleRoutingDto | null;
+  evaluationTimeLocal: string | null;
+  evaluationTimezone: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -40,6 +52,11 @@ export type CreateAlertRulePayload = {
   muteEndHour?: number | null;
   appliesToChannel?: "meta" | "google" | "all";
   notifyWhatsapp?: boolean;
+  actionType?: AlertRuleActionType;
+  messageTemplate?: string | null;
+  routing?: AlertRuleRoutingDto | null;
+  evaluationTimeLocal?: string | null;
+  evaluationTimezone?: string | null;
 };
 
 export async function createAlertRule(payload: CreateAlertRulePayload): Promise<AlertRuleDto> {

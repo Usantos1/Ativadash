@@ -28,6 +28,8 @@ export interface User {
   name: string;
   /** Opcional no backend; se ausente, usa-se a primeira palavra de `name`. */
   firstName?: string | null;
+  /** WhatsApp normalizado (dígitos), quando informado na equipe/perfil. */
+  whatsappNumber?: string | null;
   organizationId: string;
   /** Preenchido no login/cadastro e em GET /auth/me */
   organization?: OrganizationSummary;

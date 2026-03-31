@@ -99,6 +99,7 @@ export function TeamPage() {
   const [addTab, setAddTab] = useState<"invite" | "register">("invite");
 
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteWhatsapp, setInviteWhatsapp] = useState("");
   const [inviteJobTitle, setInviteJobTitle] = useState<TeamJobTitleValue>("traffic_manager");
   const [inviteAccessLevel, setInviteAccessLevel] = useState<AccessLevelUi>("OPERADOR");
   const [inviteBusy, setInviteBusy] = useState(false);
@@ -109,6 +110,7 @@ export function TeamPage() {
   const [regEmail, setRegEmail] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regPassword2, setRegPassword2] = useState("");
+  const [regWhatsapp, setRegWhatsapp] = useState("");
   const [regJobTitle, setRegJobTitle] = useState<TeamJobTitleValue>("traffic_manager");
   const [regAccessLevel, setRegAccessLevel] = useState<AccessLevelUi>("OPERADOR");
   const [regBusy, setRegBusy] = useState(false);
@@ -212,11 +214,13 @@ export function TeamPage() {
         password: regPassword,
         jobTitle: regJobTitle,
         accessLevel: regAccessLevel,
+        ...(regWhatsapp.trim() ? { whatsappNumber: regWhatsapp.trim() } : {}),
       });
       setRegName("");
       setRegEmail("");
       setRegPassword("");
       setRegPassword2("");
+      setRegWhatsapp("");
       setAddOpen(false);
       await load();
     } catch (err) {
@@ -236,9 +240,11 @@ export function TeamPage() {
         email: inviteEmail.trim(),
         jobTitle: inviteJobTitle,
         accessLevel: inviteAccessLevel,
+        ...(inviteWhatsapp.trim() ? { whatsappNumber: inviteWhatsapp.trim() } : {}),
       });
       setInviteLink(out.inviteLink);
       setInviteEmail("");
+      setInviteWhatsapp("");
       await load();
     } catch (err) {
       setModalMsg(err instanceof Error ? err.message : "Erro ao convidar");
@@ -444,6 +450,20 @@ export function TeamPage() {
                       className={teamModalInputClass}
                     />
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="modal-invite-wa" className={teamModalLabelClass}>
+                      WhatsApp (com DDD)
+                    </Label>
+                    <Input
+                      id="modal-invite-wa"
+                      inputMode="tel"
+                      autoComplete="tel"
+                      value={inviteWhatsapp}
+                      onChange={(ev) => setInviteWhatsapp(ev.target.value)}
+                      placeholder="Opcional — aplicado quando aceitar o convite"
+                      className={teamModalInputClass}
+                    />
+                  </div>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label className={teamModalLabelClass}>Cargo</Label>
@@ -535,6 +555,20 @@ export function TeamPage() {
                         value={regEmail}
                         onChange={(ev) => setRegEmail(ev.target.value)}
                         required
+                        className={teamModalInputClass}
+                      />
+                    </div>
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label htmlFor="modal-reg-wa" className={teamModalLabelClass}>
+                        WhatsApp (com DDD)
+                      </Label>
+                      <Input
+                        id="modal-reg-wa"
+                        inputMode="tel"
+                        autoComplete="tel"
+                        value={regWhatsapp}
+                        onChange={(ev) => setRegWhatsapp(ev.target.value)}
+                        placeholder="Opcional"
                         className={teamModalInputClass}
                       />
                     </div>

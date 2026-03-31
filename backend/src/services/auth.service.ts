@@ -28,6 +28,8 @@ export type AuthUserDto = {
   name: string;
   /** Opcional; UI usa primeira palavra de `name` como fallback. */
   firstName: string | null;
+  /** WhatsApp (só dígitos quando normalizado). */
+  whatsappNumber: string | null;
   organizationId: string;
   organization: AuthOrganizationDto;
   /** Tipo de tenant da organização ativa (JWT). */
@@ -91,7 +93,8 @@ async function buildAuthUserDto(
   email: string,
   name: string,
   organizationId: string,
-  firstName: string | null
+  firstName: string | null,
+  whatsappNumber: string | null = null
 ): Promise<AuthUserDto> {
   const tenant = await loadOrgTenantFields(organizationId);
   const rootResellerPartner = await getRootResellerPartnerFlag(organizationId);
@@ -101,6 +104,7 @@ async function buildAuthUserDto(
     email,
     name,
     firstName,
+    whatsappNumber: whatsappNumber ?? null,
     organizationId,
     organization: tenant.organization,
     organizationKind: tenant.organizationKind,
@@ -310,7 +314,14 @@ export async function register(data: RegisterInput) {
   });
   const { accessToken, refreshToken } = await createTokens(user.id, user.email, org.id);
   await saveRefreshToken(user.id, refreshToken);
-  const userDto = await buildAuthUserDto(user.id, user.email, user.name, org.id, user.firstName ?? null);
+  const userDto = await buildAuthUserDto(
+    user.id,
+    user.email,
+    user.name,
+    org.id,
+    user.firstName ?? null,
+    user.whatsappNumber ?? null
+  );
   const memberships = await listMembershipSummaries(user.id);
   return {
     user: { ...userDto, platformAdmin: isPlatformAdminEmail(user.email) },
@@ -362,7 +373,8 @@ export async function login(data: LoginInput) {
     user.email,
     user.name,
     membership.organizationId,
-    user.firstName ?? null
+    user.firstName ?? null,
+    user.whatsappNumber ?? null
   );
   const memberships = await listMembershipSummaries(user.id);
   return {
@@ -516,6 +528,7 @@ export async function getAuthProfile(userId: string, organizationId: string): Pr
       email: membership.user.email,
       name: membership.user.name,
       firstName: membership.user.firstName ?? null,
+      whatsappNumber: membership.user.whatsappNumber ?? null,
       organizationId: membership.organization.id,
       organization: {
         id: membership.organization.id,
@@ -549,6 +562,7 @@ export async function getAuthProfile(userId: string, organizationId: string): Pr
     email: user.email,
     name: user.name,
     firstName: user.firstName ?? null,
+    whatsappNumber: user.whatsappNumber ?? null,
     organizationId: org.id,
     organization: {
       id: org.id,
@@ -667,7 +681,14 @@ export async function finalizeSessionForUser(userId: string, organizationId: str
   }
   const { accessToken, refreshToken } = await createTokens(user.id, user.email, organizationId);
   await saveRefreshToken(userId, refreshToken);
-  const userDto = await buildAuthUserDto(userId, user.email, user.name, organizationId, user.firstName ?? null);
+  const userDto = await buildAuthUserDto(
+    userId,
+    user.email,
+    user.name,
+    organizationId,
+    user.firstName ?? null,
+    user.whatsappNumber ?? null
+  );
   const memberships = await listMembershipSummaries(userId);
   const managedOrganizations = await listManagedOrganizationsForActiveContext(userId, organizationId);
   return {

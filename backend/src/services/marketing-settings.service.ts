@@ -17,6 +17,7 @@ import { normalizeAtivaCrmPhone, sendAtivaCrmTextMessage } from "./ativacrm.serv
 import type { UpdateMarketingSettingsInput } from "../validators/marketing-settings.validator.js";
 import { appendCustomRuleAlerts, isUtcHourMuted } from "./alert-rule-insights.service.js";
 import { formatMoney } from "./marketing-settings-format.js";
+import { utcToWallLocal, wallLocalToUtc } from "../utils/wall-clock-utc.js";
 import {
   alertWhatsappDedupeKey,
   formatWhatsappAlertLine,
@@ -35,6 +36,8 @@ export type MarketingSettingsDto = {
   targetRoas: number | null;
   minResultsForCpa: number;
   minSpendForAlertsBrl: number | null;
+  /** Orçamento diário esperado (BRL) */
+  dailyBudgetExpectedBrl: number | null;
   alertsEnabled: boolean;
   alertCpaAboveMax: boolean;
   alertCpaAboveTarget: boolean;
@@ -63,6 +66,10 @@ export type MarketingSettingsDto = {
     enabled: boolean;
     hourUtc: number;
     minuteUtc: number;
+    /** Eco do horário local usado na UI (fuso em `timezone`). */
+    hourLocal: number;
+    minuteLocal: number;
+    timezone: string;
     extraPhones: string[];
   };
 };
@@ -73,20 +80,45 @@ function decToNumber(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function parseDigestScheduleDto(json: unknown): {
-  enabled: boolean;
-  hourUtc: number;
-  minuteUtc: number;
-  extraPhones: string[];
-} {
-  const fb = { enabled: false, hourUtc: 9, minuteUtc: 0, extraPhones: [] as string[] };
+const DEFAULT_DIGEST_TZ = "America/Sao_Paulo";
+
+function parseDigestScheduleDto(json: unknown): MarketingSettingsDto["whatsappDigestSchedule"] {
+  const fb = {
+    enabled: false,
+    hourUtc: 9,
+    minuteUtc: 0,
+    hourLocal: 9,
+    minuteLocal: 0,
+    timezone: DEFAULT_DIGEST_TZ,
+    extraPhones: [] as string[],
+  };
   if (json == null || typeof json !== "object" || Array.isArray(json)) return fb;
   const o = json as Record<string, unknown>;
   const phones = o.extraPhones;
+  const tzRaw = o.timezone;
+  const timezone =
+    typeof tzRaw === "string" && tzRaw.trim().length > 0 ? tzRaw.trim().slice(0, 80) : DEFAULT_DIGEST_TZ;
+  const hourUtc = Math.min(23, Math.max(0, Math.trunc(Number(o.hourUtc)) || 9));
+  const minuteUtc = Math.min(59, Math.max(0, Math.trunc(Number(o.minuteUtc)) || 0));
+  const hlRaw = o.hourLocal;
+  const mlRaw = o.minuteLocal;
+  let hourLocal: number;
+  let minuteLocal: number;
+  if (typeof hlRaw === "number" && typeof mlRaw === "number" && Number.isFinite(hlRaw) && Number.isFinite(mlRaw)) {
+    hourLocal = Math.min(23, Math.max(0, Math.trunc(hlRaw)));
+    minuteLocal = Math.min(59, Math.max(0, Math.trunc(mlRaw)));
+  } else {
+    const w = utcToWallLocal(hourUtc, minuteUtc, timezone);
+    hourLocal = w.hourLocal;
+    minuteLocal = w.minuteLocal;
+  }
   return {
     enabled: Boolean(o.enabled),
-    hourUtc: Math.min(23, Math.max(0, Math.trunc(Number(o.hourUtc)) || 9)),
-    minuteUtc: Math.min(59, Math.max(0, Math.trunc(Number(o.minuteUtc)) || 0)),
+    hourUtc,
+    minuteUtc,
+    hourLocal,
+    minuteLocal,
+    timezone,
     extraPhones: Array.isArray(phones)
       ? phones.map((p) => String(p).trim()).filter(Boolean).slice(0, 5)
       : [],
@@ -133,6 +165,7 @@ function toDto(row: MarketingSettings): MarketingSettingsDto {
     targetRoas: decToNumber(row.targetRoas),
     minResultsForCpa: row.minResultsForCpa,
     minSpendForAlertsBrl: decToNumber(row.minSpendForAlertsBrl),
+    dailyBudgetExpectedBrl: decToNumber(row.dailyBudgetExpectedBrl),
     alertsEnabled: row.alertsEnabled,
     alertCpaAboveMax: row.alertCpaAboveMax,
     alertCpaAboveTarget: row.alertCpaAboveTarget,
@@ -203,6 +236,7 @@ export async function updateMarketingSettings(
   if (input.targetRoas !== undefined) data.targetRoas = input.targetRoas;
   if (input.minResultsForCpa !== undefined) data.minResultsForCpa = input.minResultsForCpa;
   if (input.minSpendForAlertsBrl !== undefined) data.minSpendForAlertsBrl = input.minSpendForAlertsBrl;
+  if (input.dailyBudgetExpectedBrl !== undefined) data.dailyBudgetExpectedBrl = input.dailyBudgetExpectedBrl;
   if (input.alertsEnabled !== undefined) data.alertsEnabled = input.alertsEnabled;
   if (input.alertCpaAboveMax !== undefined) data.alertCpaAboveMax = input.alertCpaAboveMax;
   if (input.alertCpaAboveTarget !== undefined) data.alertCpaAboveTarget = input.alertCpaAboveTarget;
@@ -242,8 +276,48 @@ export async function updateMarketingSettings(
       input.whatsappMessageTemplates === null ? Prisma.JsonNull : input.whatsappMessageTemplates;
   }
   if (input.whatsappDigestSchedule !== undefined) {
-    data.whatsappDigestSchedule =
-      input.whatsappDigestSchedule === null ? Prisma.JsonNull : input.whatsappDigestSchedule;
+    if (input.whatsappDigestSchedule === null) {
+      data.whatsappDigestSchedule = Prisma.JsonNull;
+    } else {
+      const s = input.whatsappDigestSchedule;
+      const phones = s.extraPhones;
+      const extraPhones = Array.isArray(phones)
+        ? phones.map((p) => String(p).trim()).filter(Boolean).slice(0, 5)
+        : [];
+      const timezone =
+        typeof s.timezone === "string" && s.timezone.trim().length > 0
+          ? s.timezone.trim().slice(0, 80)
+          : DEFAULT_DIGEST_TZ;
+      let hourUtc = Math.min(23, Math.max(0, Math.trunc(Number(s.hourUtc)) || 9));
+      let minuteUtc = Math.min(59, Math.max(0, Math.trunc(Number(s.minuteUtc)) || 0));
+      let hourLocal = hourUtc;
+      let minuteLocal = minuteUtc;
+      if (
+        s.hourLocal !== undefined &&
+        s.minuteLocal !== undefined &&
+        typeof s.hourLocal === "number" &&
+        typeof s.minuteLocal === "number"
+      ) {
+        hourLocal = Math.min(23, Math.max(0, Math.trunc(s.hourLocal)));
+        minuteLocal = Math.min(59, Math.max(0, Math.trunc(s.minuteLocal)));
+        const u = wallLocalToUtc(hourLocal, minuteLocal, timezone);
+        hourUtc = u.hourUtc;
+        minuteUtc = u.minuteUtc;
+      } else {
+        const w = utcToWallLocal(hourUtc, minuteUtc, timezone);
+        hourLocal = w.hourLocal;
+        minuteLocal = w.minuteLocal;
+      }
+      data.whatsappDigestSchedule = {
+        enabled: Boolean(s.enabled),
+        hourUtc,
+        minuteUtc,
+        hourLocal,
+        minuteLocal,
+        timezone,
+        extraPhones,
+      };
+    }
   }
 
   const row = await prisma.marketingSettings.upsert({
