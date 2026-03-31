@@ -293,6 +293,21 @@ export async function assignChildWorkspaceMember(
   );
 }
 
+/** Remove só o acesso herdado da agência a este cliente (usuário continua na agência). */
+export async function excludeAgencyMemberFromChild(childId: string, userId: string): Promise<void> {
+  await api.post(
+    `/organization/children/${encodeURIComponent(childId)}/members/agency-exclude`,
+    { userId }
+  );
+}
+
+/** Desfaz o bloqueio de acesso herdado neste cliente. */
+export async function restoreAgencyMemberOnChild(childId: string, userId: string): Promise<void> {
+  await api.delete(
+    `/organization/children/${encodeURIComponent(childId)}/members/agency-exclude/${encodeURIComponent(userId)}`
+  );
+}
+
 export async function patchChildWorkspace(
   childId: string,
   body: {

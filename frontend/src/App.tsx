@@ -33,6 +33,7 @@ import { RevendaHealthPage } from "@/pages/revenda/RevendaHealthPage";
 import { RevendaAuditPage } from "@/pages/revenda/RevendaAuditPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { PlatformPage } from "@/pages/PlatformPage";
+import { PublicDashboardSharePage } from "@/pages/PublicDashboardSharePage";
 
 function ProtectedLayout() {
   return (
@@ -49,6 +50,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/share/d/:token" element={<PublicDashboardSharePage />} />
         <Route path="/" element={<ProtectedLayout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />

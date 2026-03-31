@@ -1,9 +1,33 @@
+import { useState, type MouseEvent as ReactMouseEvent } from "react";
 import { ArrowUpRight, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { IntegrationLogo, type IntegrationLogoAccent } from "./IntegrationLogo";
 import { IntegrationStatusBadge, type IntegrationHubVisualStatus } from "./IntegrationStatusBadge";
 import type { IntegrationHubItem } from "@/lib/integration-hub-registry";
+
+const INTEREST_KEY = "ativadash:integration-interest-ids";
+
+function readInterestIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(INTEREST_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw) as unknown;
+    if (!Array.isArray(arr)) return new Set();
+    return new Set(arr.filter((x): x is string => typeof x === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+function persistInterestIds(ids: Set<string>) {
+  try {
+    localStorage.setItem(INTEREST_KEY, JSON.stringify([...ids]));
+  } catch {
+    /* ignore */
+  }
+}
 
 type Props = {
   item: IntegrationHubItem;
@@ -53,9 +77,18 @@ const brandWash: Record<string, string> = {
 export function IntegrationCard({ item, status, detailHint }: Props) {
   const navigate = useNavigate();
   const to = `/marketing/integracoes/${item.routeSlug}`;
+  const [interested, setInterested] = useState(() => readInterestIds().has(item.id));
 
   function go() {
     navigate(to);
+  }
+
+  function registerInterest(e: ReactMouseEvent<HTMLButtonElement>) {
+    e.stopPropagation();
+    const next = readInterestIds();
+    next.add(item.id);
+    persistInterestIds(next);
+    setInterested(true);
   }
 
   const cta =
@@ -70,9 +103,16 @@ export function IntegrationCard({ item, status, detailHint }: Props) {
   const wash = brandWash[item.id] ?? "from-primary/[0.04] via-transparent to-transparent";
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={go}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          go();
+        }
+      }}
       className={cn(
         "group relative flex w-full min-h-[188px] overflow-hidden rounded-2xl border border-border/70 bg-card text-left",
         "shadow-[0_1px_0_rgba(0,0,0,0.05),0_12px_32px_-16px_rgba(0,0,0,0.18)]",
@@ -117,26 +157,54 @@ export function IntegrationCard({ item, status, detailHint }: Props) {
           ) : null}
         </div>
 
-        <div className="flex shrink-0 flex-col justify-center gap-3 border-t border-border/50 pt-4 sm:w-[148px] sm:border-0 sm:border-l sm:border-border/50 sm:pl-6 sm:pt-0">
+        <div
+          className="flex shrink-0 flex-col justify-center gap-3 border-t border-border/50 pt-4 sm:w-[168px] sm:border-0 sm:border-l sm:border-border/50 sm:pl-6 sm:pt-0"
+          onClick={(e) => e.stopPropagation()}
+        >
           <IntegrationStatusBadge status={status} className="w-fit" />
-          <span
-            className={cn(
-              "inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition-colors",
-              status === "soon"
-                ? "bg-amber-500/15 text-amber-950 ring-1 ring-amber-500/25 dark:text-amber-100"
-                : "bg-primary text-primary-foreground shadow-md shadow-primary/20 hover:bg-primary/90"
-            )}
-          >
-            {cta}
-            {status === "soon" ? (
-              <ChevronRight className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-            ) : (
+          {status === "soon" ? (
+            <div className="flex w-full flex-col gap-2">
+              <span
+                className={cn(
+                  "inline-flex min-h-[36px] w-full items-center justify-center gap-2 rounded-xl px-3 text-xs font-semibold",
+                  "bg-amber-500/15 text-amber-950 ring-1 ring-amber-500/25 dark:text-amber-100"
+                )}
+              >
+                {cta}
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+              </span>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-9 rounded-xl text-xs font-semibold"
+                disabled={interested}
+                onClick={registerInterest}
+              >
+                {interested ? "Interesse registrado" : "Tenho interesse"}
+              </Button>
+              <p className="text-[10px] leading-snug text-muted-foreground">
+                Ajuda a priorizar o que construímos a seguir neste workspace.
+              </p>
+            </div>
+          ) : (
+            <span
+              className={cn(
+                "inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition-colors",
+                "bg-primary text-primary-foreground shadow-md shadow-primary/20 hover:bg-primary/90"
+              )}
+              onClick={(e) => {
+                e.stopPropagation();
+                go();
+              }}
+            >
+              {cta}
               <ArrowUpRight className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
-            )}
-          </span>
+            </span>
+          )}
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 

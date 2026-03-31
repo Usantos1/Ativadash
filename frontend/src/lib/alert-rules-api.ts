@@ -7,7 +7,13 @@ export type AlertRuleThresholdRef =
   | "VAR_BLENDED_DAILY_BUDGET_MAX";
 export type AlertRuleOperator = "gt" | "gte" | "lt" | "lte" | "outside_target";
 export type AlertRuleSeverity = "warning" | "critical";
-export type AlertRuleActionType = "whatsapp_alert" | "pause_campaign";
+export type AlertRuleEvaluationLevel = "campaign" | "ad_set" | "ad";
+export type AlertRuleCheckFrequency = "1h" | "3h" | "12h" | "daily";
+export type AlertRuleActionType =
+  | "whatsapp_alert"
+  | "pause_campaign"
+  | "pause_entity_whatsapp"
+  | "reduce_budget_20_whatsapp";
 
 export type AlertRuleRoutingDto = {
   jobTitleSlugs?: string[];
@@ -28,6 +34,10 @@ export type AlertRuleDto = {
   appliesToChannel: string | null;
   notifyWhatsapp: boolean;
   actionType: string;
+  evaluationLevel: string | null;
+  checkFrequency: string | null;
+  actionWindowStartLocal: string | null;
+  actionWindowEndLocal: string | null;
   messageTemplate: string | null;
   routing: AlertRuleRoutingDto | null;
   evaluationTimeLocal: string | null;
@@ -58,6 +68,10 @@ export type CreateAlertRulePayload = {
   appliesToChannel?: "meta" | "google" | "all";
   notifyWhatsapp?: boolean;
   actionType?: AlertRuleActionType;
+  evaluationLevel?: AlertRuleEvaluationLevel | null;
+  checkFrequency?: AlertRuleCheckFrequency | null;
+  actionWindowStartLocal?: string | null;
+  actionWindowEndLocal?: string | null;
   messageTemplate?: string | null;
   routing?: AlertRuleRoutingDto | null;
   evaluationTimeLocal?: string | null;
@@ -101,4 +115,8 @@ export async function fetchAlertOccurrences(limit = 30): Promise<{ items: AlertO
 
 export async function acknowledgeAlertOccurrence(occurrenceId: string): Promise<{ ok: true }> {
   return api.patch<{ ok: true }>(`/marketing/alert-occurrences/${encodeURIComponent(occurrenceId)}/ack`, {});
+}
+
+export async function acknowledgeAllAlertOccurrences(): Promise<{ ok: true; updated: number }> {
+  return api.patch<{ ok: true; updated: number }>("/marketing/alert-occurrences/ack-all", {});
 }

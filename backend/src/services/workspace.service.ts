@@ -230,14 +230,14 @@ type MemberListItem = {
   receiveWhatsappAlerts: boolean;
   alertStartHour: string | null;
   alertEndHour: string | null;
-  /** Membro direto da empresa vs acesso via agência (revenda) */
-  source: "direct" | "agency";
+  /** Membro direto vs acesso herdado da agência vs bloqueado neste cliente (exclusão) */
+  source: "direct" | "agency" | "agency_excluded";
 };
 
 export async function listOrganizationMembers(organizationId: string): Promise<MemberListItem[]> {
   const org = await prisma.organization.findFirst({
     where: { id: organizationId, deletedAt: null },
-    select: { parentOrganizationId: true },
+    select: { parentOrganizationId: true, agencyMemberExcludedUserIds: true },
   });
 
   const directRows = await prisma.membership.findMany({
@@ -284,6 +284,8 @@ export async function listOrganizationMembers(organizationId: string): Promise<M
     return direct;
   }
 
+  const excludedSet = new Set(org.agencyMemberExcludedUserIds ?? []);
+
   const agencyRows = await prisma.membership.findMany({
     where: {
       organizationId: org.parentOrganizationId,
@@ -307,27 +309,39 @@ export async function listOrganizationMembers(organizationId: string): Promise<M
     orderBy: { createdAt: "asc" },
   });
 
-  const agency: MemberListItem[] = agencyRows
-    .filter((m) => !m.user.deletedAt && !directUserIds.has(m.userId))
-    .map((m) => ({
-      membershipId: `via-agency:${m.id}`,
-      userId: m.user.id,
-      email: m.user.email,
-      name: m.user.name,
-      role: m.role,
-      jobTitle: m.jobTitle ?? null,
-      whatsappNumber: m.user.whatsappNumber ?? null,
-      joinedAt: m.createdAt.toISOString(),
-      lastLoginAt: m.user.lastLoginAt?.toISOString() ?? null,
-      suspended: m.user.suspendedAt != null,
-      suspendedAt: m.user.suspendedAt?.toISOString() ?? null,
-      receiveWhatsappAlerts: true,
-      alertStartHour: null,
-      alertEndHour: null,
-      source: "agency" as const,
-    }));
+  const agencyCandidates = agencyRows.filter((m) => !m.user.deletedAt && !directUserIds.has(m.userId));
 
-  return [...direct, ...agency];
+  const mapAgencyRow = (m: (typeof agencyRows)[number], membershipId: string, source: "agency" | "agency_excluded"): MemberListItem => ({
+    membershipId,
+    userId: m.user.id,
+    email: m.user.email,
+    name: m.user.name,
+    role: m.role,
+    jobTitle: m.jobTitle ?? null,
+    whatsappNumber: m.user.whatsappNumber ?? null,
+    joinedAt: m.createdAt.toISOString(),
+    lastLoginAt: m.user.lastLoginAt?.toISOString() ?? null,
+    suspended: m.user.suspendedAt != null,
+    suspendedAt: m.user.suspendedAt?.toISOString() ?? null,
+    receiveWhatsappAlerts: true,
+    alertStartHour: null,
+    alertEndHour: null,
+    source,
+  });
+
+  const agency: MemberListItem[] = agencyCandidates
+    .filter((m) => !excludedSet.has(m.userId))
+    .map((m) => mapAgencyRow(m, `via-agency:${m.id}`, "agency"));
+
+  const agencyExcluded: MemberListItem[] = [];
+  for (const uid of excludedSet) {
+    if (directUserIds.has(uid)) continue;
+    const m = agencyCandidates.find((row) => row.userId === uid);
+    if (!m) continue;
+    agencyExcluded.push(mapAgencyRow(m, `excluded-agency:${uid}`, "agency_excluded"));
+  }
+
+  return [...direct, ...agency, ...agencyExcluded];
 }
 
 export async function createWorkspaceDirectMember(

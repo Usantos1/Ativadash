@@ -111,6 +111,8 @@ model Organization {
   addressPostalCode String?
   /// Sobrescreve flags do plano (merge parcial sobre Plan.features JSON)
   featureOverrides Json?
+  /// Workspaces filhos: IDs de usuários da agência (pai) que não devem herdar acesso a este cliente.
+  agencyMemberExcludedUserIds String[] @default([])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   deletedAt DateTime?
@@ -130,6 +132,7 @@ model Organization {
   webhookEndpoints WebhookEndpoint[]
   webhookEvents    WebhookEvent[]
   alertRules       AlertRule[]
+  dashboardShareLinks DashboardShareLink[]
 
   matrixGrantsAsMatrix   MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantMatrix")
   matrixGrantsAsWorkspace MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantWorkspace")
@@ -343,13 +346,21 @@ model AlertRule {
 
   /// Incluir esta regra em envios automáticos por WhatsApp (quando disparada)
   notifyWhatsapp Boolean @default(true)
-  /// whatsapp_alert | pause_campaign (futuro)
-  actionType String @default("whatsapp_alert") @db.VarChar(32)
+  /// whatsapp_alert | pause_entity_whatsapp | reduce_budget_20_whatsapp (pausa/orçamento: API em evolução)
+  actionType String @default("whatsapp_alert") @db.VarChar(40)
+  /// Nível avaliado no SE: campaign | ad_set | ad (agregados atuais; entidades finas quando API existir)
+  evaluationLevel String? @db.VarChar(16)
+  /// 1h | 3h | 12h | daily — frequência aproximada de checagem dentro da janela
+  checkFrequency String? @db.VarChar(16)
+  /// Janela local (HH:mm) — início do expediente para disparos
+  actionWindowStartLocal String? @db.VarChar(5)
+  /// Janela local (HH:mm) — fim do expediente
+  actionWindowEndLocal String? @db.VarChar(5)
   /// Modelo de mensagem (placeholders internos: {{campaign_name}}, {{metric_value}}, …)
   messageTemplate String? @db.Text
   /// Destinatários: { jobTitleSlugs?: string[], userIds?: string[], customPhones?: string[] }
   routing Json?
-  /// Horário preferencial de avaliação no fuso abaixo (HH:mm). Null = sem janela fixa.
+  /// Legado: um instante preferencial; se preenchido sem janela nova, mantém comportamento antigo
   evaluationTimeLocal String? @db.VarChar(5)
   /// IANA (ex.: America/Sao_Paulo), enviado pelo browser ao salvar
   evaluationTimezone String? @db.VarChar(80)
@@ -377,6 +388,25 @@ model AlertOccurrence {
   createdAt DateTime @default(now())
   /// Usuário marcou como visto / resolvido na central de metas
   acknowledgedAt DateTime?
+
+  @@index([organizationId, createdAt])
+}
+
+/// Link público somente leitura (token opaco) para compartilhar visão do painel ADS / funil
+model DashboardShareLink {
+  id               String   @id @default(cuid())
+  token            String   @unique
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUserId  String?
+  page             String   @db.VarChar(24)
+  /// Seções visíveis: { kpis, channels, chart, table, insights }
+  sectionsJson     Json
+  startDate        String   @db.VarChar(10)
+  endDate          String   @db.VarChar(10)
+  periodLabel      String   @db.VarChar(120)
+  expiresAt        DateTime?
+  createdAt        DateTime @default(now())
 
   @@index([organizationId, createdAt])
 }

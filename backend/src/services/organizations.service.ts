@@ -1460,5 +1460,99 @@ export async function assignParentAgencyMemberToChildWorkspace(
       },
     });
   }
+
+  const childOrg = await prisma.organization.findFirst({
+    where: { id: childOrganizationId, deletedAt: null },
+    select: { agencyMemberExcludedUserIds: true },
+  });
+  const prevEx = childOrg?.agencyMemberExcludedUserIds ?? [];
+  if (prevEx.includes(targetUserId)) {
+    await prisma.organization.update({
+      where: { id: childOrganizationId },
+      data: { agencyMemberExcludedUserIds: prevEx.filter((id) => id !== targetUserId) },
+    });
+  }
+
   return { ok: true };
+}
+
+const CHILD_AGENCY_INHERIT_ROLES = [
+  "owner",
+  "admin",
+  "agency_owner",
+  "agency_admin",
+  "workspace_owner",
+  "workspace_admin",
+] as const;
+
+/** Oculta acesso herdado da agência a este cliente (não remove membership na agência). */
+export async function addAgencyMemberExclusionOnChild(
+  parentOrganizationId: string,
+  actorUserId: string,
+  childOrganizationId: string,
+  targetUserId: string
+): Promise<void> {
+  await assertManagedDescendantOrganization(parentOrganizationId, childOrganizationId);
+  await assertDirectOrgAdmin(actorUserId, parentOrganizationId);
+
+  const child = await prisma.organization.findFirst({
+    where: { id: childOrganizationId, deletedAt: null },
+    select: { parentOrganizationId: true },
+  });
+  if (!child || child.parentOrganizationId !== parentOrganizationId) {
+    throw new Error("Workspace cliente inválido para esta agência");
+  }
+
+  const direct = await prisma.membership.findUnique({
+    where: { userId_organizationId: { userId: targetUserId, organizationId: childOrganizationId } },
+  });
+  if (direct) {
+    throw new Error("Este usuário tem vínculo direto: use a remoção de acesso direto.");
+  }
+
+  const parentMem = await prisma.membership.findUnique({
+    where: { userId_organizationId: { userId: targetUserId, organizationId: parentOrganizationId } },
+  });
+  if (!parentMem) {
+    throw new Error("Usuário não é membro da agência");
+  }
+  if (!(CHILD_AGENCY_INHERIT_ROLES as readonly string[]).includes(parentMem.role)) {
+    throw new Error("Só é possível ocultar membros da agência com papel administrativo neste cliente");
+  }
+
+  const row = await prisma.organization.findFirst({
+    where: { id: childOrganizationId, deletedAt: null },
+    select: { agencyMemberExcludedUserIds: true },
+  });
+  const cur = [...(row?.agencyMemberExcludedUserIds ?? [])];
+  if (cur.includes(targetUserId)) return;
+  cur.push(targetUserId);
+  await prisma.organization.update({
+    where: { id: childOrganizationId },
+    data: { agencyMemberExcludedUserIds: cur },
+  });
+}
+
+export async function removeAgencyMemberExclusionOnChild(
+  parentOrganizationId: string,
+  actorUserId: string,
+  childOrganizationId: string,
+  targetUserId: string
+): Promise<void> {
+  await assertManagedDescendantOrganization(parentOrganizationId, childOrganizationId);
+  await assertDirectOrgAdmin(actorUserId, parentOrganizationId);
+
+  const child = await prisma.organization.findFirst({
+    where: { id: childOrganizationId, deletedAt: null },
+    select: { parentOrganizationId: true, agencyMemberExcludedUserIds: true },
+  });
+  if (!child || child.parentOrganizationId !== parentOrganizationId) {
+    throw new Error("Workspace cliente inválido para esta agência");
+  }
+
+  const next = (child.agencyMemberExcludedUserIds ?? []).filter((id) => id !== targetUserId);
+  await prisma.organization.update({
+    where: { id: childOrganizationId },
+    data: { agencyMemberExcludedUserIds: next },
+  });
 }

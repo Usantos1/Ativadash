@@ -10,12 +10,16 @@ import {
 import { buildInsightTotals, type InsightTotalsInput as InsightTotalsShape } from "@/lib/marketing-totals";
 import { usePerformanceInsights } from "@/hooks/usePerformanceInsights";
 import {
-  defaultLast30ApiRange,
   inferInsightPeriod,
   previousPeriodOfEqualLength,
   pushRecentPreset,
   type MarketingPresetId,
 } from "@/lib/marketing-date-presets";
+import {
+  getInitialMarketingPeriodState,
+  persistMarketingPeriod,
+  refreshPresetDatesIfNeeded,
+} from "@/lib/marketing-period-storage";
 import type { DateFilterApplyPayload } from "@/components/marketing/MarketingDateRangeDialog";
 import type { MarketingDashboardSummary } from "@/lib/marketing-dashboard-api";
 import { buildInsightTotalsFromDashboardSummary } from "@/lib/marketing-totals";
@@ -28,9 +32,12 @@ export function useMarketingMetrics(opts?: {
   /** Resumo Meta do dashboard agregado; combinado com Google de `metrics` para alertas. */
   dashboardMetaSummary?: MarketingDashboardSummary | undefined;
 }) {
-  const [dateRange, setDateRange] = useState<MetricsDateRange>(() => defaultLast30ApiRange());
-  const [dateRangeLabel, setDateRangeLabel] = useState("Últimos 30 dias");
-  const [presetId, setPresetId] = useState<MarketingPresetId>("last_30d");
+  const [dateRange, setDateRange] = useState<MetricsDateRange>(() => {
+    const i = getInitialMarketingPeriodState();
+    return { startDate: i.dateRange.startDate, endDate: i.dateRange.endDate };
+  });
+  const [dateRangeLabel, setDateRangeLabel] = useState(() => getInitialMarketingPeriodState().dateRangeLabel);
+  const [presetId, setPresetId] = useState<MarketingPresetId>(() => getInitialMarketingPeriodState().presetId);
   const [compareEnabled, setCompareEnabled] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -52,6 +59,21 @@ export function useMarketingMetrics(opts?: {
     if (!compareEnabled) return null;
     return previousPeriodOfEqualLength(dateRange.startDate, dateRange.endDate);
   }, [compareEnabled, dateRange.startDate, dateRange.endDate]);
+
+  useEffect(() => {
+    const init = getInitialMarketingPeriodState();
+    const r = refreshPresetDatesIfNeeded(init.presetId);
+    if (r) {
+      setDateRange({ startDate: r.startDate, endDate: r.endDate });
+      setDateRangeLabel(r.label);
+      persistMarketingPeriod({
+        presetId: init.presetId,
+        startDate: r.startDate,
+        endDate: r.endDate,
+        label: r.label,
+      });
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -203,6 +225,7 @@ export function useMarketingMetrics(opts?: {
     setDateRangeLabel(p.label);
     setPresetId(p.presetId);
     setCompareEnabled(false);
+    persistMarketingPeriod(p);
     if (p.presetId !== "custom") {
       pushRecentPreset(p.presetId);
     }

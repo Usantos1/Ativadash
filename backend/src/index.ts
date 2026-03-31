@@ -12,6 +12,7 @@ import organizationRoutes from "./routes/organization.routes.js";
 import platformRoutes from "./routes/platform.routes.js";
 import resellerRoutes from "./routes/reseller.routes.js";
 import hooksPublicRoutes from "./routes/webhooks-public.routes.js";
+import publicDashboardShareRoutes from "./routes/public-dashboard-share.routes.js";
 
 const app = express();
 
@@ -72,6 +73,8 @@ const limiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 app.use("/api", limiter);
+
+app.use("/api/public", publicDashboardShareRoutes);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/integrations", integrationsRoutes);

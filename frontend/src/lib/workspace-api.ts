@@ -47,8 +47,8 @@ export type MemberRow = {
   /** Conta suspensa (login bloqueado) */
   suspended?: boolean;
   suspendedAt?: string | null;
-  /** direct = membro da org; agency = admin/owner da agência com acesso à empresa cliente */
-  source?: "direct" | "agency";
+  /** direct = membro da org; agency = herdado da agência; agency_excluded = bloqueado neste cliente */
+  source?: "direct" | "agency" | "agency_excluded";
   receiveWhatsappAlerts?: boolean;
   alertStartHour?: string | null;
   alertEndHour?: string | null;

@@ -25,6 +25,16 @@ export const alertRuleThresholdRefSchema = z.enum([
   "VAR_BLENDED_DAILY_BUDGET_MAX",
 ]);
 
+export const alertRuleEvaluationLevelSchema = z.enum(["campaign", "ad_set", "ad"]);
+export const alertRuleCheckFrequencySchema = z.enum(["1h", "3h", "12h", "daily"]);
+
+export const alertRuleActionTypeSchema = z.enum([
+  "whatsapp_alert",
+  "pause_campaign",
+  "pause_entity_whatsapp",
+  "reduce_budget_20_whatsapp",
+]);
+
 export const createAlertRuleSchema = z.object({
   name: z.string().trim().min(1).max(120),
   metric: alertRuleMetricSchema,
@@ -41,7 +51,11 @@ export const createAlertRuleSchema = z.object({
   appliesToChannel: alertRuleAppliesToChannelSchema,
   /** Incluir no WhatsApp quando a regra disparar (dedupe por código ainda se aplica). */
   notifyWhatsapp: z.boolean().optional(),
-  actionType: z.enum(["whatsapp_alert", "pause_campaign"]).optional(),
+  actionType: alertRuleActionTypeSchema.optional(),
+  evaluationLevel: alertRuleEvaluationLevelSchema.optional().nullable(),
+  checkFrequency: alertRuleCheckFrequencySchema.optional().nullable(),
+  actionWindowStartLocal: hhmmSchema,
+  actionWindowEndLocal: hhmmSchema,
   messageTemplate: z.string().max(8000).optional().nullable(),
   routing: z.union([routingObjectSchema, z.null()]).optional(),
   evaluationTimeLocal: hhmmSchema,

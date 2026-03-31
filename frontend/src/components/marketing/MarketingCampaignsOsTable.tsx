@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Loader2, Pause, Play, SlidersHorizontal, Wallet } from "lucide-react";
+import { ChevronLeft, ChevronRight, Columns2, Loader2, Pause, Play, SlidersHorizontal, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollRegion } from "@/components/ui/scroll-region";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DataTablePremium } from "@/components/premium";
 import { formatNumber, formatSpend } from "@/lib/metrics-format";
 import { cn } from "@/lib/utils";
@@ -21,6 +22,74 @@ import {
   patchMarketingMetaCampaignBudget,
   patchMarketingMetaCampaignStatus,
 } from "@/lib/marketing-contract-api";
+
+const OS_TABLE_COLS_KEY = "ativadash:os-table-cols";
+
+type OsTableColKey =
+  | "score"
+  | "invest"
+  | "impr"
+  | "clicks"
+  | "ctr"
+  | "cpc"
+  | "vol"
+  | "cpl"
+  | "perda"
+  | "insight"
+  | "roas"
+  | "revenue";
+
+const OS_COL_DEFS: { key: OsTableColKey; label: string }[] = [
+  { key: "score", label: "Score" },
+  { key: "invest", label: "Investimento" },
+  { key: "impr", label: "Impressões" },
+  { key: "clicks", label: "Cliques" },
+  { key: "ctr", label: "CTR" },
+  { key: "cpc", label: "CPC" },
+  { key: "vol", label: "Leads / conv." },
+  { key: "cpl", label: "CPL / CPA" },
+  { key: "perda", label: "Perda est." },
+  { key: "insight", label: "Insight" },
+  { key: "roas", label: "ROAS" },
+  { key: "revenue", label: "Receita" },
+];
+
+function loadOsColVisibility(): Record<OsTableColKey, boolean> {
+  const all = (): Record<OsTableColKey, boolean> => ({
+    score: true,
+    invest: true,
+    impr: true,
+    clicks: true,
+    ctr: true,
+    cpc: true,
+    vol: true,
+    cpl: true,
+    perda: true,
+    insight: true,
+    roas: true,
+    revenue: true,
+  });
+  try {
+    const raw = localStorage.getItem(OS_TABLE_COLS_KEY);
+    if (!raw) return all();
+    const o = JSON.parse(raw) as Record<string, boolean>;
+    const base = all();
+    for (const k of Object.keys(base) as OsTableColKey[]) {
+      if (typeof o[k] === "boolean") base[k] = o[k];
+    }
+    return base;
+  } catch {
+    return all();
+  }
+}
+
+function saveOsColVisibility(v: Record<OsTableColKey, boolean>) {
+  try {
+    localStorage.setItem(OS_TABLE_COLS_KEY, JSON.stringify(v));
+  } catch {
+    /* ignore */
+  }
+}
 
 type StatusFilter = "all" | "active" | "paused";
 /** all | com gasto ou lead/venda | só com conversão | gasto sem conversão */
@@ -96,6 +165,28 @@ export function MarketingCampaignsOsTable({
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkHint, setBulkHint] = useState<string | null>(null);
+  const [colVis, setColVis] = useState<Record<OsTableColKey, boolean>>(loadOsColVisibility);
+  const [colMenuOpen, setColMenuOpen] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollHint, setScrollHint] = useState({ left: false, right: false });
+
+  const updateScrollHint = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    setScrollHint({
+      left: scrollLeft > 6,
+      right: scrollLeft < scrollWidth - clientWidth - 6,
+    });
+  }, []);
+
+  const toggleCol = (key: OsTableColKey) => {
+    setColVis((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      saveOsColVisibility(next);
+      return next;
+    });
+  };
 
   const effectiveCpl = overrideCpl ?? targetCplBrl;
   const effectiveRoas = overrideRoas ?? targetRoas;
@@ -164,6 +255,19 @@ export function MarketingCampaignsOsTable({
     [filtered, goalMode, sortKey]
   );
 
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    updateScrollHint();
+    el.addEventListener("scroll", updateScrollHint, { passive: true });
+    const ro = new ResizeObserver(() => updateScrollHint());
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", updateScrollHint);
+      ro.disconnect();
+    };
+  }, [updateScrollHint, rows.length, filtered.length, sorted.length]);
+
   const visibleIds = useMemo(() => new Set(sorted.map((r) => r.id)), [sorted]);
   const allSelected = sorted.length > 0 && sorted.every((r) => selected.has(r.id));
   const someSelected = sorted.some((r) => selected.has(r.id));
@@ -230,6 +334,18 @@ export function MarketingCampaignsOsTable({
     onAfterMutation();
   };
 
+  const cbSticky =
+    "sticky left-0 z-20 w-10 min-w-[2.5rem] border-r border-border/30 bg-card shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]";
+  const statusSticky = canMutateCampaigns
+    ? "sticky left-10 z-20 w-36 min-w-[9rem] border-r border-border/40 bg-card shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]"
+    : "sticky left-0 z-20 w-36 min-w-[9rem] border-r border-border/40 bg-card shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]";
+  const acaoSticky = canMutateCampaigns
+    ? "sticky left-[11.5rem] z-20 w-[13rem] min-w-[13rem] max-w-[13rem] border-r border-border/40 bg-card shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]"
+    : "sticky left-[9rem] z-20 w-[13rem] min-w-[13rem] max-w-[13rem] border-r border-border/40 bg-card shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]";
+  const nomeSticky = canMutateCampaigns
+    ? "sticky left-[24.5rem] z-20 min-w-[200px] max-w-[15rem] border-r border-border/40 bg-card shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]"
+    : "sticky left-[22rem] z-20 min-w-[200px] max-w-[15rem] border-r border-border/40 bg-card shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]";
+
   const runBulkBudgetFactor = async (factor: number) => {
     const targets = selectedRows.filter((r) => r.channel === "Meta" && r.level === "campaign" && r.externalId);
     if (!targets.length) {
@@ -274,7 +390,8 @@ export function MarketingCampaignsOsTable({
     hasGoogle != null;
 
   return (
-    <div className="space-y-4">
+    <TooltipProvider delayDuration={400}>
+      <div className="space-y-4">
       <div className="rounded-2xl border border-border/55 bg-card/95 p-4 shadow-[var(--shadow-surface-sm)]">
         {showOsToolbar ? (
           <div className="mb-4 flex flex-col gap-3 border-b border-border/45 pb-4 sm:flex-row sm:flex-wrap sm:items-center">
@@ -499,7 +616,69 @@ export function MarketingCampaignsOsTable({
         ) : null}
       </div>
 
-      <ScrollRegion className="scrollbar-thin">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="relative">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-lg text-xs"
+            onClick={() => setColMenuOpen((v) => !v)}
+          >
+            <Columns2 className="mr-1.5 h-3.5 w-3.5" />
+            Colunas
+          </Button>
+          {colMenuOpen ? (
+            <>
+              <button
+                type="button"
+                className="fixed inset-0 z-40 cursor-default bg-transparent"
+                aria-label="Fechar menu de colunas"
+                onClick={() => setColMenuOpen(false)}
+              />
+              <div className="absolute right-0 z-50 mt-1 w-56 rounded-xl border border-border/80 bg-popover p-3 shadow-lg">
+                <p className="mb-2 text-[10px] font-bold uppercase text-muted-foreground">Métricas visíveis</p>
+                <ul className="max-h-56 space-y-1.5 overflow-y-auto">
+                  {OS_COL_DEFS.filter(
+                    (c) => goalMode !== "LEADS" || (c.key !== "roas" && c.key !== "revenue")
+                  ).map((c) => (
+                    <li key={c.key}>
+                      <label className="flex cursor-pointer items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 rounded border-border"
+                          checked={colVis[c.key]}
+                          onChange={() => toggleCol(c.key)}
+                        />
+                        {c.label}
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="relative min-w-0">
+        {scrollHint.left ? (
+          <div
+            className="pointer-events-none absolute left-0 top-0 z-[25] flex h-full w-10 items-center justify-start bg-gradient-to-r from-card from-40% to-transparent pl-1"
+            aria-hidden
+          >
+            <ChevronLeft className="h-4 w-4 text-muted-foreground/70" />
+          </div>
+        ) : null}
+        {scrollHint.right ? (
+          <div
+            className="pointer-events-none absolute right-0 top-0 z-[25] flex h-full w-10 items-center justify-end bg-gradient-to-l from-card from-40% to-transparent pr-1"
+            aria-hidden
+          >
+            <ChevronRight className="h-4 w-4 text-muted-foreground/70" />
+          </div>
+        ) : null}
+        <ScrollRegion ref={scrollRef} className="scrollbar-thin">
         <DataTablePremium
           stickyHeader
           zebra
@@ -507,35 +686,38 @@ export function MarketingCampaignsOsTable({
           shellClassName="border-border/70 bg-card"
           className={cn(
             "min-w-[1180px] text-[13px]",
+            "[&_thead_th]:bg-card",
             "[&_tbody_tr]:border-border/50 [&_tbody_tr:hover]:bg-muted/50"
           )}
         >
           <thead>
             <tr>
               {canMutateCampaigns ? (
-                <th className="w-10 text-center">
+                <th className={cn(cbSticky, "text-center")}>
                   <span className="sr-only">Selecionar</span>
                 </th>
               ) : null}
-              <th className="text-left">Status</th>
-              <th className="text-left">Ação sugerida</th>
-              <th className="text-right">Score</th>
-              <th className="sticky left-0 z-10 min-w-[200px] bg-card text-left shadow-[4px_0_12px_-8px_rgba(0,0,0,0.12)]">
-                Nome
-              </th>
-              <th className="text-right">Invest.</th>
-              <th className="text-right">Impr.</th>
-              <th className="text-right">Cliques</th>
-              <th className="text-right">CTR</th>
-              <th className="text-right">CPC</th>
-              <th className="text-right">{goalMode === "SALES" ? "Conv." : "Leads"}</th>
-              <th className="text-right">{goalMode === "SALES" ? "CPA" : "CPL"}</th>
-              <th className="text-right">Perda est.</th>
-              <th className="text-right">Insight</th>
+              <th className={cn(statusSticky, "text-left")}>Status</th>
+              <th className={cn(acaoSticky, "text-left")}>Ação sugerida</th>
+              <th className={cn(nomeSticky, "text-left")}>Nome</th>
+              {colVis.score ? <th className="text-right">Score</th> : null}
+              {colVis.invest ? <th className="text-right">Invest.</th> : null}
+              {colVis.impr ? <th className="text-right">Impr.</th> : null}
+              {colVis.clicks ? <th className="text-right">Cliques</th> : null}
+              {colVis.ctr ? <th className="text-right">CTR</th> : null}
+              {colVis.cpc ? <th className="text-right">CPC</th> : null}
+              {colVis.vol ? (
+                <th className="text-right">{goalMode === "SALES" ? "Conv." : "Leads"}</th>
+              ) : null}
+              {colVis.cpl ? (
+                <th className="text-right">{goalMode === "SALES" ? "CPA" : "CPL"}</th>
+              ) : null}
+              {colVis.perda ? <th className="text-right">Perda est.</th> : null}
+              {colVis.insight ? <th className="text-right">Insight</th> : null}
               {goalMode !== "LEADS" ? (
                 <>
-                  <th className="text-right">ROAS</th>
-                  <th className="text-right">Receita</th>
+                  {colVis.roas ? <th className="text-right">ROAS</th> : null}
+                  {colVis.revenue ? <th className="text-right">Receita</th> : null}
                 </>
               ) : null}
               {canMutateCampaigns ? <th className="text-right">Ações</th> : null}
@@ -561,7 +743,7 @@ export function MarketingCampaignsOsTable({
               return (
                 <tr key={row.id} className="border-b border-border/40">
                   {canMutateCampaigns ? (
-                    <td className="text-center align-middle">
+                    <td className={cn(cbSticky, "text-center align-middle")}>
                       <input
                         type="checkbox"
                         className="h-4 w-4 rounded border-border"
@@ -571,7 +753,7 @@ export function MarketingCampaignsOsTable({
                       />
                     </td>
                   ) : null}
-                  <td className="align-middle">
+                  <td className={cn(statusSticky, "align-middle")}>
                     <span
                       className={cn(
                         "inline-flex rounded-lg px-2 py-1 text-[11px] font-bold uppercase tracking-wide",
@@ -581,57 +763,89 @@ export function MarketingCampaignsOsTable({
                       {smartLabelPt(sig.smart)}
                     </span>
                   </td>
-                  <td className="max-w-[200px] align-middle text-xs font-medium leading-snug text-foreground">
+                  <td className={cn(acaoSticky, "max-w-[200px] align-middle text-xs font-medium leading-snug text-foreground")}>
                     {sig.suggested}
                   </td>
-                  <td className="text-right align-middle">
-                    <span className="text-sm font-bold tabular-nums text-foreground">{sig.score}</span>
-                    <span className="text-[10px] text-muted-foreground">/100</span>
+                  <td className={cn(nomeSticky, "py-2.5 align-middle")}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="min-w-0 cursor-default text-left">
+                          <div className="truncate font-semibold text-foreground">{row.name}</div>
+                          {row.parentLabel ? (
+                            <div className="truncate text-[11px] text-muted-foreground">{row.parentLabel}</div>
+                          ) : null}
+                          <div className="text-[10px] font-medium text-muted-foreground">{row.channel}</div>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-sm">
+                        <p className="font-semibold leading-snug">{row.name}</p>
+                        {row.parentLabel ? (
+                          <p className="mt-1 text-muted-foreground">{row.parentLabel}</p>
+                        ) : null}
+                      </TooltipContent>
+                    </Tooltip>
                   </td>
-                  <td
-                    className={cn(
-                      "sticky left-0 z-[1] max-w-[240px] bg-card py-2.5 align-middle shadow-[4px_0_12px_-8px_rgba(0,0,0,0.1)]"
-                    )}
-                  >
-                    <div className="truncate font-semibold text-foreground">{row.name}</div>
-                    {row.parentLabel ? (
-                      <div className="truncate text-[11px] text-muted-foreground">{row.parentLabel}</div>
-                    ) : null}
-                    <div className="text-[10px] font-medium text-muted-foreground">{row.channel}</div>
-                  </td>
-                  <td className="text-right align-middle text-sm font-bold tabular-nums text-foreground">
-                    {formatSpend(row.spend)}
-                  </td>
-                  <td className="text-right align-middle text-sm tabular-nums text-muted-foreground">
-                    {formatNumber(row.impressions)}
-                  </td>
-                  <td className="text-right align-middle text-sm tabular-nums text-muted-foreground">
-                    {formatNumber(row.clicks)}
-                  </td>
-                  <td className="text-right align-middle text-sm font-semibold tabular-nums text-foreground">
-                    {sig.ctrPct != null ? `${sig.ctrPct.toFixed(2)}%` : "—"}
-                  </td>
-                  <td className="text-right align-middle text-sm tabular-nums text-muted-foreground">
-                    {cpcRow != null ? formatSpend(cpcRow) : "—"}
-                  </td>
-                  <td className="text-right align-middle text-sm font-bold tabular-nums text-foreground">
-                    {formatNumber(vol)}
-                  </td>
-                  <td className="text-right align-middle text-sm font-bold tabular-nums text-primary">
-                    {sig.cpl != null ? formatSpend(sig.cpl) : "—"}
-                  </td>
-                  <td className="text-right align-middle text-xs tabular-nums text-rose-700 dark:text-rose-300">
-                    {sig.lossEstimateBrl != null ? formatSpend(sig.lossEstimateBrl) : "—"}
-                  </td>
-                  <td className="max-w-[180px] align-middle text-[11px] leading-snug text-muted-foreground">
-                    {sig.upliftHint ?? "—"}
-                  </td>
+                  {colVis.score ? (
+                    <td className="text-right align-middle">
+                      <span className="text-sm font-bold tabular-nums text-foreground">{sig.score}</span>
+                      <span className="text-[10px] text-muted-foreground">/100</span>
+                    </td>
+                  ) : null}
+                  {colVis.invest ? (
+                    <td className="text-right align-middle text-sm font-bold tabular-nums text-foreground">
+                      {formatSpend(row.spend)}
+                    </td>
+                  ) : null}
+                  {colVis.impr ? (
+                    <td className="text-right align-middle text-sm tabular-nums text-muted-foreground">
+                      {formatNumber(row.impressions)}
+                    </td>
+                  ) : null}
+                  {colVis.clicks ? (
+                    <td className="text-right align-middle text-sm tabular-nums text-muted-foreground">
+                      {formatNumber(row.clicks)}
+                    </td>
+                  ) : null}
+                  {colVis.ctr ? (
+                    <td className="text-right align-middle text-sm font-semibold tabular-nums text-foreground">
+                      {sig.ctrPct != null ? `${sig.ctrPct.toFixed(2)}%` : "—"}
+                    </td>
+                  ) : null}
+                  {colVis.cpc ? (
+                    <td className="text-right align-middle text-sm tabular-nums text-muted-foreground">
+                      {cpcRow != null ? formatSpend(cpcRow) : "—"}
+                    </td>
+                  ) : null}
+                  {colVis.vol ? (
+                    <td className="text-right align-middle text-sm font-bold tabular-nums text-foreground">
+                      {formatNumber(vol)}
+                    </td>
+                  ) : null}
+                  {colVis.cpl ? (
+                    <td className="text-right align-middle text-sm font-bold tabular-nums text-primary">
+                      {sig.cpl != null ? formatSpend(sig.cpl) : "—"}
+                    </td>
+                  ) : null}
+                  {colVis.perda ? (
+                    <td className="text-right align-middle text-xs tabular-nums text-rose-700 dark:text-rose-300">
+                      {sig.lossEstimateBrl != null ? formatSpend(sig.lossEstimateBrl) : "—"}
+                    </td>
+                  ) : null}
+                  {colVis.insight ? (
+                    <td className="max-w-[180px] align-middle text-[11px] leading-snug text-muted-foreground">
+                      {sig.upliftHint ?? "—"}
+                    </td>
+                  ) : null}
                   {goalMode !== "LEADS" ? (
                     <>
-                      <td className="text-right align-middle text-sm font-bold tabular-nums">
-                        {roas != null ? `${roas.toFixed(2)}x` : "—"}
-                      </td>
-                      <td className="text-right align-middle text-sm tabular-nums">{formatSpend(row.revenue)}</td>
+                      {colVis.roas ? (
+                        <td className="text-right align-middle text-sm font-bold tabular-nums">
+                          {roas != null ? `${roas.toFixed(2)}x` : "—"}
+                        </td>
+                      ) : null}
+                      {colVis.revenue ? (
+                        <td className="text-right align-middle text-sm tabular-nums">{formatSpend(row.revenue)}</td>
+                      ) : null}
                     </>
                   ) : null}
                   {canMutateCampaigns ? (
@@ -722,6 +936,7 @@ export function MarketingCampaignsOsTable({
           </tbody>
         </DataTablePremium>
       </ScrollRegion>
+      </div>
 
       <p className="text-center text-[11px] text-muted-foreground">
         <Link to="/marketing/integracoes" className="font-semibold text-primary underline-offset-4 hover:underline">
@@ -732,6 +947,7 @@ export function MarketingCampaignsOsTable({
           Metas
         </Link>
       </p>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }

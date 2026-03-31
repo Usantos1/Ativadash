@@ -208,7 +208,12 @@ export function IntegrationsHubPage() {
       ) : (
         <div className="space-y-16">
           {filteredSections.map((section) => (
-            <IntegrationSection key={section.title} title={section.title} description={section.description}>
+            <IntegrationSection
+              key={section.title}
+              title={section.title}
+              description={section.description}
+              anchorId={section.category === "checkout" ? "integracoes-checkout" : undefined}
+            >
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 {section.items.map((item) => {
                   const row = integrationRowForItem(list, item);

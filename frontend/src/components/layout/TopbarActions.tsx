@@ -1,9 +1,10 @@
 import { Link } from "react-router-dom";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Bell, LogOut, Moon, Settings, Sun, User } from "lucide-react";
+import { LogOut, Moon, Settings, Sun, User } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { useUIStore } from "@/stores/ui-store";
 import { cn } from "@/lib/utils";
+import { NotificationsSheet } from "@/components/layout/NotificationsSheet";
 
 const iconBtn =
   "relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/90 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
@@ -24,15 +25,7 @@ export function TopbarActions({ onLogout }: { onLogout: () => void }) {
         {theme === "dark" ? <Sun className="h-[1.125rem] w-[1.125rem]" /> : <Moon className="h-[1.125rem] w-[1.125rem]" />}
       </button>
 
-      <button
-        type="button"
-        className={cn(iconBtn, "cursor-not-allowed opacity-40")}
-        disabled
-        aria-label="Notificações em breve"
-        title="Notificações em breve"
-      >
-        <Bell className="h-[1.125rem] w-[1.125rem]" />
-      </button>
+      <NotificationsSheet />
 
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>

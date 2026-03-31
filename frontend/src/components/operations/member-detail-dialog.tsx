@@ -225,7 +225,11 @@ export function MemberDetailDialog({
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge tone="healthy" dot>
-                  {member.source === "agency" ? "Acesso via agência" : "Membro direto"}
+                  {member.source === "agency_excluded"
+                    ? "Bloqueado neste cliente (herdado)"
+                    : member.source === "agency"
+                      ? "Acesso via agência"
+                      : "Membro direto"}
                 </StatusBadge>
                 {member.suspended ? (
                   <StatusBadge tone="alert" dot>

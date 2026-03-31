@@ -31,3 +31,7 @@ export const assignChildWorkspaceMemberSchema = z.object({
   userId: z.string().min(1, "Usuário obrigatório"),
   clientAccessLevel: z.enum(["ADMIN", "OPERADOR", "VIEWER"]),
 });
+
+export const agencyExcludeChildMemberSchema = z.object({
+  userId: z.string().min(1, "Usuário obrigatório"),
+});

@@ -6,11 +6,13 @@ type Props = {
   description?: string;
   children: ReactNode;
   className?: string;
+  /** Âncora para links diretos (ex.: #integracoes-checkout) */
+  anchorId?: string;
 };
 
-export function IntegrationSection({ title, description, children, className }: Props) {
+export function IntegrationSection({ title, description, children, className, anchorId }: Props) {
   return (
-    <section className={cn("space-y-5", className)}>
+    <section id={anchorId} className={cn("scroll-mt-24 space-y-5", className)}>
       <div className="flex flex-col gap-1 border-b border-border/50 pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-lg font-bold tracking-tight text-foreground">{title}</h2>

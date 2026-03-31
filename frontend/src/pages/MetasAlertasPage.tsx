@@ -38,7 +38,9 @@ import {
   fetchAlertRules,
   patchAlertRule,
   type AlertRuleActionType,
+  type AlertRuleCheckFrequency,
   type AlertRuleDto,
+  type AlertRuleEvaluationLevel,
   type AlertRuleMetric,
   type AlertRuleOperator,
   type AlertRuleRoutingDto,
@@ -71,21 +73,53 @@ const OPERATOR_OPTIONS: { value: AlertRuleOperator; label: string }[] = [
   { value: "outside_target", label: "Fora da meta" },
 ];
 
-const ACTION_OPTIONS: { value: AlertRuleActionType; label: string; disabled?: boolean }[] = [
-  { value: "whatsapp_alert", label: "Enviar alerta WhatsApp" },
-  { value: "pause_campaign", label: "Pausar campanha (em breve)", disabled: true },
+const LEVEL_OPTIONS: { value: AlertRuleEvaluationLevel; label: string }[] = [
+  { value: "campaign", label: "Campanha" },
+  { value: "ad_set", label: "Conjunto" },
+  { value: "ad", label: "Anúncio" },
 ];
 
-const CHANNEL_OPTIONS: { value: "all" | "meta" | "google"; label: string }[] = [
-  { value: "all", label: "Todos os canais" },
-  { value: "meta", label: "Meta Ads" },
-  { value: "google", label: "Google Ads" },
+const FREQUENCY_OPTIONS: { value: AlertRuleCheckFrequency; label: string }[] = [
+  { value: "1h", label: "A cada 1 hora" },
+  { value: "3h", label: "A cada 3 horas" },
+  { value: "12h", label: "A cada 12 horas" },
+  { value: "daily", label: "Diariamente" },
 ];
+
+const ACTION_OPTIONS: { value: AlertRuleActionType; label: string; hint?: string }[] = [
+  { value: "whatsapp_alert", label: "Enviar alerta WhatsApp", hint: "Somente notificação" },
+  {
+    value: "pause_entity_whatsapp",
+    label: "Pausar (nível da regra) e avisar no WhatsApp",
+    hint: "Automação — API em integração",
+  },
+  {
+    value: "reduce_budget_20_whatsapp",
+    label: "Reduzir orçamento em 20% e avisar no WhatsApp",
+    hint: "Automação — API em integração",
+  },
+  { value: "pause_campaign", label: "Pausar campanha (legado)", hint: "Compatibilidade" },
+];
+
+const VALID_ACTION_TYPES: AlertRuleActionType[] = [
+  "whatsapp_alert",
+  "pause_campaign",
+  "pause_entity_whatsapp",
+  "reduce_budget_20_whatsapp",
+];
+
+function normalizeActionType(raw: string): AlertRuleActionType {
+  return VALID_ACTION_TYPES.includes(raw as AlertRuleActionType) ? (raw as AlertRuleActionType) : "whatsapp_alert";
+}
 
 const MESSAGE_CHIPS: { label: string; insert: string }[] = [
   { label: "[Nome da Campanha]", insert: "{{campaign_name}}" },
-  { label: "[Métrica atual]", insert: "{{metric_value}}" },
-  { label: "[Valor da meta]", insert: "{{goal_value}}" },
+  { label: "[Nome do Conjunto]", insert: "{{ad_set_name}}" },
+  { label: "[Nome do Anúncio]", insert: "{{ad_name}}" },
+  { label: "[Métrica Atual]", insert: "{{metric_value}}" },
+  { label: "[Valor da Meta]", insert: "{{goal_value}}" },
+  { label: "[Gasto Atual]", insert: "{{spend_current}}" },
+  { label: "[ROAS Atual]", insert: "{{roas_current}}" },
   { label: "[Nome da regra]", insert: "{{rule_name}}" },
   { label: "[Período]", insert: "{{period}}" },
 ];
@@ -94,6 +128,8 @@ type RuleDraft = {
   clientKey: string;
   serverId?: string;
   name: string;
+  /** Nível do SE (campanha / conjunto / anúncio). */
+  evaluationLevel: AlertRuleEvaluationLevel;
   metric: AlertRuleMetric;
   operator: AlertRuleOperator;
   thresholdStr: string;
@@ -108,7 +144,9 @@ type RuleDraft = {
   routingJobSlugs: string[];
   routingUserIds: string[];
   routingCustomPhonesStr: string;
-  evaluationTimeLocal: string;
+  checkFrequency: AlertRuleCheckFrequency;
+  actionWindowStartLocal: string;
+  actionWindowEndLocal: string;
 };
 
 function clientTz(): string {
@@ -129,10 +167,28 @@ function dtoToDraft(d: AlertRuleDto): RuleDraft {
   const thresholdRef = validRefs.includes(refRaw as AlertRuleThresholdRef)
     ? (refRaw as AlertRuleThresholdRef)
     : null;
+  const validLevels: AlertRuleEvaluationLevel[] = ["campaign", "ad_set", "ad"];
+  const evaluationLevel = validLevels.includes(d.evaluationLevel as AlertRuleEvaluationLevel)
+    ? (d.evaluationLevel as AlertRuleEvaluationLevel)
+    : "campaign";
+  const validFreq: AlertRuleCheckFrequency[] = ["1h", "3h", "12h", "daily"];
+  const checkFrequency = validFreq.includes(d.checkFrequency as AlertRuleCheckFrequency)
+    ? (d.checkFrequency as AlertRuleCheckFrequency)
+    : "1h";
+  const rawStart = d.actionWindowStartLocal?.trim() ?? "";
+  const rawEnd = d.actionWindowEndLocal?.trim() ?? "";
+  const legacyEval = d.evaluationTimeLocal?.trim() ?? "";
+  let actionWindowStartLocal = rawStart;
+  let actionWindowEndLocal = rawEnd;
+  if (!rawStart && !rawEnd && legacyEval) {
+    actionWindowStartLocal = legacyEval;
+    actionWindowEndLocal = "18:00";
+  }
   return {
     clientKey: d.id,
     serverId: d.id,
     name: d.name,
+    evaluationLevel,
     metric: (METRIC_OPTIONS.some((m) => m.value === d.metric) ? d.metric : "cpa") as AlertRuleMetric,
     operator: (OPERATOR_OPTIONS.some((o) => o.value === d.operator)
       ? d.operator
@@ -144,36 +200,47 @@ function dtoToDraft(d: AlertRuleDto): RuleDraft {
     appliesToChannel:
       d.appliesToChannel === "meta" || d.appliesToChannel === "google" ? d.appliesToChannel : "all",
     notifyWhatsapp: d.notifyWhatsapp !== false,
-    actionType: d.actionType === "pause_campaign" ? "pause_campaign" : "whatsapp_alert",
+    actionType: normalizeActionType(d.actionType ?? "whatsapp_alert"),
     messageTemplate: d.messageTemplate ?? "",
     routingJobSlugs: [...(d.routing?.jobTitleSlugs ?? [])],
     routingUserIds: [...(d.routing?.userIds ?? [])],
     routingCustomPhonesStr: (d.routing?.customPhones ?? []).join(", "),
-    evaluationTimeLocal: d.evaluationTimeLocal?.trim() ?? "",
+    checkFrequency,
+    actionWindowStartLocal,
+    actionWindowEndLocal,
   };
 }
 
-function newDraft(): RuleDraft {
+function newDraft(channel: "meta" | "google"): RuleDraft {
   return {
     clientKey: crypto.randomUUID(),
-    name: "Nova automação",
-    metric: "cpa",
-    operator: "gt",
+    name: channel === "meta" ? "Nova regra Meta Ads" : "Nova regra Google Ads",
+    evaluationLevel: "campaign",
+    metric: channel === "meta" ? "cpa" : "roas",
+    operator: channel === "meta" ? "gt" : "lt",
     thresholdStr: "50",
     thresholdRef: null,
     severity: "warning",
     active: true,
-    appliesToChannel: "all",
+    appliesToChannel: channel,
     notifyWhatsapp: true,
     actionType: "whatsapp_alert",
     messageTemplate:
-      "⚠️ {{rule_name}}\n{{metric_value}} no período {{period}}. Meta: {{goal_value}}.\nCampanha: {{campaign_name}}",
+      "⚠️ {{rule_name}}\nSE [{{campaign_name}}] — {{metric_value}} no período {{period}}. Meta: {{goal_value}}.\nGasto: {{spend_current}} · ROAS: {{roas_current}}",
     routingJobSlugs: [],
     routingUserIds: [],
     routingCustomPhonesStr: "",
-    evaluationTimeLocal: "",
+    checkFrequency: "1h",
+    actionWindowStartLocal: "09:00",
+    actionWindowEndLocal: "18:00",
   };
 }
+
+const DEFAULT_SCHEDULE = {
+  checkFrequency: "1h" as AlertRuleCheckFrequency,
+  actionWindowStartLocal: "09:00",
+  actionWindowEndLocal: "18:00",
+};
 
 /** Modelos iniciais quando não há regras salvas (editáveis / removíveis). */
 function buildDefaultAutomationDrafts(): RuleDraft[] {
@@ -181,6 +248,7 @@ function buildDefaultAutomationDrafts(): RuleDraft[] {
     {
       clientKey: crypto.randomUUID(),
       name: "Alerta de Teto de CPL (Meta Ads)",
+      evaluationLevel: "campaign",
       metric: "cpa",
       operator: "gt",
       thresholdStr: "0",
@@ -191,15 +259,16 @@ function buildDefaultAutomationDrafts(): RuleDraft[] {
       notifyWhatsapp: true,
       actionType: "whatsapp_alert",
       messageTemplate:
-        "🚨 *ALERTA ATIVA DASH*\nA campanha *{{campaign_name}}* estourou o teto de CPL configurado para Meta Ads.\n• CPL atual: {{metric_value}}\n• Referência (metas): {{goal_value}}\n• {{period}}",
+        "🚨 *ALERTA ATIVA DASH*\nSE [Campanha] *{{campaign_name}}* — CPL acima do teto Meta.\n• CPL atual: {{metric_value}}\n• Referência: {{goal_value}}\n• {{period}}",
       routingJobSlugs: [],
       routingUserIds: [],
       routingCustomPhonesStr: "",
-      evaluationTimeLocal: "",
+      ...DEFAULT_SCHEDULE,
     },
     {
       clientKey: crypto.randomUUID(),
       name: "Alerta de Sangria (Orçamento diário)",
+      evaluationLevel: "campaign",
       metric: "daily_spend",
       operator: "gt",
       thresholdStr: "0",
@@ -210,15 +279,16 @@ function buildDefaultAutomationDrafts(): RuleDraft[] {
       notifyWhatsapp: true,
       actionType: "whatsapp_alert",
       messageTemplate:
-        "🚨 *ALERTA ATIVA DASH — Sangria*\nGasto diário acima do *orçamento máximo* combinado (Meta + Google).\n• Gasto hoje (est.): {{metric_value}}\n• Teto: {{goal_value}}\n• {{period}}",
+        "🚨 *ALERTA ATIVA DASH — Sangria*\nGasto diário acima do teto *{{goal_value}}*.\n• Gasto hoje: {{metric_value}} ({{spend_current}})\n• {{period}}",
       routingJobSlugs: [],
       routingUserIds: [],
       routingCustomPhonesStr: "",
-      evaluationTimeLocal: "",
+      ...DEFAULT_SCHEDULE,
     },
     {
       clientKey: crypto.randomUUID(),
       name: "Alerta de ROAS crítico (Google Ads)",
+      evaluationLevel: "campaign",
       metric: "roas",
       operator: "lt",
       thresholdStr: "0",
@@ -229,11 +299,11 @@ function buildDefaultAutomationDrafts(): RuleDraft[] {
       notifyWhatsapp: true,
       actionType: "whatsapp_alert",
       messageTemplate:
-        "🚨 *ALERTA ATIVA DASH*\nROAS abaixo da meta no Google Ads — campanha *{{campaign_name}}*.\n• ROAS atual: {{metric_value}}\n• Meta: {{goal_value}}\n• {{period}}",
+        "🚨 *ALERTA ATIVA DASH*\nSE [Campanha] *{{campaign_name}}* — ROAS abaixo da meta Google.\n• ROAS atual: {{metric_value}} ({{roas_current}})\n• Meta: {{goal_value}}\n• {{period}}",
       routingJobSlugs: [],
       routingUserIds: [],
       routingCustomPhonesStr: "",
-      evaluationTimeLocal: "",
+      ...DEFAULT_SCHEDULE,
     },
   ];
 }
@@ -259,6 +329,9 @@ function draftToPayload(d: RuleDraft, tz: string) {
             const n = Number(String(d.thresholdStr).replace(",", "."));
             return Number.isFinite(n) ? n : 0;
           })();
+  const winStart = d.actionWindowStartLocal.trim();
+  const winEnd = d.actionWindowEndLocal.trim();
+  const hasWindow = Boolean(winStart && winEnd);
   return {
     name: d.name.trim() || "Automação",
     metric: d.metric,
@@ -269,11 +342,15 @@ function draftToPayload(d: RuleDraft, tz: string) {
     active: d.active,
     appliesToChannel: d.appliesToChannel,
     notifyWhatsapp: d.notifyWhatsapp,
-    actionType: d.actionType === "pause_campaign" ? ("whatsapp_alert" as const) : d.actionType,
+    actionType: d.actionType,
+    evaluationLevel: d.evaluationLevel,
+    checkFrequency: d.checkFrequency,
+    actionWindowStartLocal: winStart || null,
+    actionWindowEndLocal: winEnd || null,
     messageTemplate: d.messageTemplate.trim() || null,
     routing: buildRouting(d),
-    evaluationTimeLocal: d.evaluationTimeLocal.trim() ? d.evaluationTimeLocal.trim() : null,
-    evaluationTimezone: d.evaluationTimeLocal.trim() ? tz : null,
+    evaluationTimeLocal: null,
+    evaluationTimezone: hasWindow ? tz : null,
   };
 }
 
@@ -316,6 +393,7 @@ export function MetasAlertasPage() {
   }, [user?.organizationId, memberships]);
 
   const [tab, setTab] = useState("metas");
+  const [automationChannel, setAutomationChannel] = useState<"meta" | "google">("meta");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -339,6 +417,26 @@ export function MetasAlertasPage() {
   const tplRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
 
   const tz = useMemo(() => clientTz(), []);
+
+  const filteredAutomationRules = useMemo(
+    () => rules.filter((r) => r.appliesToChannel === "all" || r.appliesToChannel === automationChannel),
+    [rules, automationChannel]
+  );
+
+  function thresholdRefSelectOptions(r: RuleDraft): { value: AlertRuleThresholdRef | "fixed"; label: string }[] {
+    const opts: { value: AlertRuleThresholdRef | "fixed"; label: string }[] = [
+      { value: "fixed", label: "Valor fixo (R$ / × / %)" },
+      { value: "VAR_CHANNEL_MAX_CPA", label: THRESHOLD_REF_LABEL.VAR_CHANNEL_MAX_CPA },
+      { value: "VAR_CHANNEL_TARGET_ROAS", label: THRESHOLD_REF_LABEL.VAR_CHANNEL_TARGET_ROAS },
+    ];
+    if (r.appliesToChannel === "all") {
+      opts.push({
+        value: "VAR_BLENDED_DAILY_BUDGET_MAX",
+        label: THRESHOLD_REF_LABEL.VAR_BLENDED_DAILY_BUDGET_MAX,
+      });
+    }
+    return opts;
+  }
 
   const load = useCallback(async () => {
     setError(null);
@@ -676,37 +774,92 @@ export function MetasAlertasPage() {
             </Card>
           ) : (
             <>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-muted-foreground">
-                  Monte frases do tipo: <span className="font-medium text-foreground">SE métrica ENTÃO ação</span>, com
-                  destinatários e modelo de mensagem.
-                </p>
+              <div className="rounded-xl border border-border/40 bg-muted/15 px-4 py-3 text-sm text-muted-foreground">
+                <strong className="text-foreground">Motor de automação:</strong> regras separadas por canal. O fluxo é{" "}
+                <span className="font-medium text-foreground">
+                  SE [nível] tiver [métrica] [condição] [valor] → ENTÃO [ação]
+                </span>
+                . Pausa e orçamento guardam o tipo de ação; integração com APIs de mídia em evolução.
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="grid h-auto w-full max-w-md grid-cols-2 rounded-xl border border-border/40 bg-muted/30 p-1">
+                  <button
+                    type="button"
+                    className={cn(
+                      "inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm",
+                      automationChannel === "meta"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    onClick={() => setAutomationChannel("meta")}
+                  >
+                    Regras Meta Ads
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      "inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm",
+                      automationChannel === "google"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    onClick={() => setAutomationChannel("google")}
+                  >
+                    Regras Google Ads
+                  </button>
+                </div>
                 <Button
                   type="button"
                   variant="secondary"
                   size="sm"
                   className="rounded-xl"
                   disabled={!canEdit}
-                  onClick={() => setRules((p) => [...p, newDraft()])}
+                  onClick={() => setRules((p) => [...p, newDraft(automationChannel)])}
                 >
                   <Plus className="mr-2 h-4 w-4" />
-                  Criar nova automação
+                  Nova regra ({automationChannel === "meta" ? "Meta" : "Google"})
                 </Button>
               </div>
 
-              {rules.length === 0 ? (
+              {filteredAutomationRules.length === 0 ? (
                 <Card className="border-dashed border-border/60 bg-muted/10">
                   <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
                     <Zap className="h-10 w-10 text-muted-foreground/50" />
-                    <p className="text-sm text-muted-foreground">Nenhuma automação ainda.</p>
-                    <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => setRules([newDraft()])}>
-                      Começar com um modelo
-                    </Button>
+                    <p className="text-sm text-muted-foreground">
+                      Nenhuma regra para{" "}
+                      {automationChannel === "meta"
+                        ? "Meta Ads (inclui regras “todos os canais”)"
+                        : "Google Ads (inclui regras “todos os canais”)"}
+                      .
+                    </p>
+                    <div className="flex flex-wrap justify-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="rounded-xl"
+                        onClick={() => setRules((p) => [...p, newDraft(automationChannel)])}
+                      >
+                        Criar primeira regra
+                      </Button>
+                      {rules.length === 0 ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl"
+                          onClick={() => setRules(buildDefaultAutomationDrafts())}
+                        >
+                          Carregar modelos sugeridos
+                        </Button>
+                      ) : null}
+                    </div>
                   </CardContent>
                 </Card>
               ) : null}
 
-              {rules.map((r) => (
+              {filteredAutomationRules.map((r) => (
                 <Card
                   key={r.clientKey}
                   className={cn(
@@ -757,16 +910,57 @@ export function MetasAlertasPage() {
                     ) : null}
                   </CardHeader>
                   <CardContent className="space-y-5">
-                    <div className="flex flex-wrap items-end gap-2 rounded-xl border border-border/40 bg-muted/20 p-4 text-sm">
-                      <span className="self-center text-xs font-bold uppercase tracking-wide text-muted-foreground">SE</span>
-                      <div className="w-[8.5rem] space-y-1">
-                        <Label className="text-[10px] text-muted-foreground">Métrica</Label>
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                      <span
+                        className={cn(
+                          "rounded-md border px-2 py-0.5 font-medium",
+                          r.appliesToChannel === "all"
+                            ? "border-amber-500/35 bg-amber-500/10 text-amber-950 dark:text-amber-100"
+                            : "border-border/50 bg-muted/40"
+                        )}
+                      >
+                        {r.appliesToChannel === "all"
+                          ? "Escopo: todos os canais"
+                          : r.appliesToChannel === "meta"
+                            ? "Escopo: Meta Ads"
+                            : "Escopo: Google Ads"}
+                      </span>
+                      <span className="hidden sm:inline">·</span>
+                      <span>
+                        Novas regras nesta aba são{" "}
+                        <strong className="text-foreground">{automationChannel === "meta" ? "Meta" : "Google"}</strong>
+                        ; “todos os canais” aparece nas duas listas.
+                      </span>
+                    </div>
+
+                    <div className="space-y-3 rounded-xl border border-border/40 bg-muted/20 p-4 text-sm">
+                      <p className="flex flex-wrap items-center gap-x-1 gap-y-2 text-[11px] leading-relaxed text-muted-foreground">
+                        <span className="font-bold text-foreground">SE</span>
+                        <Select
+                          value={r.evaluationLevel}
+                          disabled={!canEdit}
+                          onValueChange={(v) =>
+                            updateRule(r.clientKey, { evaluationLevel: v as AlertRuleEvaluationLevel })
+                          }
+                        >
+                          <SelectTrigger className="h-8 w-[9.5rem] rounded-lg">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {LEVEL_OPTIONS.map((o) => (
+                              <SelectItem key={o.value} value={o.value}>
+                                {o.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <span>tiver</span>
                         <Select
                           value={r.metric}
                           disabled={!canEdit}
                           onValueChange={(v) => updateRule(r.clientKey, { metric: v as AlertRuleMetric })}
                         >
-                          <SelectTrigger className="h-9 rounded-lg">
+                          <SelectTrigger className="h-8 w-[11rem] rounded-lg">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -777,15 +971,14 @@ export function MetasAlertasPage() {
                             ))}
                           </SelectContent>
                         </Select>
-                      </div>
-                      <div className="w-[10.5rem] space-y-1">
-                        <Label className="text-[10px] text-muted-foreground">Estiver</Label>
+                      </p>
+                      <p className="flex flex-wrap items-center gap-x-1 gap-y-2 text-[11px] leading-relaxed text-muted-foreground">
                         <Select
                           value={r.operator}
                           disabled={!canEdit}
                           onValueChange={(v) => updateRule(r.clientKey, { operator: v as AlertRuleOperator })}
                         >
-                          <SelectTrigger className="h-9 rounded-lg">
+                          <SelectTrigger className="h-8 w-[10.5rem] rounded-lg">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -796,11 +989,8 @@ export function MetasAlertasPage() {
                             ))}
                           </SelectContent>
                         </Select>
-                      </div>
-                      {r.operator !== "outside_target" ? (
-                        <div className="flex min-w-0 flex-1 flex-col gap-2 sm:min-w-[14rem]">
-                          <div className="space-y-1">
-                            <Label className="text-[10px] text-muted-foreground">Limiar</Label>
+                        {r.operator !== "outside_target" ? (
+                          <>
                             <Select
                               value={r.thresholdRef ?? "fixed"}
                               disabled={!canEdit}
@@ -811,64 +1001,115 @@ export function MetasAlertasPage() {
                                 })
                               }
                             >
-                              <SelectTrigger className="h-9 rounded-lg">
+                              <SelectTrigger className="h-8 min-w-[11rem] max-w-[22rem] rounded-lg">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="fixed">Valor fixo (R$ / × / %)</SelectItem>
-                                <SelectItem value="VAR_CHANNEL_MAX_CPA">
-                                  {THRESHOLD_REF_LABEL.VAR_CHANNEL_MAX_CPA}
-                                </SelectItem>
-                                <SelectItem value="VAR_CHANNEL_TARGET_ROAS">
-                                  {THRESHOLD_REF_LABEL.VAR_CHANNEL_TARGET_ROAS}
-                                </SelectItem>
-                                <SelectItem value="VAR_BLENDED_DAILY_BUDGET_MAX">
-                                  {THRESHOLD_REF_LABEL.VAR_BLENDED_DAILY_BUDGET_MAX}
-                                </SelectItem>
+                                {thresholdRefSelectOptions(r).map((o) => (
+                                  <SelectItem key={o.value} value={o.value}>
+                                    {o.label}
+                                  </SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
-                          </div>
-                          {r.thresholdRef ? (
-                            <p className="rounded-md border border-primary/20 bg-primary/5 px-2 py-1 text-[11px] text-foreground">
-                              {THRESHOLD_REF_LABEL[r.thresholdRef]}
-                            </p>
-                          ) : (
-                            <div className="space-y-1">
-                              <Label className="text-[10px] text-muted-foreground">Valor (R$ ou × ou %)</Label>
+                            {!r.thresholdRef ? (
                               <Input
                                 inputMode="decimal"
-                                className="h-9 rounded-lg"
+                                className="h-8 w-[6.5rem] rounded-lg"
                                 disabled={!canEdit}
                                 value={r.thresholdStr}
                                 onChange={(e) => updateRule(r.clientKey, { thresholdStr: e.target.value })}
                               />
+                            ) : (
+                              <span className="text-[11px]">(variável das metas)</span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-[11px]">(fora da meta global)</span>
+                        )}
+                      </p>
+
+                      <div className="flex flex-col gap-3 border-t border-border/35 pt-3">
+                        <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Então</div>
+                        <div className="grid gap-3 lg:grid-cols-2">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground">Ação</Label>
+                            <Select
+                              value={r.actionType}
+                              disabled={!canEdit}
+                              onValueChange={(v) =>
+                                updateRule(r.clientKey, { actionType: v as AlertRuleActionType })
+                              }
+                            >
+                              <SelectTrigger className="h-9 rounded-lg">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {ACTION_OPTIONS.map((o) => (
+                                  <SelectItem key={o.value} value={o.value}>
+                                    <span className="flex flex-col text-left">
+                                      <span>{o.label}</span>
+                                      {o.hint ? (
+                                        <span className="text-[10px] font-normal text-muted-foreground">{o.hint}</span>
+                                      ) : null}
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground">Frequência de checagem</Label>
+                            <Select
+                              value={r.checkFrequency}
+                              disabled={!canEdit}
+                              onValueChange={(v) =>
+                                updateRule(r.clientKey, { checkFrequency: v as AlertRuleCheckFrequency })
+                              }
+                            >
+                              <SelectTrigger className="h-9 rounded-lg">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {FREQUENCY_OPTIONS.map((o) => (
+                                  <SelectItem key={o.value} value={o.value}>
+                                    {o.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1 lg:col-span-2">
+                            <Label className="text-[10px] text-muted-foreground">
+                              Janela de atuação (horário de expediente)
+                            </Label>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-xs text-muted-foreground">Das</span>
+                              <Input
+                                type="time"
+                                disabled={!canEdit}
+                                value={r.actionWindowStartLocal || ""}
+                                onChange={(e) =>
+                                  updateRule(r.clientKey, { actionWindowStartLocal: e.target.value })
+                                }
+                                className="h-9 w-[7rem] rounded-lg"
+                              />
+                              <span className="text-xs text-muted-foreground">às</span>
+                              <Input
+                                type="time"
+                                disabled={!canEdit}
+                                value={r.actionWindowEndLocal || ""}
+                                onChange={(e) =>
+                                  updateRule(r.clientKey, { actionWindowEndLocal: e.target.value })
+                                }
+                                className="h-9 w-[7rem] rounded-lg"
+                              />
                             </div>
-                          )}
+                            <p className="text-[10px] text-muted-foreground">
+                              Fuso: {tz}. Vazio = sem janela local (24/7; mute UTC legado ainda pode aplicar).
+                            </p>
+                          </div>
                         </div>
-                      ) : (
-                        <p className="self-center text-xs text-muted-foreground">Usa CPL/ROAS das metas globais.</p>
-                      )}
-                      <span className="self-center text-xs font-bold uppercase text-muted-foreground">ENTÃO</span>
-                      <div className="min-w-[12rem] flex-1 space-y-1">
-                        <Label className="text-[10px] text-muted-foreground">Ação</Label>
-                        <Select
-                          value={r.actionType === "pause_campaign" ? "whatsapp_alert" : r.actionType}
-                          disabled={!canEdit}
-                          onValueChange={(v) =>
-                            updateRule(r.clientKey, { actionType: v as AlertRuleActionType })
-                          }
-                        >
-                          <SelectTrigger className="h-9 rounded-lg">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {ACTION_OPTIONS.map((o) => (
-                              <SelectItem key={o.value} value={o.value} disabled={o.disabled}>
-                                {o.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
                       </div>
                     </div>
 
@@ -977,46 +1218,12 @@ export function MetasAlertasPage() {
                           onChange={(e) => updateRule(r.clientKey, { messageTemplate: e.target.value })}
                           className="min-h-[120px] w-full rounded-xl border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         />
-                        <div className="space-y-1">
-                          <Label className="text-xs">Horário preferencial de checagem (opcional)</Label>
-                          <p className="text-[11px] text-muted-foreground">
-                            Vazio = avalia quando o painel rodar, sem janela fixa. Usa o fuso do navegador ({tz}).
-                          </p>
-                          <Input
-                            type="time"
-                            disabled={!canEdit}
-                            value={r.evaluationTimeLocal || ""}
-                            onChange={(e) => updateRule(r.clientKey, { evaluationTimeLocal: e.target.value })}
-                            className="h-9 max-w-[9rem] rounded-lg"
-                          />
-                        </div>
                       </div>
                     </div>
 
                     <Separator />
 
                     <div className="flex flex-wrap items-center gap-3">
-                      <div className="space-y-1">
-                        <Label className="text-[10px] uppercase text-muted-foreground">Canal</Label>
-                        <Select
-                          value={r.appliesToChannel}
-                          disabled={!canEdit}
-                          onValueChange={(v) =>
-                            updateRule(r.clientKey, { appliesToChannel: v as RuleDraft["appliesToChannel"] })
-                          }
-                        >
-                          <SelectTrigger className="h-9 w-[11rem] rounded-lg">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {CHANNEL_OPTIONS.map((o) => (
-                              <SelectItem key={o.value} value={o.value}>
-                                {o.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
                       <div className="flex items-center gap-2 rounded-lg border border-border/50 px-3 py-2">
                         <Bell className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm">WhatsApp</span>

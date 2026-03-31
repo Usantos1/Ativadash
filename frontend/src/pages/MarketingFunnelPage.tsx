@@ -7,6 +7,7 @@ import {
   Loader2,
   RefreshCw,
   Share2,
+  Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
@@ -16,6 +17,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { IndeterminateLoadingBar } from "@/components/ui/indeterminate-loading-bar";
 import { ScrollRegion } from "@/components/ui/scroll-region";
 import { MarketingDateRangeDialog } from "@/components/marketing/MarketingDateRangeDialog";
+import { MarketingShareDialog } from "@/components/marketing/MarketingShareDialog";
 import { CaptureTrendComposedChart } from "@/components/marketing/CaptureTrendComposedChart";
 import {
   CockpitSectionTitle,
@@ -45,8 +47,13 @@ import {
 } from "@/lib/marketing-contract-api";
 import { canUserMutateMarketingAds } from "@/lib/marketing-ads-permissions";
 import { isAgencyClientPortalUser } from "@/lib/navigation-mode";
+import { fetchIntegrations, type IntegrationFromApi } from "@/lib/integrations-api";
+import { isNonDefaultPeriod } from "@/lib/marketing-period-storage";
+import type { DashboardSharePage } from "@/lib/dashboard-share-api";
 
 export type FunnelVariant = "captacao" | "conversao" | "receita";
+
+const CHECKOUT_SLUGS = new Set(["hotmart", "kiwify", "eduzz", "braip", "greenn"]);
 
 type CampAgg = {
   channel: "Meta" | "Google";
@@ -190,13 +197,37 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
   const user = useAuthStore((s) => s.user);
   const memberships = useAuthStore((s) => s.memberships);
   const [orgCtx, setOrgCtx] = useState<OrganizationContext | null>(null);
-  const [shareHint, setShareHint] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   const [adsActionHint, setAdsActionHint] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const [mutatingAdsKey, setMutatingAdsKey] = useState<string | null>(null);
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
   const [budgetTarget, setBudgetTarget] = useState<{ id: string; name: string } | null>(null);
   const [budgetInput, setBudgetInput] = useState("");
   const [budgetSaving, setBudgetSaving] = useState(false);
+  const [integrationsList, setIntegrationsList] = useState<IntegrationFromApi[]>([]);
+
+  useEffect(() => {
+    if (variant !== "receita") return;
+    let c = false;
+    fetchIntegrations()
+      .then((r) => {
+        if (!c) setIntegrationsList(r.integrations);
+      })
+      .catch(() => {
+        if (!c) setIntegrationsList([]);
+      });
+    return () => {
+      c = true;
+    };
+  }, [variant]);
+
+  const hasCheckoutConnected = useMemo(
+    () =>
+      integrationsList.some(
+        (i) => i.slug != null && CHECKOUT_SLUGS.has(i.slug) && i.status === "connected"
+      ),
+    [integrationsList]
+  );
 
   const membershipRole = useMemo(() => {
     if (!user?.organizationId) return null;
@@ -553,15 +584,8 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
     }
   }, [budgetTarget, budgetInput, refreshAll]);
 
-  const handleShare = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      setShareHint("Link copiado.");
-    } catch {
-      setShareHint("Não foi possível copiar.");
-    }
-    setTimeout(() => setShareHint(null), 2200);
-  }, []);
+  const sharePage: DashboardSharePage =
+    variant === "captacao" ? "captacao" : variant === "conversao" ? "conversao" : "receita";
 
   const hasData = metrics?.ok || metaMetrics?.ok;
   const leadLabel = settings?.primaryConversionLabel?.trim() || "Leads";
@@ -600,11 +624,19 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-9 rounded-lg border-border/70 bg-background/80 shadow-sm"
+                  className={cn(
+                    "h-9 rounded-lg border-border/70 bg-background/80 shadow-sm",
+                    isNonDefaultPeriod(presetId) && "border-amber-500/45 bg-amber-500/[0.07] ring-1 ring-amber-500/20"
+                  )}
                   onClick={() => setPickerOpen(true)}
                 >
                   <CalendarRange className="mr-1.5 h-3.5 w-3.5 opacity-70" />
                   {dateRangeLabel}
+                  {isNonDefaultPeriod(presetId) ? (
+                    <span className="ml-2 rounded-full bg-amber-500/25 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-950 dark:text-amber-100">
+                      Período
+                    </span>
+                  ) : null}
                 </Button>
                 <MarketingDateRangeDialog
                   open={pickerOpen}
@@ -630,10 +662,26 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                   </Button>
                 ) : null}
                 {!isClientPortalUser ? (
-                  <Button size="sm" className="h-9 rounded-lg shadow-sm" variant="secondary" type="button" onClick={handleShare}>
+                  <Button
+                    size="sm"
+                    className="h-9 rounded-lg shadow-sm"
+                    variant="secondary"
+                    type="button"
+                    onClick={() => setShareOpen(true)}
+                  >
                     <Share2 className="mr-1.5 h-3.5 w-3.5" />
                     Compartilhar
                   </Button>
+                ) : null}
+                {!isClientPortalUser ? (
+                  <MarketingShareDialog
+                    open={shareOpen}
+                    onOpenChange={setShareOpen}
+                    page={sharePage}
+                    startDate={dateRange.startDate}
+                    endDate={dateRange.endDate}
+                    periodLabel={dateRangeLabel}
+                  />
                 ) : null}
                 {!isClientPortalUser ? (
                   <Button variant="default" size="sm" className="h-9 rounded-lg shadow-sm" asChild>
@@ -641,7 +689,6 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                   </Button>
                 ) : null}
               </div>
-              {shareHint ? <span className="text-right text-xs text-muted-foreground">{shareHint}</span> : null}
             </div>
           ) : null
         }
@@ -776,10 +823,49 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
           </div>
 
           {variant === "receita" && attributedRevenue <= 0 ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-muted/20 px-4 py-3">
-              <StatusBadge tone="alert" dot>
-                Sem receita no período
-              </StatusBadge>
+            <div
+              className={cn(
+                "rounded-2xl border px-5 py-6",
+                hasCheckoutConnected
+                  ? "border-border/60 bg-muted/15"
+                  : "border-amber-500/30 bg-gradient-to-br from-amber-500/[0.07] to-transparent"
+              )}
+            >
+              {!hasCheckoutConnected ? (
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-800 dark:text-amber-200">
+                    <Wallet className="h-6 w-6" />
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <h3 className="text-base font-bold tracking-tight text-foreground">
+                      Receita de checkout ainda não conectada
+                    </h3>
+                    <p className="text-sm leading-relaxed text-muted-foreground">
+                      Os valores desta página vêm das conversões das redes (Meta / Google). Para ver vendas de Hotmart,
+                      Kiwify e outras plataformas aqui, conecte o checkout quando a integração estiver disponível em{" "}
+                      <span className="font-medium text-foreground">Integrações · Pagamentos e checkout</span>.
+                    </p>
+                    <Button className="mt-2 w-fit rounded-xl" asChild>
+                      <Link to="/marketing/integracoes#integracoes-checkout">Ir para checkout</Link>
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge tone="neutral" dot>
+                      Sem receita no período
+                    </StatusBadge>
+                  </div>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    A integração de checkout está ativa, mas não há receita atribuída neste intervalo de datas. Ajuste o
+                    período ou confira se os eventos estão chegando corretamente.
+                  </p>
+                  <Button variant="outline" size="sm" className="rounded-xl" asChild>
+                    <Link to="/marketing/integracoes#integracoes-checkout">Revisar integrações</Link>
+                  </Button>
+                </div>
+              )}
             </div>
           ) : null}
 

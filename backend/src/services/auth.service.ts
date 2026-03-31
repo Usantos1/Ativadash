@@ -197,18 +197,24 @@ async function listManagedOrganizationsForActiveContext(
   if (!anchor.parentOrganizationId) {
     const ids = await collectDescendantOrganizationIds(adminAnchor);
     if (ids.length === 0) return [];
-    return prisma.organization.findMany({
+    const rows = await prisma.organization.findMany({
       where: { id: { in: ids }, deletedAt: null },
-      select: { id: true, name: true, slug: true },
+      select: { id: true, name: true, slug: true, agencyMemberExcludedUserIds: true },
       orderBy: { name: "asc" },
     });
+    return rows
+      .filter((o) => !(o.agencyMemberExcludedUserIds ?? []).includes(userId))
+      .map(({ agencyMemberExcludedUserIds: _e, ...rest }) => rest);
   }
 
-  return prisma.organization.findMany({
+  const directChildren = await prisma.organization.findMany({
     where: { parentOrganizationId: adminAnchor, deletedAt: null },
-    select: { id: true, name: true, slug: true },
+    select: { id: true, name: true, slug: true, agencyMemberExcludedUserIds: true },
     orderBy: { name: "asc" },
   });
+  return directChildren
+    .filter((o) => !(o.agencyMemberExcludedUserIds ?? []).includes(userId))
+    .map(({ agencyMemberExcludedUserIds: _e, ...rest }) => rest);
 }
 
 /** Gerir org: papéis elevados na própria org ou em qualquer ancestral. */

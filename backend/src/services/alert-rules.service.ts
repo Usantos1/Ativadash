@@ -30,6 +30,10 @@ export type AlertRuleDto = {
   appliesToChannel: string | null;
   notifyWhatsapp: boolean;
   actionType: string;
+  evaluationLevel: string | null;
+  checkFrequency: string | null;
+  actionWindowStartLocal: string | null;
+  actionWindowEndLocal: string | null;
   messageTemplate: string | null;
   routing: AlertRuleRoutingDto | null;
   evaluationTimeLocal: string | null;
@@ -64,6 +68,10 @@ function toDto(row: AlertRule): AlertRuleDto {
     appliesToChannel: row.appliesToChannel?.trim() ? row.appliesToChannel.trim() : null,
     notifyWhatsapp: row.notifyWhatsapp !== false,
     actionType: row.actionType ?? "whatsapp_alert",
+    evaluationLevel: row.evaluationLevel?.trim() || null,
+    checkFrequency: row.checkFrequency?.trim() || null,
+    actionWindowStartLocal: row.actionWindowStartLocal?.trim() || null,
+    actionWindowEndLocal: row.actionWindowEndLocal?.trim() || null,
     messageTemplate: row.messageTemplate ?? null,
     routing: parseAlertRuleRouting(row.routing),
     evaluationTimeLocal: row.evaluationTimeLocal ?? null,
@@ -154,6 +162,14 @@ export async function acknowledgeAlertOccurrence(
   return { ok: true };
 }
 
+export async function acknowledgeAllAlertOccurrences(organizationId: string): Promise<{ updated: number }> {
+  const res = await prisma.alertOccurrence.updateMany({
+    where: { organizationId, acknowledgedAt: null },
+    data: { acknowledgedAt: new Date() },
+  });
+  return { updated: res.count };
+}
+
 export async function listAlertRules(organizationId: string): Promise<AlertRuleDto[]> {
   const rows = await prisma.alertRule.findMany({
     where: { organizationId },
@@ -173,6 +189,7 @@ export async function createAlertRule(
       metric: input.metric,
       operator: input.operator,
       threshold: input.threshold,
+      thresholdRef: input.thresholdRef?.trim() || null,
       severity: input.severity,
       active: input.active ?? true,
       muteStartHour: input.muteStartHour ?? null,
@@ -185,6 +202,10 @@ export async function createAlertRule(
             : null,
       notifyWhatsapp: input.notifyWhatsapp !== false,
       actionType: input.actionType ?? "whatsapp_alert",
+      evaluationLevel: input.evaluationLevel?.trim() || null,
+      checkFrequency: input.checkFrequency?.trim() || null,
+      actionWindowStartLocal: input.actionWindowStartLocal?.trim() || null,
+      actionWindowEndLocal: input.actionWindowEndLocal?.trim() || null,
       messageTemplate: input.messageTemplate ?? null,
       evaluationTimeLocal: input.evaluationTimeLocal ?? null,
       evaluationTimezone: input.evaluationTimezone?.trim() || null,
@@ -235,6 +256,18 @@ export async function updateAlertRule(
   if (input.evaluationTimezone !== undefined) data.evaluationTimezone = input.evaluationTimezone?.trim() || null;
   if (input.thresholdRef !== undefined) {
     data.thresholdRef = input.thresholdRef === null ? null : input.thresholdRef.trim();
+  }
+  if (input.evaluationLevel !== undefined) {
+    data.evaluationLevel = input.evaluationLevel === null ? null : input.evaluationLevel.trim();
+  }
+  if (input.checkFrequency !== undefined) {
+    data.checkFrequency = input.checkFrequency === null ? null : input.checkFrequency.trim();
+  }
+  if (input.actionWindowStartLocal !== undefined) {
+    data.actionWindowStartLocal = input.actionWindowStartLocal?.trim() || null;
+  }
+  if (input.actionWindowEndLocal !== undefined) {
+    data.actionWindowEndLocal = input.actionWindowEndLocal?.trim() || null;
   }
 
   const row = await prisma.alertRule.update({

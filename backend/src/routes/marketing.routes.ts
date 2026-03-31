@@ -22,6 +22,7 @@ import {
   getMarketingAlertsInsightHandler,
   getMarketingAlertOccurrencesHandler,
   patchMarketingAlertOccurrenceAckHandler,
+  patchMarketingAlertOccurrencesAckAllHandler,
   getMarketingSettingsHandler,
   putMarketingSettingsHandler,
   postMarketingInsightsHandler,
@@ -40,6 +41,7 @@ import {
   postMetricsSnapshotHandler,
   getMetricsSnapshotLatestHandler,
 } from "../controllers/marketing.controller.js";
+import { postDashboardShareHandler } from "../controllers/dashboard-share.controller.js";
 
 const router = Router();
 
@@ -51,6 +53,7 @@ router.get("/funnel", ...authCtx, getMarketingFunnelContractHandler);
 router.get("/detail/campaigns", ...authCtx, getMarketingDetailCampaignsHandler);
 router.get("/alerts/insight", ...authCtx, getMarketingAlertsInsightHandler);
 router.get("/alert-occurrences", ...authCtx, getMarketingAlertOccurrencesHandler);
+router.patch("/alert-occurrences/ack-all", ...authCtx, patchMarketingAlertOccurrencesAckAllHandler);
 router.patch("/alert-occurrences/:id/ack", ...authCtx, patchMarketingAlertOccurrenceAckHandler);
 
 router.get("/alert-rules", ...authCtx, getAlertRulesHandler);
@@ -85,5 +88,7 @@ router.post("/ativacrm/test-message", ...authCtx, postAtivaCrmTestHandler);
 
 router.post("/metrics-snapshot", ...authCtx, postMetricsSnapshotHandler);
 router.get("/metrics-snapshot/latest", ...authCtx, getMetricsSnapshotLatestHandler);
+
+router.post("/dashboard-shares", ...authCtx, postDashboardShareHandler);
 
 export default router;

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { MarketingDateRangeDialog } from "@/components/marketing/MarketingDateRangeDialog";
+import { MarketingShareDialog } from "@/components/marketing/MarketingShareDialog";
 import { IndeterminateLoadingBar } from "@/components/ui/indeterminate-loading-bar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { MarketingCampaignsOsTable } from "@/components/marketing/MarketingCampaignsOsTable";
@@ -64,6 +65,7 @@ import {
 } from "@/lib/marketing-capture-aggregate";
 import { chartLeadExtrema, deriveAccountHealth } from "@/lib/marketing-strategic-insights";
 import { generateInsights } from "@/lib/marketing-insights-engine";
+import { isNonDefaultPeriod } from "@/lib/marketing-period-storage";
 import type { OsCampaignRow } from "@/lib/marketing-campaign-os";
 
 export function Marketing() {
@@ -98,7 +100,7 @@ export function Marketing() {
   const [googleAdRowsOs, setGoogleAdRowsOs] = useState<GoogleAdsAdRow[]>([]);
   const [deepLoading, setDeepLoading] = useState(false);
   const [settings, setSettings] = useState<MarketingSettingsDto | null>(null);
-  const [shareHint, setShareHint] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   const [adsActionHint, setAdsActionHint] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const [mutatingAdsKey, setMutatingAdsKey] = useState<string | null>(null);
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
@@ -635,17 +637,6 @@ export function Marketing() {
     if (hasMeta && !hasGoogle) setOsPlatform("meta");
   }, [hasMeta, hasGoogle]);
 
-  const handleShare = useCallback(async () => {
-    const url = window.location.href;
-    try {
-      await navigator.clipboard.writeText(url);
-      setShareHint("Link copiado.");
-    } catch {
-      setShareHint("Não foi possível copiar.");
-    }
-    setTimeout(() => setShareHint(null), 2500);
-  }, []);
-
   return (
     <AppMainRouteBody className="space-y-6">
       <PageHeaderPremium
@@ -677,11 +668,19 @@ export function Marketing() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-9 rounded-lg border-border/70 bg-background/80 shadow-sm"
+                  className={cn(
+                    "h-9 rounded-lg border-border/70 bg-background/80 shadow-sm",
+                    isNonDefaultPeriod(presetId) && "border-amber-500/45 bg-amber-500/[0.07] ring-1 ring-amber-500/20"
+                  )}
                   onClick={() => setPickerOpen(true)}
                 >
                   <CalendarRange className="mr-1.5 h-3.5 w-3.5 opacity-70" />
                   {dateRangeLabel}
+                  {isNonDefaultPeriod(presetId) ? (
+                    <span className="ml-2 rounded-full bg-amber-500/25 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-950 dark:text-amber-100">
+                      Período
+                    </span>
+                  ) : null}
                 </Button>
                 <MarketingDateRangeDialog
                   open={pickerOpen}
@@ -709,16 +708,23 @@ export function Marketing() {
                   className="h-9 rounded-lg shadow-sm"
                   variant="secondary"
                   type="button"
-                  onClick={handleShare}
+                  onClick={() => setShareOpen(true)}
                 >
                   <Share2 className="mr-1.5 h-3.5 w-3.5" />
                   Compartilhar
                 </Button>
+                <MarketingShareDialog
+                  open={shareOpen}
+                  onOpenChange={setShareOpen}
+                  page="painel"
+                  startDate={dateRange.startDate}
+                  endDate={dateRange.endDate}
+                  periodLabel={dateRangeLabel}
+                />
                 <Button variant="default" size="sm" className="h-9 rounded-lg shadow-sm" asChild>
                   <Link to="/marketing/configuracoes">Metas e alertas</Link>
                 </Button>
               </div>
-              {shareHint ? <span className="text-right text-xs text-muted-foreground">{shareHint}</span> : null}
             </div>
           ) : null
         }

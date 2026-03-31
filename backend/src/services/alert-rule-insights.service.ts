@@ -59,15 +59,94 @@ export function isNearEvaluationLocalTime(
   return diff <= toleranceMin;
 }
 
+function localMinutesInTimezone(timezone: string, date = new Date()): number {
+  try {
+    const fmt = new Intl.DateTimeFormat("en-GB", {
+      timeZone: timezone.trim(),
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(date);
+    const ch = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+    const cm = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+    return ch * 60 + cm;
+  } catch {
+    return 0;
+  }
+}
+
+function parseHHMMToMinutes(s: string | null | undefined): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec((s ?? "").trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(min) || h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+/** Janela de expediente local (permite virada de dia se fim &lt; início). */
+function isWithinLocalActionWindow(
+  timezone: string | null | undefined,
+  start: string | null | undefined,
+  end: string | null | undefined
+): boolean {
+  if (!timezone?.trim() || !start?.trim() || !end?.trim()) return true;
+  const a = parseHHMMToMinutes(start);
+  const b = parseHHMMToMinutes(end);
+  if (a == null || b == null) return true;
+  const cur = localMinutesInTimezone(timezone);
+  if (a <= b) return cur >= a && cur <= b;
+  return cur >= a || cur <= b;
+}
+
+/**
+ * Frequência aproximada dentro da janela (alinhamento por hora local).
+ * daily ≈ apenas no horário de abertura da janela.
+ */
+function passesCheckFrequency(
+  rule: {
+    checkFrequency: string | null;
+    actionWindowStartLocal: string | null;
+  },
+  timezone: string
+): boolean {
+  const f = (rule.checkFrequency ?? "1h").trim() || "1h";
+  if (f === "1h") return true;
+  const curH = Math.floor(localMinutesInTimezone(timezone) / 60);
+  if (f === "3h") return curH % 3 === 0;
+  if (f === "12h") return curH % 12 === 0;
+  if (f === "daily") {
+    const startM = parseHHMMToMinutes(rule.actionWindowStartLocal);
+    if (startM == null) return curH === 9;
+    return curH === Math.floor(startM / 60);
+  }
+  return true;
+}
+
 function passesTimeWindow(rule: {
   evaluationTimeLocal: string | null;
   evaluationTimezone: string | null;
   muteStartHour: number | null;
   muteEndHour: number | null;
+  actionWindowStartLocal: string | null;
+  actionWindowEndLocal: string | null;
+  checkFrequency: string | null;
 }): boolean {
-  if (rule.evaluationTimeLocal && rule.evaluationTimezone) {
-    return isNearEvaluationLocalTime(rule.evaluationTimezone, rule.evaluationTimeLocal);
+  const tz = rule.evaluationTimezone?.trim() || "";
+  const hasBusinessWindow = Boolean(
+    tz && rule.actionWindowStartLocal?.trim() && rule.actionWindowEndLocal?.trim()
+  );
+
+  if (hasBusinessWindow) {
+    if (!isWithinLocalActionWindow(tz, rule.actionWindowStartLocal, rule.actionWindowEndLocal)) return false;
+    return passesCheckFrequency(rule, tz);
   }
+
+  if (rule.evaluationTimeLocal?.trim() && tz) {
+    return isNearEvaluationLocalTime(tz, rule.evaluationTimeLocal);
+  }
+
   return !isUtcHourMuted(rule.muteStartHour, rule.muteEndHour);
 }
 
@@ -97,7 +176,11 @@ function formatRuleMessage(
     .replace(/\{\{period\}\}/gi, vars.period)
     .replace(/\{\{metric_value\}\}/gi, vars.metric_value)
     .replace(/\{\{goal_value\}\}/gi, vars.goal_value)
-    .replace(/\{\{campaign_name\}\}/gi, vars.campaign_name);
+    .replace(/\{\{campaign_name\}\}/gi, vars.campaign_name)
+    .replace(/\{\{ad_set_name\}\}/gi, vars.ad_set_name)
+    .replace(/\{\{ad_name\}\}/gi, vars.ad_name)
+    .replace(/\{\{spend_current\}\}/gi, vars.spend_current)
+    .replace(/\{\{roas_current\}\}/gi, vars.roas_current);
 }
 
 type GoalSnapshot = {
@@ -318,12 +401,18 @@ export async function appendCustomRuleAlerts(
             : thLabel;
 
     const fallbackMsg = `Valor atual ${metricLabel} — ${rule.operator === "outside_target" ? "fora da meta" : `condição ${rule.operator}`} (${ctx.periodLabel}).`;
+    const spendFmt = formatMoney(ctx.totalSpendBrl);
+    const roasFmt = ctx.roas != null && Number.isFinite(ctx.roas) ? `${ctx.roas.toFixed(2)}×` : "—";
     const msg = formatRuleMessage(rule.messageTemplate, fallbackMsg, {
       rule_name: rule.name,
       period: ctx.periodLabel,
       metric_value: metricLabel,
       goal_value: goalLine,
-      campaign_name: ctx.periodLabel,
+      campaign_name: `Agregado (${ctx.periodLabel})`,
+      ad_set_name: "—",
+      ad_name: "—",
+      spend_current: spendFmt,
+      roas_current: roasFmt,
     });
 
     const sev = rule.severity === "critical" ? "critical" : "warning";

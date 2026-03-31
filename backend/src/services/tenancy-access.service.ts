@@ -64,10 +64,12 @@ async function matrixMemberAllowsDescendantWorkspace(
 export async function userHasEffectiveAccess(userId: string, organizationId: string): Promise<boolean> {
   const targetOrg = await prisma.organization.findFirst({
     where: { id: organizationId, deletedAt: null },
-    select: { workspaceStatus: true },
+    select: { workspaceStatus: true, agencyMemberExcludedUserIds: true },
   });
   if (!targetOrg) return false;
   if (targetOrg.workspaceStatus === "ARCHIVED") return false;
+
+  const excludedFromInheritedAgencyAccess = new Set(targetOrg.agencyMemberExcludedUserIds ?? []);
 
   const direct = await prisma.membership.findUnique({
     where: { userId_organizationId: { userId, organizationId } },
@@ -96,10 +98,10 @@ export async function userHasEffectiveAccess(userId: string, organizationId: str
 
       if (parentRow.organizationKind === "MATRIX") {
         const ok = await matrixMemberAllowsDescendantWorkspace(userId, parentId, organizationId, mem.role);
-        if (ok) return true;
+        if (ok && !excludedFromInheritedAgencyAccess.has(userId)) return true;
       } else if (isMatrixWideAdminRole(mem.role) || isWorkspaceAdminRole(mem.role)) {
         const under = await isOrganizationUnderAncestor(parentId, organizationId);
-        if (under) return true;
+        if (under && !excludedFromInheritedAgencyAccess.has(userId)) return true;
       }
     }
     walk = parentId;

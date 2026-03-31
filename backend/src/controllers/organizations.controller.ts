@@ -9,6 +9,8 @@ import {
   updateChildOrganizationByParent,
   updateOrganizationPlanSettings,
   assignParentAgencyMemberToChildWorkspace,
+  addAgencyMemberExclusionOnChild,
+  removeAgencyMemberExclusionOnChild,
 } from "../services/organizations.service.js";
 import {
   patchOrganizationSchema,
@@ -16,6 +18,7 @@ import {
   patchChildOrganizationSchema,
   organizationPlanSettingsSchema,
   assignChildWorkspaceMemberSchema,
+  agencyExcludeChildMemberSchema,
 } from "../validators/organization.validator.js";
 
 type AuthRequest = Request & { user: { userId: string; organizationId: string } };
@@ -180,6 +183,56 @@ export async function assignChildWorkspaceMemberHandler(req: Request, res: Respo
       msg.includes("não encontrado") || msg.includes("encontrada") || msg.includes("descendente")
         ? 404
         : 403;
+    return res.status(status).json({ message: msg });
+  }
+}
+
+export async function excludeAgencyMemberFromChildHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const { childId } = req.params;
+  if (!childId) {
+    return res.status(400).json({ message: "ID do workspace obrigatório" });
+  }
+  const parsed = agencyExcludeChildMemberSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: parsed.error.errors[0]?.message ?? "Dados inválidos",
+    });
+  }
+  try {
+    await addAgencyMemberExclusionOnChild(
+      user.organizationId,
+      user.userId,
+      childId,
+      parsed.data.userId
+    );
+    return res.status(204).send();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Sem permissão";
+    const status =
+      msg.includes("não encontrado") || msg.includes("encontrada") || msg.includes("inválido") ? 404 : 400;
+    return res.status(status).json({ message: msg });
+  }
+}
+
+export async function restoreAgencyMemberOnChildHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const { childId, userId: targetUserId } = req.params;
+  if (!childId || !targetUserId) {
+    return res.status(400).json({ message: "Parâmetros obrigatórios" });
+  }
+  try {
+    await removeAgencyMemberExclusionOnChild(
+      user.organizationId,
+      user.userId,
+      childId,
+      targetUserId
+    );
+    return res.status(204).send();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Sem permissão";
+    const status =
+      msg.includes("não encontrado") || msg.includes("encontrada") || msg.includes("inválido") ? 404 : 400;
     return res.status(status).json({ message: msg });
   }
 }

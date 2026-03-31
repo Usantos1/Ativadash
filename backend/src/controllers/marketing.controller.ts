@@ -27,6 +27,7 @@ import {
 } from "../services/marketing-permissions.service.js";
 import {
   acknowledgeAlertOccurrence,
+  acknowledgeAllAlertOccurrences,
   listAlertOccurrences,
   orgPerformanceAlertsEnabled,
 } from "../services/alert-rules.service.js";
@@ -864,6 +865,24 @@ export async function patchMarketingAlertOccurrenceAckHandler(req: Request, res:
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: "Erro ao atualizar ocorrência." });
+  }
+}
+
+export async function patchMarketingAlertOccurrencesAckAllHandler(req: Request, res: Response) {
+  const { userId, organizationId } = (req as AuthRequest).user;
+  if (!organizationId) {
+    return res.status(401).json({ message: "Não autorizado" });
+  }
+  const okRead = await userCanReadMarketing(userId, organizationId);
+  if (!okRead) {
+    return res.status(403).json({ message: "Sem acesso aos dados de marketing desta empresa." });
+  }
+  try {
+    const { updated } = await acknowledgeAllAlertOccurrences(organizationId);
+    return res.json({ ok: true, updated });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro ao marcar notificações como lidas." });
   }
 }
 
