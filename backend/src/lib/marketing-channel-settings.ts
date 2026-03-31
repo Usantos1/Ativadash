@@ -8,6 +8,10 @@ export type ChannelGoalsPartial = {
   targetRoas?: number | null;
   minSpendForAlertsBrl?: number | null;
   minResultsForCpa?: number | null;
+  /** Referência de orçamento diário (soft) por canal */
+  dailyBudgetExpectedBrl?: number | null;
+  /** Teto duro diário (BRL) para alertas de sangria / emergência */
+  dailyBudgetMaxBrl?: number | null;
 };
 
 export type ResolvedChannelGoals = {
@@ -16,6 +20,8 @@ export type ResolvedChannelGoals = {
   targetRoas: number | null;
   minSpendForAlertsBrl: number | null;
   minResultsForCpa: number;
+  dailyBudgetExpectedBrl: number | null;
+  dailyBudgetMaxBrl: number | null;
 };
 
 export type ChannelAutomationsState = {
@@ -72,6 +78,10 @@ export function parseGoalsByChannel(json: unknown): Partial<Record<ChannelKey, C
           g.minSpendForAlertsBrl === undefined ? undefined : decToNumber(g.minSpendForAlertsBrl),
         minResultsForCpa:
           g.minResultsForCpa === undefined ? undefined : decToInt(g.minResultsForCpa, 1),
+        dailyBudgetExpectedBrl:
+          g.dailyBudgetExpectedBrl === undefined ? undefined : decToNumber(g.dailyBudgetExpectedBrl),
+        dailyBudgetMaxBrl:
+          g.dailyBudgetMaxBrl === undefined ? undefined : decToNumber(g.dailyBudgetMaxBrl),
       };
     }
   }
@@ -102,12 +112,15 @@ export function mergeGoalsByChannel(
 }
 
 export function resolveLegacyGoals(row: MarketingSettings): ResolvedChannelGoals {
+  const legDaily = decToNumber(row.dailyBudgetExpectedBrl);
   return {
     targetCpaBrl: decToNumber(row.targetCpaBrl),
     maxCpaBrl: decToNumber(row.maxCpaBrl),
     targetRoas: decToNumber(row.targetRoas),
     minSpendForAlertsBrl: decToNumber(row.minSpendForAlertsBrl),
     minResultsForCpa: row.minResultsForCpa,
+    dailyBudgetExpectedBrl: legDaily,
+    dailyBudgetMaxBrl: null,
   };
 }
 
@@ -124,7 +137,20 @@ export function resolveChannelGoals(row: MarketingSettings, channel: ChannelKey)
       o.minResultsForCpa !== undefined && o.minResultsForCpa != null
         ? Math.min(500, Math.max(1, o.minResultsForCpa))
         : leg.minResultsForCpa,
+    dailyBudgetExpectedBrl:
+      o.dailyBudgetExpectedBrl !== undefined ? o.dailyBudgetExpectedBrl : leg.dailyBudgetExpectedBrl,
+    dailyBudgetMaxBrl: o.dailyBudgetMaxBrl !== undefined ? o.dailyBudgetMaxBrl : leg.dailyBudgetMaxBrl,
   };
+}
+
+/** Soma dos tetos diários Meta + Google quando configurados (alerta “todos os canais”). */
+export function resolveBlendedDailyBudgetMaxBrl(row: MarketingSettings): number | null {
+  const m = resolveChannelGoals(row, "meta").dailyBudgetMaxBrl;
+  const g = resolveChannelGoals(row, "google").dailyBudgetMaxBrl;
+  if (m != null && g != null) return m + g;
+  if (m != null) return m;
+  if (g != null) return g;
+  return null;
 }
 
 const defaultAutomations = (): ChannelAutomationsState => ({

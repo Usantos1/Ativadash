@@ -43,6 +43,7 @@ import {
   type AlertRuleOperator,
   type AlertRuleRoutingDto,
   type AlertRuleSeverity,
+  type AlertRuleThresholdRef,
 } from "@/lib/alert-rules-api";
 import { fetchMembers, type MemberRow } from "@/lib/workspace-api";
 import { canUserEditMarketingSettings } from "@/lib/marketing-ads-permissions";
@@ -53,9 +54,16 @@ import { cn } from "@/lib/utils";
 const METRIC_OPTIONS: { value: AlertRuleMetric; label: string }[] = [
   { value: "cpa", label: "CPL" },
   { value: "roas", label: "ROAS" },
-  { value: "spend", label: "Gasto" },
+  { value: "spend", label: "Gasto (período)" },
+  { value: "daily_spend", label: "Gasto diário (estimado)" },
   { value: "ctr", label: "CTR" },
 ];
+
+const THRESHOLD_REF_LABEL: Record<AlertRuleThresholdRef, string> = {
+  VAR_CHANNEL_MAX_CPA: "Variável: teto de CPA do canal (metas globais)",
+  VAR_CHANNEL_TARGET_ROAS: "Variável: meta de ROAS do canal",
+  VAR_BLENDED_DAILY_BUDGET_MAX: "Variável: orçamento máx. diário (Meta + Google)",
+};
 
 const OPERATOR_OPTIONS: { value: AlertRuleOperator; label: string }[] = [
   { value: "gt", label: "Maior que" },
@@ -89,6 +97,8 @@ type RuleDraft = {
   metric: AlertRuleMetric;
   operator: AlertRuleOperator;
   thresholdStr: string;
+  /** Limiar dinâmico (metas); quando definido, o valor fixo é ignorado na API (usa 0). */
+  thresholdRef: AlertRuleThresholdRef | null;
   severity: AlertRuleSeverity;
   active: boolean;
   appliesToChannel: "all" | "meta" | "google";
@@ -110,6 +120,15 @@ function clientTz(): string {
 }
 
 function dtoToDraft(d: AlertRuleDto): RuleDraft {
+  const refRaw = d.thresholdRef?.trim() ?? "";
+  const validRefs: AlertRuleThresholdRef[] = [
+    "VAR_CHANNEL_MAX_CPA",
+    "VAR_CHANNEL_TARGET_ROAS",
+    "VAR_BLENDED_DAILY_BUDGET_MAX",
+  ];
+  const thresholdRef = validRefs.includes(refRaw as AlertRuleThresholdRef)
+    ? (refRaw as AlertRuleThresholdRef)
+    : null;
   return {
     clientKey: d.id,
     serverId: d.id,
@@ -119,6 +138,7 @@ function dtoToDraft(d: AlertRuleDto): RuleDraft {
       ? d.operator
       : "gt") as AlertRuleOperator,
     thresholdStr: d.operator === "outside_target" ? "" : String(d.threshold),
+    thresholdRef,
     severity: d.severity === "critical" ? "critical" : "warning",
     active: d.active,
     appliesToChannel:
@@ -140,6 +160,7 @@ function newDraft(): RuleDraft {
     metric: "cpa",
     operator: "gt",
     thresholdStr: "50",
+    thresholdRef: null,
     severity: "warning",
     active: true,
     appliesToChannel: "all",
@@ -152,6 +173,69 @@ function newDraft(): RuleDraft {
     routingCustomPhonesStr: "",
     evaluationTimeLocal: "",
   };
+}
+
+/** Modelos iniciais quando não há regras salvas (editáveis / removíveis). */
+function buildDefaultAutomationDrafts(): RuleDraft[] {
+  return [
+    {
+      clientKey: crypto.randomUUID(),
+      name: "Alerta de Teto de CPL (Meta Ads)",
+      metric: "cpa",
+      operator: "gt",
+      thresholdStr: "0",
+      thresholdRef: "VAR_CHANNEL_MAX_CPA",
+      severity: "critical",
+      active: true,
+      appliesToChannel: "meta",
+      notifyWhatsapp: true,
+      actionType: "whatsapp_alert",
+      messageTemplate:
+        "🚨 *ALERTA ATIVA DASH*\nA campanha *{{campaign_name}}* estourou o teto de CPL configurado para Meta Ads.\n• CPL atual: {{metric_value}}\n• Referência (metas): {{goal_value}}\n• {{period}}",
+      routingJobSlugs: [],
+      routingUserIds: [],
+      routingCustomPhonesStr: "",
+      evaluationTimeLocal: "",
+    },
+    {
+      clientKey: crypto.randomUUID(),
+      name: "Alerta de Sangria (Orçamento diário)",
+      metric: "daily_spend",
+      operator: "gt",
+      thresholdStr: "0",
+      thresholdRef: "VAR_BLENDED_DAILY_BUDGET_MAX",
+      severity: "critical",
+      active: true,
+      appliesToChannel: "all",
+      notifyWhatsapp: true,
+      actionType: "whatsapp_alert",
+      messageTemplate:
+        "🚨 *ALERTA ATIVA DASH — Sangria*\nGasto diário acima do *orçamento máximo* combinado (Meta + Google).\n• Gasto hoje (est.): {{metric_value}}\n• Teto: {{goal_value}}\n• {{period}}",
+      routingJobSlugs: [],
+      routingUserIds: [],
+      routingCustomPhonesStr: "",
+      evaluationTimeLocal: "",
+    },
+    {
+      clientKey: crypto.randomUUID(),
+      name: "Alerta de ROAS crítico (Google Ads)",
+      metric: "roas",
+      operator: "lt",
+      thresholdStr: "0",
+      thresholdRef: "VAR_CHANNEL_TARGET_ROAS",
+      severity: "warning",
+      active: true,
+      appliesToChannel: "google",
+      notifyWhatsapp: true,
+      actionType: "whatsapp_alert",
+      messageTemplate:
+        "🚨 *ALERTA ATIVA DASH*\nROAS abaixo da meta no Google Ads — campanha *{{campaign_name}}*.\n• ROAS atual: {{metric_value}}\n• Meta: {{goal_value}}\n• {{period}}",
+      routingJobSlugs: [],
+      routingUserIds: [],
+      routingCustomPhonesStr: "",
+      evaluationTimeLocal: "",
+    },
+  ];
 }
 
 function buildRouting(d: RuleDraft): AlertRuleRoutingDto | null {
@@ -169,15 +253,18 @@ function draftToPayload(d: RuleDraft, tz: string) {
   const threshold =
     d.operator === "outside_target"
       ? 0
-      : (() => {
-          const n = Number(String(d.thresholdStr).replace(",", "."));
-          return Number.isFinite(n) ? n : 0;
-        })();
+      : d.thresholdRef
+        ? 0
+        : (() => {
+            const n = Number(String(d.thresholdStr).replace(",", "."));
+            return Number.isFinite(n) ? n : 0;
+          })();
   return {
     name: d.name.trim() || "Automação",
     metric: d.metric,
     operator: d.operator,
     threshold,
+    thresholdRef: d.thresholdRef,
     severity: d.severity,
     active: d.active,
     appliesToChannel: d.appliesToChannel,
@@ -237,10 +324,15 @@ export function MetasAlertasPage() {
   const [performanceAlerts, setPerformanceAlerts] = useState(false);
   const [members, setMembers] = useState<MemberRow[]>([]);
 
-  const [cplAlvo, setCplAlvo] = useState("");
-  const [tetoCpa, setTetoCpa] = useState("");
-  const [metaRoas, setMetaRoas] = useState("");
-  const [orcamentoDiario, setOrcamentoDiario] = useState("");
+  const emptyChannelFields = () => ({
+    cplAlvo: "",
+    tetoCpa: "",
+    metaRoas: "",
+    orcamentoDiario: "",
+    orcamentoMaxDiario: "",
+  });
+  const [metaGoals, setMetaGoals] = useState(emptyChannelFields);
+  const [googleGoals, setGoogleGoals] = useState(emptyChannelFields);
 
   const [rules, setRules] = useState<RuleDraft[]>([]);
   const loadedRuleIdsRef = useRef<string[]>([]);
@@ -259,14 +351,23 @@ export function MetasAlertasPage() {
       ]);
       setPerformanceAlerts(pack.performanceAlerts);
       setMembers(team);
-      const g = settings.goalsMeta;
-      setCplAlvo(g.targetCpaBrl != null ? String(g.targetCpaBrl) : "");
-      setTetoCpa(g.maxCpaBrl != null ? String(g.maxCpaBrl) : "");
-      setMetaRoas(g.targetRoas != null ? String(g.targetRoas) : "");
-      setOrcamentoDiario(
-        settings.dailyBudgetExpectedBrl != null ? String(settings.dailyBudgetExpectedBrl) : ""
-      );
-      const drafts = pack.items.map(dtoToDraft);
+      const gm = settings.goalsMeta;
+      const gg = settings.goalsGoogle;
+      const fill = (g: typeof gm) => ({
+        cplAlvo: g.targetCpaBrl != null ? String(g.targetCpaBrl) : "",
+        tetoCpa: g.maxCpaBrl != null ? String(g.maxCpaBrl) : "",
+        metaRoas: g.targetRoas != null ? String(g.targetRoas) : "",
+        orcamentoDiario: g.dailyBudgetExpectedBrl != null ? String(g.dailyBudgetExpectedBrl) : "",
+        orcamentoMaxDiario: g.dailyBudgetMaxBrl != null ? String(g.dailyBudgetMaxBrl) : "",
+      });
+      setMetaGoals(fill(gm));
+      setGoogleGoals(fill(gg));
+      const drafts =
+        pack.items.length > 0
+          ? pack.items.map(dtoToDraft)
+          : pack.performanceAlerts
+            ? buildDefaultAutomationDrafts()
+            : [];
       setRules(drafts);
       loadedRuleIdsRef.current = pack.items.map((x) => x.id);
     } catch {
@@ -292,31 +393,49 @@ export function MetasAlertasPage() {
     e.preventDefault();
     setOk(null);
     setError(null);
-    const t = parseMoney(cplAlvo);
-    const m = parseMoney(tetoCpa);
-    const ro = parseMoney(metaRoas);
-    const daily = parseMoney(orcamentoDiario);
-    if (t != null && m != null && t > m) {
-      setError("CPL alvo não pode ser maior que o teto de CPA.");
+    const meta = {
+      t: parseMoney(metaGoals.cplAlvo),
+      m: parseMoney(metaGoals.tetoCpa),
+      ro: parseMoney(metaGoals.metaRoas),
+      daily: parseMoney(metaGoals.orcamentoDiario),
+      dmax: parseMoney(metaGoals.orcamentoMaxDiario),
+    };
+    const goog = {
+      t: parseMoney(googleGoals.cplAlvo),
+      m: parseMoney(googleGoals.tetoCpa),
+      ro: parseMoney(googleGoals.metaRoas),
+      daily: parseMoney(googleGoals.orcamentoDiario),
+      dmax: parseMoney(googleGoals.orcamentoMaxDiario),
+    };
+    if (meta.t != null && meta.m != null && meta.t > meta.m) {
+      setError("Meta Ads: CPL alvo não pode ser maior que o teto de CPA.");
+      return;
+    }
+    if (goog.t != null && goog.m != null && goog.t > goog.m) {
+      setError("Google Ads: CPL alvo não pode ser maior que o teto de CPA.");
       return;
     }
     setSaving(true);
     try {
       await saveMarketingSettings({
-        targetCpaBrl: t,
-        maxCpaBrl: m,
-        targetRoas: ro,
-        dailyBudgetExpectedBrl: daily,
+        targetCpaBrl: meta.t,
+        maxCpaBrl: meta.m,
+        targetRoas: meta.ro,
+        dailyBudgetExpectedBrl: meta.daily,
         goalsByChannel: {
           meta: {
-            targetCpaBrl: t,
-            maxCpaBrl: m,
-            targetRoas: ro,
+            targetCpaBrl: meta.t,
+            maxCpaBrl: meta.m,
+            targetRoas: meta.ro,
+            dailyBudgetExpectedBrl: meta.daily,
+            dailyBudgetMaxBrl: meta.dmax,
           },
           google: {
-            targetCpaBrl: t,
-            maxCpaBrl: m,
-            targetRoas: ro,
+            targetCpaBrl: goog.t,
+            maxCpaBrl: goog.m,
+            targetRoas: goog.ro,
+            dailyBudgetExpectedBrl: goog.daily,
+            dailyBudgetMaxBrl: goog.dmax,
           },
         },
       });
@@ -337,7 +456,7 @@ export function MetasAlertasPage() {
       return;
     }
     for (const r of rules) {
-      if (r.operator !== "outside_target") {
+      if (r.operator !== "outside_target" && !r.thresholdRef) {
         const n = Number(String(r.thresholdStr).replace(",", "."));
         if (!Number.isFinite(n)) {
           setError(`Defina um valor numérico para a regra "${r.name}".`);
@@ -439,76 +558,112 @@ export function MetasAlertasPage() {
         </TabsList>
 
         <TabsContent value="metas" className="mt-6">
-          <form onSubmit={handleSaveMetas}>
-            <Card className="border-border/50 bg-card shadow-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base font-semibold">Metas globais (baseline)</CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Referência principal para alertas e condição &quot;Fora da meta&quot;. Sincronizamos com as metas Meta/Google
-                  ao salvar.
-                </p>
-              </CardHeader>
-              <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    CPL alvo (R$)
-                  </Label>
-                  <Input
-                    inputMode="decimal"
-                    value={cplAlvo}
-                    disabled={!canEdit}
-                    onChange={(e) => setCplAlvo(e.target.value)}
-                    className="h-10 rounded-xl"
-                    placeholder="ex: 35"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Teto de CPA (R$)
-                  </Label>
-                  <Input
-                    inputMode="decimal"
-                    value={tetoCpa}
-                    disabled={!canEdit}
-                    onChange={(e) => setTetoCpa(e.target.value)}
-                    className="h-10 rounded-xl"
-                    placeholder="ex: 55"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Meta de ROAS (×)
-                  </Label>
-                  <Input
-                    inputMode="decimal"
-                    value={metaRoas}
-                    disabled={!canEdit}
-                    onChange={(e) => setMetaRoas(e.target.value)}
-                    className="h-10 rounded-xl"
-                    placeholder="ex: 2.5"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Orçamento diário esperado (R$)
-                  </Label>
-                  <Input
-                    inputMode="decimal"
-                    value={orcamentoDiario}
-                    disabled={!canEdit}
-                    onChange={(e) => setOrcamentoDiario(e.target.value)}
-                    className="h-10 rounded-xl"
-                    placeholder="ex: 500"
-                  />
-                </div>
-              </CardContent>
-              <CardContent className="pt-0">
-                <Button type="submit" disabled={saving || !canEdit} className="rounded-xl">
-                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                  Salvar metas
-                </Button>
-              </CardContent>
-            </Card>
+          <form onSubmit={handleSaveMetas} className="space-y-4">
+            <div className="rounded-xl border border-border/45 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
+              Metas separadas por canal. As colunas legadas do workspace (portfolio) usam os valores de{" "}
+              <strong className="text-foreground">Meta Ads</strong> como referência principal ao salvar.
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {(
+                [
+                  {
+                    key: "meta" as const,
+                    title: "Meta Ads",
+                    desc: "CPL, ROAS e orçamentos usados nas regras e no painel deste canal.",
+                    state: metaGoals,
+                    setState: setMetaGoals,
+                  },
+                  {
+                    key: "google" as const,
+                    title: "Google Ads",
+                    desc: "Metas independentes para busca, PMax e demais contas Google vinculadas.",
+                    state: googleGoals,
+                    setState: setGoogleGoals,
+                  },
+                ] as const
+              ).map((col) => (
+                <Card key={col.key} className="border-border/50 bg-card shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base font-semibold">{col.title}</CardTitle>
+                    <p className="text-xs text-muted-foreground">{col.desc}</p>
+                  </CardHeader>
+                  <CardContent className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5 sm:col-span-1">
+                      <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        CPL alvo (R$)
+                      </Label>
+                      <Input
+                        inputMode="decimal"
+                        value={col.state.cplAlvo}
+                        disabled={!canEdit}
+                        onChange={(e) => col.setState((s) => ({ ...s, cplAlvo: e.target.value }))}
+                        className="h-10 rounded-xl"
+                        placeholder="ex: 35"
+                      />
+                    </div>
+                    <div className="space-y-1.5 sm:col-span-1">
+                      <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Teto de CPA (R$)
+                      </Label>
+                      <Input
+                        inputMode="decimal"
+                        value={col.state.tetoCpa}
+                        disabled={!canEdit}
+                        onChange={(e) => col.setState((s) => ({ ...s, tetoCpa: e.target.value }))}
+                        className="h-10 rounded-xl"
+                        placeholder="ex: 55"
+                      />
+                    </div>
+                    <div className="space-y-1.5 sm:col-span-1">
+                      <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Meta de ROAS (×)
+                      </Label>
+                      <Input
+                        inputMode="decimal"
+                        value={col.state.metaRoas}
+                        disabled={!canEdit}
+                        onChange={(e) => col.setState((s) => ({ ...s, metaRoas: e.target.value }))}
+                        className="h-10 rounded-xl"
+                        placeholder="ex: 2.5"
+                      />
+                    </div>
+                    <div className="space-y-1.5 sm:col-span-1">
+                      <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Orçamento esperado diário (R$)
+                      </Label>
+                      <Input
+                        inputMode="decimal"
+                        value={col.state.orcamentoDiario}
+                        disabled={!canEdit}
+                        onChange={(e) => col.setState((s) => ({ ...s, orcamentoDiario: e.target.value }))}
+                        className="h-10 rounded-xl"
+                        placeholder="ex: 500"
+                      />
+                    </div>
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Orçamento máximo diário (R$)
+                      </Label>
+                      <p className="text-[10px] text-muted-foreground">
+                        Teto duro para alertas de sangria (regra “todos os canais” soma Meta + Google).
+                      </p>
+                      <Input
+                        inputMode="decimal"
+                        value={col.state.orcamentoMaxDiario}
+                        disabled={!canEdit}
+                        onChange={(e) => col.setState((s) => ({ ...s, orcamentoMaxDiario: e.target.value }))}
+                        className="h-10 rounded-xl"
+                        placeholder="ex: 800"
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+            <Button type="submit" disabled={saving || !canEdit} className="rounded-xl">
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Salvar metas
+            </Button>
           </form>
         </TabsContent>
 
@@ -643,15 +798,52 @@ export function MetasAlertasPage() {
                         </Select>
                       </div>
                       {r.operator !== "outside_target" ? (
-                        <div className="min-w-[6rem] flex-1 space-y-1">
-                          <Label className="text-[10px] text-muted-foreground">Valor (R$ ou %)</Label>
-                          <Input
-                            inputMode="decimal"
-                            className="h-9 rounded-lg"
-                            disabled={!canEdit}
-                            value={r.thresholdStr}
-                            onChange={(e) => updateRule(r.clientKey, { thresholdStr: e.target.value })}
-                          />
+                        <div className="flex min-w-0 flex-1 flex-col gap-2 sm:min-w-[14rem]">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground">Limiar</Label>
+                            <Select
+                              value={r.thresholdRef ?? "fixed"}
+                              disabled={!canEdit}
+                              onValueChange={(v) =>
+                                updateRule(r.clientKey, {
+                                  thresholdRef: v === "fixed" ? null : (v as AlertRuleThresholdRef),
+                                  thresholdStr: v === "fixed" ? (r.thresholdStr || "50") : "0",
+                                })
+                              }
+                            >
+                              <SelectTrigger className="h-9 rounded-lg">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="fixed">Valor fixo (R$ / × / %)</SelectItem>
+                                <SelectItem value="VAR_CHANNEL_MAX_CPA">
+                                  {THRESHOLD_REF_LABEL.VAR_CHANNEL_MAX_CPA}
+                                </SelectItem>
+                                <SelectItem value="VAR_CHANNEL_TARGET_ROAS">
+                                  {THRESHOLD_REF_LABEL.VAR_CHANNEL_TARGET_ROAS}
+                                </SelectItem>
+                                <SelectItem value="VAR_BLENDED_DAILY_BUDGET_MAX">
+                                  {THRESHOLD_REF_LABEL.VAR_BLENDED_DAILY_BUDGET_MAX}
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {r.thresholdRef ? (
+                            <p className="rounded-md border border-primary/20 bg-primary/5 px-2 py-1 text-[11px] text-foreground">
+                              {THRESHOLD_REF_LABEL[r.thresholdRef]}
+                            </p>
+                          ) : (
+                            <div className="space-y-1">
+                              <Label className="text-[10px] text-muted-foreground">Valor (R$ ou × ou %)</Label>
+                              <Input
+                                inputMode="decimal"
+                                className="h-9 rounded-lg"
+                                disabled={!canEdit}
+                                value={r.thresholdStr}
+                                onChange={(e) => updateRule(r.clientKey, { thresholdStr: e.target.value })}
+                              />
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <p className="self-center text-xs text-muted-foreground">Usa CPL/ROAS das metas globais.</p>

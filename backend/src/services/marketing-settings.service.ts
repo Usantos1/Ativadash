@@ -15,7 +15,9 @@ import {
 } from "../lib/marketing-channel-settings.js";
 import { normalizeAtivaCrmPhone, sendAtivaCrmTextMessage } from "./ativacrm.service.js";
 import type { UpdateMarketingSettingsInput } from "../validators/marketing-settings.validator.js";
+import { parseAlertRuleRouting } from "./alert-rules.service.js";
 import { appendCustomRuleAlerts, isUtcHourMuted } from "./alert-rule-insights.service.js";
+import { isWithinMembershipAlertWindow } from "../utils/membership-alert-window.js";
 import { formatMoney } from "./marketing-settings-format.js";
 import { utcToWallLocal, wallLocalToUtc } from "../utils/wall-clock-utc.js";
 import {
@@ -336,12 +338,20 @@ type PanelAlertToggles = {
 };
 
 function goalsFromDto(d: MarketingSettingsDto): ResolvedChannelGoals {
+  const a = d.goalsMeta.dailyBudgetMaxBrl;
+  const b = d.goalsGoogle.dailyBudgetMaxBrl;
+  let dailyMax: number | null = null;
+  if (a != null && b != null) dailyMax = a + b;
+  else if (a != null) dailyMax = a;
+  else if (b != null) dailyMax = b;
   return {
     targetCpaBrl: d.targetCpaBrl,
     maxCpaBrl: d.maxCpaBrl,
     targetRoas: d.targetRoas,
     minSpendForAlertsBrl: d.minSpendForAlertsBrl,
     minResultsForCpa: d.minResultsForCpa,
+    dailyBudgetExpectedBrl: d.dailyBudgetExpectedBrl,
+    dailyBudgetMaxBrl: dailyMax,
   };
 }
 
@@ -575,6 +585,8 @@ export async function evaluateInsightsForOrganization(
     totalClicks?: number;
     persistOccurrences?: boolean;
     channels?: Partial<Record<ChannelKey, ChannelTotalsInput>>;
+    /** Gasto hoje (BRL) para regras de “gasto diário”; opcional. */
+    spendTodayBrl?: number | null;
   }
 ) {
   const row = await prisma.marketingSettings.upsert({
@@ -595,7 +607,9 @@ export async function evaluateInsightsForOrganization(
     await appendCustomRuleAlerts(
       organizationId,
       {
+        period: input.period,
         periodLabel: pl,
+        spendTodayBrl: input.spendTodayBrl,
         totalSpendBrl: input.totalSpendBrl,
         totalResults: input.totalResults,
         totalAttributedValueBrl: input.totalAttributedValueBrl,
@@ -635,7 +649,9 @@ export async function evaluateInsightsForOrganization(
     await appendCustomRuleAlerts(
       organizationId,
       {
+        period: input.period,
         periodLabel,
+        spendTodayBrl: input.spendTodayBrl,
         totalSpendBrl: slice.totalSpendBrl,
         totalResults: slice.totalResults,
         totalAttributedValueBrl: slice.totalAttributedValueBrl,
@@ -709,6 +725,81 @@ function alertDestinationPhone(row: MarketingSettings, alert: InsightAlert): str
   return normalizeAtivaCrmPhone(raw);
 }
 
+function appendAlertToPhoneMap(map: Map<string, InsightAlert[]>, phone: string, alert: InsightAlert) {
+  const list = map.get(phone) ?? [];
+  if (!list.some((x) => x.code === alert.code)) list.push(alert);
+  map.set(phone, list);
+}
+
+async function membershipAllowsWhatsappDelivery(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  userId: string | null
+): Promise<boolean> {
+  if (!userId) return true;
+  const m = await tx.membership.findUnique({
+    where: { userId_organizationId: { userId, organizationId } },
+    select: { receiveWhatsappAlerts: true, alertStartHour: true, alertEndHour: true },
+  });
+  if (!m || m.receiveWhatsappAlerts === false) return false;
+  return isWithinMembershipAlertWindow(m.alertStartHour, m.alertEndHour);
+}
+
+async function destinationsForInsightAlert(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  row: MarketingSettings,
+  alert: InsightAlert
+): Promise<Array<{ phone: string; userId: string | null }>> {
+  if (!alert.code.startsWith("CUSTOM_RULE:")) {
+    const p = alertDestinationPhone(row, alert);
+    return p ? [{ phone: p, userId: null }] : [];
+  }
+  const id = alert.code.slice("CUSTOM_RULE:".length);
+  const rule = await tx.alertRule.findFirst({
+    where: { id, organizationId },
+    select: { routing: true },
+  });
+  const r = parseAlertRuleRouting(rule?.routing);
+  const raw: Array<{ phone: string; userId: string | null }> = [];
+  for (const cp of r?.customPhones ?? []) {
+    const n = normalizeAtivaCrmPhone(cp);
+    if (n) raw.push({ phone: n, userId: null });
+  }
+  for (const uid of r?.userIds ?? []) {
+    const u = await tx.user.findFirst({
+      where: { id: uid, deletedAt: null },
+      select: { whatsappNumber: true },
+    });
+    const n = normalizeAtivaCrmPhone(u?.whatsappNumber ?? null);
+    if (n) raw.push({ phone: n, userId: uid });
+  }
+  const slugs = r?.jobTitleSlugs ?? [];
+  if (slugs.length) {
+    const mems = await tx.membership.findMany({
+      where: { organizationId, jobTitle: { in: slugs } },
+      include: {
+        user: { select: { whatsappNumber: true, deletedAt: true } },
+      },
+    });
+    for (const m of mems) {
+      if (m.user.deletedAt) continue;
+      const n = normalizeAtivaCrmPhone(m.user.whatsappNumber);
+      if (n) raw.push({ phone: n, userId: m.userId });
+    }
+  }
+  const map = new Map<string, { phone: string; userId: string | null }>();
+  for (const x of raw) {
+    const prev = map.get(x.phone);
+    if (!prev) map.set(x.phone, x);
+    else if (prev.userId == null && x.userId != null) map.set(x.phone, x);
+  }
+  const expanded = [...map.values()];
+  if (expanded.length > 0) return expanded;
+  const fallback = alertDestinationPhone(row, alert);
+  return fallback ? [{ phone: fallback, userId: null }] : [];
+}
+
 /**
  * Envia alertas críticos/aviso por WhatsApp (Ativa CRM).
  * Usa transação + dedupe por código de alerta para evitar rajadas e corridas paralelas.
@@ -718,8 +809,7 @@ export async function maybeSendAtivaCrmAlerts(
   result: { alerts: InsightAlert[]; periodLabel: string }
 ): Promise<void> {
   type TxOut = {
-    row: MarketingSettings;
-    passed: InsightAlert[];
+    byPhone: Map<string, InsightAlert[]>;
     token: string;
     templates: Record<string, string>;
   };
@@ -777,20 +867,28 @@ export async function maybeSendAtivaCrmAlerts(
       },
     });
 
+    const byPhone = new Map<string, InsightAlert[]>();
+    for (const a of passed) {
+      const dests = await destinationsForInsightAlert(tx, organizationId, row, a);
+      let delivered = false;
+      for (const d of dests) {
+        if (!(await membershipAllowsWhatsappDelivery(tx, organizationId, d.userId))) continue;
+        appendAlertToPhoneMap(byPhone, d.phone, a);
+        delivered = true;
+      }
+      if (!delivered) {
+        const fb = alertDestinationPhone(row, a);
+        if (fb) appendAlertToPhoneMap(byPhone, fb, a);
+      }
+    }
+
     const templates = parseMessageTemplatesJson(row.whatsappMessageTemplates);
-    return { row, passed, token, templates } satisfies TxOut;
+    return { byPhone, token, templates } satisfies TxOut;
   });
 
   if (!outcome) return;
 
-  const byPhone = new Map<string, InsightAlert[]>();
-  for (const a of outcome.passed) {
-    const phone = alertDestinationPhone(outcome.row, a);
-    if (!phone) continue;
-    const list = byPhone.get(phone) ?? [];
-    list.push(a);
-    byPhone.set(phone, list);
-  }
+  const { byPhone } = outcome;
   if (byPhone.size === 0) return;
 
   for (const [phone, list] of byPhone) {

@@ -63,10 +63,13 @@ export function MemberDetailDialog({
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [forceChangeOnLogin, setForceChangeOnLogin] = useState(true);
-  const [busy, setBusy] = useState<"profile" | "password" | "jobAccess" | null>(null);
+  const [busy, setBusy] = useState<"profile" | "password" | "jobAccess" | "alertPrefs" | null>(null);
   const [localMsg, setLocalMsg] = useState<string | null>(null);
   const [draftJobTitle, setDraftJobTitle] = useState<TeamJobTitleValue>("traffic_manager");
   const [draftAccessLevel, setDraftAccessLevel] = useState<AccessLevelUi>("OPERADOR");
+  const [draftReceiveWhatsappAlerts, setDraftReceiveWhatsappAlerts] = useState(true);
+  const [draftAlertStart, setDraftAlertStart] = useState("");
+  const [draftAlertEnd, setDraftAlertEnd] = useState("");
 
   useEffect(() => {
     if (!member || !open) return;
@@ -75,6 +78,9 @@ export function MemberDetailDialog({
     setDraftSuspended(!!member.suspended);
     setDraftJobTitle((member.jobTitle as TeamJobTitleValue) || "traffic_manager");
     setDraftAccessLevel(accessLevelFromSystemRole(member.role));
+    setDraftReceiveWhatsappAlerts(member.receiveWhatsappAlerts !== false);
+    setDraftAlertStart(member.alertStartHour?.trim() ?? "");
+    setDraftAlertEnd(member.alertEndHour?.trim() ?? "");
     setNewPassword("");
     setConfirmPassword("");
     setForceChangeOnLogin(true);
@@ -103,6 +109,35 @@ export function MemberDetailDialog({
       onOpenChange(false);
     } catch (e) {
       setLocalMsg(e instanceof Error ? e.message : "Erro ao salvar");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleSaveAlertPrefs() {
+    if (!member || !showAdminBlock) return;
+    setLocalMsg(null);
+    setBusy("alertPrefs");
+    try {
+      const payload: PatchMemberPayload = {};
+      if (draftReceiveWhatsappAlerts !== (member.receiveWhatsappAlerts !== false)) {
+        payload.receiveWhatsappAlerts = draftReceiveWhatsappAlerts;
+      }
+      const startWas = member.alertStartHour?.trim() ?? "";
+      const endWas = member.alertEndHour?.trim() ?? "";
+      if (draftAlertStart.trim() !== startWas) {
+        payload.alertStartHour = draftAlertStart.trim() === "" ? "" : draftAlertStart.trim();
+      }
+      if (draftAlertEnd.trim() !== endWas) {
+        payload.alertEndHour = draftAlertEnd.trim() === "" ? "" : draftAlertEnd.trim();
+      }
+      if (Object.keys(payload).length === 0) return;
+
+      await patchMember(member.userId, payload, organizationId);
+      await onMemberUpdated?.();
+      onOpenChange(false);
+    } catch (e) {
+      setLocalMsg(e instanceof Error ? e.message : "Erro ao salvar alertas");
     } finally {
       setBusy(null);
     }
@@ -170,6 +205,13 @@ export function MemberDetailDialog({
     canEditJobAccess &&
     (draftJobTitle !== ((member.jobTitle as TeamJobTitleValue) || "traffic_manager") ||
       draftAccessLevel !== accessLevelFromSystemRole(member.role));
+
+  const alertPrefsDirty =
+    !!member &&
+    showAdminBlock &&
+    (draftReceiveWhatsappAlerts !== (member.receiveWhatsappAlerts !== false) ||
+      draftAlertStart.trim() !== (member.alertStartHour?.trim() ?? "") ||
+      draftAlertEnd.trim() !== (member.alertEndHour?.trim() ?? ""));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -317,6 +359,57 @@ export function MemberDetailDialog({
                   >
                     {busy === "profile" ? "Salvando…" : "Salvar nome, e-mail e status"}
                   </Button>
+
+                  <div className="space-y-3 rounded-lg border border-border/40 bg-muted/10 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Alertas WhatsApp
+                    </p>
+                    <p className="text-[11px] leading-snug text-muted-foreground">
+                      Quando uma automação roteia para este membro, só enviamos no horário abaixo (fuso{" "}
+                      <span className="font-medium text-foreground">América/São Paulo</span>). Deixe os horários
+                      vazios para receber 24h.
+                    </p>
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/35 px-2 py-2">
+                      <span className="text-xs font-medium text-foreground">Receber alertas</span>
+                      <Switch
+                        checked={draftReceiveWhatsappAlerts}
+                        onCheckedChange={setDraftReceiveWhatsappAlerts}
+                        disabled={busy !== null}
+                      />
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Início do expediente</Label>
+                        <Input
+                          type="time"
+                          value={draftAlertStart}
+                          onChange={(e) => setDraftAlertStart(e.target.value)}
+                          disabled={busy !== null || !draftReceiveWhatsappAlerts}
+                          className="h-9 rounded-lg"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Fim do expediente</Label>
+                        <Input
+                          type="time"
+                          value={draftAlertEnd}
+                          onChange={(e) => setDraftAlertEnd(e.target.value)}
+                          disabled={busy !== null || !draftReceiveWhatsappAlerts}
+                          className="h-9 rounded-lg"
+                        />
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="w-full rounded-lg"
+                      disabled={!alertPrefsDirty || busy !== null}
+                      onClick={() => void handleSaveAlertPrefs()}
+                    >
+                      {busy === "alertPrefs" ? "Salvando…" : "Salvar horário de alertas"}
+                    </Button>
+                  </div>
 
                   <div className="border-t border-border/40 pt-3">
                     <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-foreground">

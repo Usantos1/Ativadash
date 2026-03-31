@@ -326,11 +326,13 @@ model AlertRule {
   appliesToChannel String? @db.VarChar(16)
 
   name      String @db.VarChar(120)
-  /// cpa | roas | spend | ctr (valores atuais do período / agregados)
+  /// cpa | roas | spend | ctr | daily_spend (valores atuais do período / agregados)
   metric    String @db.VarChar(32)
   /// gt | gte | lt | lte
   operator  String @db.VarChar(8)
   threshold Decimal @db.Decimal(14, 4)
+  /// Limiar resolvido a partir das metas (ex.: teto CPL do canal). Null = usar `threshold`.
+  thresholdRef String? @db.VarChar(64)
   /// warning | critical
   severity  String @db.VarChar(16)
   active    Boolean @default(true)
@@ -448,6 +450,11 @@ model Membership {
   role           String   @default("member")
   /// Cargo exibido na equipe (ex.: gestor de tráfego, cliente). Independente do `role` de sistema.
   jobTitle       String?
+  /// Receber alertas automáticos roteados para este membro (WhatsApp).
+  receiveWhatsappAlerts Boolean @default(true)
+  /// Início da janela de envio (HH:mm, fuso America/Sao_Paulo no worker). Null = 24h.
+  alertStartHour String?  @db.VarChar(5)
+  alertEndHour   String?  @db.VarChar(5)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

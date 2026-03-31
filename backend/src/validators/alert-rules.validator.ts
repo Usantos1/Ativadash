@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const alertRuleMetricSchema = z.enum(["cpa", "roas", "spend", "ctr"]);
+export const alertRuleMetricSchema = z.enum(["cpa", "roas", "spend", "ctr", "daily_spend"]);
 export const alertRuleOperatorSchema = z.enum(["gt", "gte", "lt", "lte", "outside_target"]);
 export const alertRuleSeveritySchema = z.enum(["warning", "critical"]);
 export const alertRuleAppliesToChannelSchema = z.enum(["meta", "google", "all"]).optional();
@@ -19,12 +19,20 @@ const hhmmSchema = z
   .optional()
   .nullable();
 
+export const alertRuleThresholdRefSchema = z.enum([
+  "VAR_CHANNEL_MAX_CPA",
+  "VAR_CHANNEL_TARGET_ROAS",
+  "VAR_BLENDED_DAILY_BUDGET_MAX",
+]);
+
 export const createAlertRuleSchema = z.object({
   name: z.string().trim().min(1).max(120),
   metric: alertRuleMetricSchema,
   operator: alertRuleOperatorSchema,
-  /** Para outside_target pode ser 0 (ignorado na avaliação). */
+  /** Para outside_target pode ser 0 (ignorado na avaliação). Com thresholdRef, use 0. */
   threshold: z.number().finite(),
+  /** Limiar dinâmico a partir das metas globais (por canal). */
+  thresholdRef: alertRuleThresholdRefSchema.nullable().optional(),
   severity: alertRuleSeveritySchema,
   active: z.boolean().optional(),
   muteStartHour: hourSchema,

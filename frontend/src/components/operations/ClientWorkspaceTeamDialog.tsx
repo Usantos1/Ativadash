@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Users2 } from "lucide-react";
+import { Loader2, Trash2, Users2 } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -108,13 +108,22 @@ export function ClientWorkspaceTeamDialog({
   }
 
   async function onRevokeAccess(userId: string) {
+    const isSelf = Boolean(currentUserId && userId === currentUserId);
+    const msg = isSelf
+      ? "Você perderá o acesso direto a este cliente e continuará na agência. Confirma?"
+      : "Tem certeza que deseja remover o acesso deste usuário a este cliente?";
+    const ok = window.confirm(msg);
+    if (!ok) return;
+
     setError(null);
     setRemoveBusy(userId);
     try {
       await removeMember(userId, workspaceId);
-      await load();
+      setChildMembers((prev) => prev.filter((m) => m.userId !== userId));
+      void load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao remover acesso");
+      await load();
     } finally {
       setRemoveBusy(null);
     }
@@ -221,22 +230,20 @@ export function ClientWorkspaceTeamDialog({
               ) : (
                 <ul className="space-y-2">
                   {childMembers.map((m) => {
-                    const direct = m.source !== "agency";
+                    /** Só ocultamos "Remover" para acesso herdado da agência; `source` omitido trata-se como vínculo direto (legado). */
+                    const isAgencyInherited = m.source === "agency";
                     const level = accessLevelFromSystemRole(m.role);
                     const busyRm = removeBusy === m.userId;
+                    /** Inclui o próprio usuário: vínculo direto ao cliente pode ser revogado (workspace filho); herdado da agência não. */
                     const canRevoke =
-                      canManageAccess &&
-                      direct &&
-                      currentUserId &&
-                      m.userId !== currentUserId &&
-                      !isProtectedOwnerRole(m.role);
+                      canManageAccess && !isAgencyInherited && !isProtectedOwnerRole(m.role);
                     return (
                       <li
                         key={`${m.userId}-${m.membershipId}`}
                         className="rounded-lg border border-border/40 px-3 py-2.5 text-sm"
                       >
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                          <div className="min-w-0">
+                        <div className="flex flex-row items-start gap-2">
+                          <div className="min-w-0 flex-1">
                             <p className="truncate font-medium">{m.name || m.email}</p>
                             <p className="truncate text-xs text-muted-foreground">{m.email}</p>
                             <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
@@ -251,7 +258,7 @@ export function ClientWorkspaceTeamDialog({
                                 </span>
                               </span>
                             </div>
-                            {!direct ? (
+                            {isAgencyInherited ? (
                               <p className="mt-1 text-[10px] text-muted-foreground">Acesso via agência</p>
                             ) : null}
                             {m.suspended ? (
@@ -261,13 +268,19 @@ export function ClientWorkspaceTeamDialog({
                           {canRevoke ? (
                             <Button
                               type="button"
-                              variant="outline"
+                              variant="ghost"
                               size="sm"
-                              className="h-8 shrink-0 text-xs text-destructive hover:text-destructive"
+                              className="h-8 shrink-0 gap-1 rounded-md px-2 text-xs font-medium text-destructive hover:bg-destructive/10 hover:text-destructive"
                               disabled={busyRm}
                               onClick={() => void onRevokeAccess(m.userId)}
+                              aria-busy={busyRm}
                             >
-                              {busyRm ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Remover acesso"}
+                              {busyRm ? (
+                                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                              )}
+                              Remover
                             </Button>
                           ) : null}
                         </div>

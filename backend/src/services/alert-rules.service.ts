@@ -34,11 +34,12 @@ export type AlertRuleDto = {
   routing: AlertRuleRoutingDto | null;
   evaluationTimeLocal: string | null;
   evaluationTimezone: string | null;
+  thresholdRef: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
-function parseRouting(raw: unknown): AlertRuleRoutingDto | null {
+export function parseAlertRuleRouting(raw: unknown): AlertRuleRoutingDto | null {
   if (raw == null || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   const out: AlertRuleRoutingDto = {};
@@ -64,9 +65,10 @@ function toDto(row: AlertRule): AlertRuleDto {
     notifyWhatsapp: row.notifyWhatsapp !== false,
     actionType: row.actionType ?? "whatsapp_alert",
     messageTemplate: row.messageTemplate ?? null,
-    routing: parseRouting(row.routing),
+    routing: parseAlertRuleRouting(row.routing),
     evaluationTimeLocal: row.evaluationTimeLocal ?? null,
     evaluationTimezone: row.evaluationTimezone ?? null,
+    thresholdRef: row.thresholdRef?.trim() || null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -231,6 +233,9 @@ export async function updateAlertRule(
   }
   if (input.evaluationTimeLocal !== undefined) data.evaluationTimeLocal = input.evaluationTimeLocal;
   if (input.evaluationTimezone !== undefined) data.evaluationTimezone = input.evaluationTimezone?.trim() || null;
+  if (input.thresholdRef !== undefined) {
+    data.thresholdRef = input.thresholdRef === null ? null : input.thresholdRef.trim();
+  }
 
   const row = await prisma.alertRule.update({
     where: { id },

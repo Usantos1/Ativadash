@@ -227,6 +227,9 @@ type MemberListItem = {
   lastLoginAt: string | null;
   suspended: boolean;
   suspendedAt: string | null;
+  receiveWhatsappAlerts: boolean;
+  alertStartHour: string | null;
+  alertEndHour: string | null;
   /** Membro direto da empresa vs acesso via agência (revenda) */
   source: "direct" | "agency";
 };
@@ -269,6 +272,9 @@ export async function listOrganizationMembers(organizationId: string): Promise<M
       lastLoginAt: m.user.lastLoginAt?.toISOString() ?? null,
       suspended: m.user.suspendedAt != null,
       suspendedAt: m.user.suspendedAt?.toISOString() ?? null,
+      receiveWhatsappAlerts: m.receiveWhatsappAlerts !== false,
+      alertStartHour: m.alertStartHour?.trim() || null,
+      alertEndHour: m.alertEndHour?.trim() || null,
       source: "direct" as const,
     }));
 
@@ -315,6 +321,9 @@ export async function listOrganizationMembers(organizationId: string): Promise<M
       lastLoginAt: m.user.lastLoginAt?.toISOString() ?? null,
       suspended: m.user.suspendedAt != null,
       suspendedAt: m.user.suspendedAt?.toISOString() ?? null,
+      receiveWhatsappAlerts: true,
+      alertStartHour: null,
+      alertEndHour: null,
       source: "agency" as const,
     }));
 
@@ -380,6 +389,9 @@ export async function createWorkspaceDirectMember(
     lastLoginAt: null,
     suspended: false,
     suspendedAt: null,
+    receiveWhatsappAlerts: membership.receiveWhatsappAlerts !== false,
+    alertStartHour: membership.alertStartHour?.trim() || null,
+    alertEndHour: membership.alertEndHour?.trim() || null,
     source: "direct",
   };
 }
@@ -396,6 +408,9 @@ export async function patchWorkspaceMember(
     jobTitle?: string | null;
     accessLevel?: string;
     whatsappNumber?: string | null;
+    receiveWhatsappAlerts?: boolean;
+    alertStartHour?: string | null;
+    alertEndHour?: string | null;
   }
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   await assertOrgAdminOrParentAgency(actorUserId, organizationId);
@@ -474,6 +489,34 @@ export async function patchWorkspaceMember(
       where: { id: targetUserId },
       data: { whatsappNumber: norm },
     });
+  }
+
+  if (patch.receiveWhatsappAlerts !== undefined) {
+    await prisma.membership.update({
+      where: { id: targetMembership.id },
+      data: { receiveWhatsappAlerts: patch.receiveWhatsappAlerts },
+    });
+  }
+  if (patch.alertStartHour !== undefined || patch.alertEndHour !== undefined) {
+    const data: { alertStartHour?: string | null; alertEndHour?: string | null } = {};
+    if (patch.alertStartHour !== undefined) {
+      const s =
+        patch.alertStartHour == null || patch.alertStartHour === ""
+          ? ""
+          : patch.alertStartHour.trim();
+      data.alertStartHour = s === "" ? null : s;
+    }
+    if (patch.alertEndHour !== undefined) {
+      const s =
+        patch.alertEndHour == null || patch.alertEndHour === "" ? "" : patch.alertEndHour.trim();
+      data.alertEndHour = s === "" ? null : s;
+    }
+    if (Object.keys(data).length) {
+      await prisma.membership.update({
+        where: { id: targetMembership.id },
+        data,
+      });
+    }
   }
 
   if (patch.accessLevel !== undefined) {

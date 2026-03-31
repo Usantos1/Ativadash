@@ -122,6 +122,8 @@ function goalsToStrings(g: Partial<ChannelGoalsDto> | null | undefined) {
     targetRoas: g?.targetRoas != null ? String(g.targetRoas) : "",
     minSpendForAlertsBrl: g?.minSpendForAlertsBrl != null ? String(g.minSpendForAlertsBrl) : "",
     minResultsForCpa: String(min),
+    dailyBudgetExpectedBrl: g?.dailyBudgetExpectedBrl != null ? String(g.dailyBudgetExpectedBrl) : "",
+    dailyBudgetMaxBrl: g?.dailyBudgetMaxBrl != null ? String(g.dailyBudgetMaxBrl) : "",
   };
 }
 
@@ -132,6 +134,8 @@ function parseGoalsForm(strings: ReturnType<typeof goalsToStrings>, label: strin
     targetRoas: parseOptionalMoney(strings.targetRoas),
     minSpendForAlertsBrl: parseOptionalMoney(strings.minSpendForAlertsBrl),
     minResultsForCpa: parseRequiredInt(strings.minResultsForCpa, `${label}: mín. resultados`),
+    dailyBudgetExpectedBrl: parseOptionalMoney(strings.dailyBudgetExpectedBrl),
+    dailyBudgetMaxBrl: parseOptionalMoney(strings.dailyBudgetMaxBrl),
   };
 }
 
@@ -208,6 +212,7 @@ const METRIC_LABEL: Record<AlertRuleMetric, string> = {
   cpa: "CPA (R$)",
   roas: "ROAS (×)",
   spend: "Gasto (R$)",
+  daily_spend: "Gasto diário (R$)",
   ctr: "CTR (%)",
 };
 
@@ -568,6 +573,8 @@ export function MarketingAdsOperationalPage() {
     targetRoas: "",
     minSpendForAlertsBrl: "",
     minResultsForCpa: "5",
+    dailyBudgetExpectedBrl: "",
+    dailyBudgetMaxBrl: "",
   });
   const [metaGoals, setMetaGoals] = useState(emptyGoalForm);
   const [googleGoals, setGoogleGoals] = useState(emptyGoalForm);

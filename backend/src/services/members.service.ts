@@ -46,8 +46,17 @@ export async function removeMember(
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   await assertOrgAdminOrParentAgency(actorUserId, organizationId);
 
-  if (targetUserId === actorUserId) {
-    return { ok: false, message: "Remova a si mesmo apenas saindo da empresa (em breve) ou peça a outro admin" };
+  const org = await prisma.organization.findFirst({
+    where: { id: organizationId, deletedAt: null },
+    select: { parentOrganizationId: true },
+  });
+  const isChildWorkspace = org?.parentOrganizationId != null;
+
+  if (targetUserId === actorUserId && !isChildWorkspace) {
+    return {
+      ok: false,
+      message: "Remova a si mesmo apenas saindo da empresa (em breve) ou peça a outro admin",
+    };
   }
 
   const target = await prisma.membership.findUnique({

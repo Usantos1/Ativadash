@@ -49,6 +49,9 @@ export type MemberRow = {
   suspendedAt?: string | null;
   /** direct = membro da org; agency = admin/owner da agência com acesso à empresa cliente */
   source?: "direct" | "agency";
+  receiveWhatsappAlerts?: boolean;
+  alertStartHour?: string | null;
+  alertEndHour?: string | null;
 };
 
 export async function fetchClients(): Promise<ClientAccount[]> {
@@ -167,6 +170,9 @@ export type PatchMemberPayload = {
   jobTitle?: string | null;
   accessLevel?: "ADMIN" | "OPERADOR" | "VIEWER";
   whatsappNumber?: string | null | "";
+  receiveWhatsappAlerts?: boolean;
+  alertStartHour?: string | null | "";
+  alertEndHour?: string | null | "";
 };
 
 export async function patchMember(

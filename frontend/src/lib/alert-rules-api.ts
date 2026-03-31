@@ -1,6 +1,10 @@
 import { api } from "./api";
 
-export type AlertRuleMetric = "cpa" | "roas" | "spend" | "ctr";
+export type AlertRuleMetric = "cpa" | "roas" | "spend" | "ctr" | "daily_spend";
+export type AlertRuleThresholdRef =
+  | "VAR_CHANNEL_MAX_CPA"
+  | "VAR_CHANNEL_TARGET_ROAS"
+  | "VAR_BLENDED_DAILY_BUDGET_MAX";
 export type AlertRuleOperator = "gt" | "gte" | "lt" | "lte" | "outside_target";
 export type AlertRuleSeverity = "warning" | "critical";
 export type AlertRuleActionType = "whatsapp_alert" | "pause_campaign";
@@ -28,6 +32,7 @@ export type AlertRuleDto = {
   routing: AlertRuleRoutingDto | null;
   evaluationTimeLocal: string | null;
   evaluationTimezone: string | null;
+  thresholdRef: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -57,6 +62,7 @@ export type CreateAlertRulePayload = {
   routing?: AlertRuleRoutingDto | null;
   evaluationTimeLocal?: string | null;
   evaluationTimezone?: string | null;
+  thresholdRef?: AlertRuleThresholdRef | null;
 };
 
 export async function createAlertRule(payload: CreateAlertRulePayload): Promise<AlertRuleDto> {

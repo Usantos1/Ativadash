@@ -11,6 +11,8 @@ const channelGoalsPatchSchema = z
     targetRoas: z.number().positive().nullable().optional(),
     minSpendForAlertsBrl: z.number().nonnegative().nullable().optional(),
     minResultsForCpa: z.number().int().min(1).max(500).optional(),
+    dailyBudgetExpectedBrl: z.number().nonnegative().nullable().optional(),
+    dailyBudgetMaxBrl: z.number().nonnegative().nullable().optional(),
   })
   .partial();
 
@@ -141,6 +143,8 @@ export const evaluateInsightsSchema = z.object({
       google: channelTotalsSchema.optional(),
     })
     .optional(),
+  /** Gasto acumulado hoje (BRL), para regras de gasto diário. */
+  spendTodayBrl: z.number().nonnegative().nullable().optional(),
   /**
    * Quando true, dispara envio WhatsApp (Ativa CRM) se houver alertas acionáveis.
    * O padrão é false para não spammar ao abrir o painel (cada GET/POST de avaliação).

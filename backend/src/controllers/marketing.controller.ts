@@ -362,6 +362,7 @@ export async function postMarketingInsightsHandler(req: Request, res: Response) 
       totalClicks,
       persistOccurrences: persistOccurrences !== false,
       channels,
+      spendTodayBrl: parsed.data.spendTodayBrl,
     });
     if (sendWhatsappAlerts === true) {
       await maybeSendAtivaCrmAlerts(user.organizationId, result).catch((err) =>

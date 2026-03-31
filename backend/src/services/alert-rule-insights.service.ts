@@ -1,4 +1,9 @@
+import type { MarketingSettings } from "@prisma/client";
 import type { InsightAlert } from "../types/marketing-insight.types.js";
+import {
+  resolveBlendedDailyBudgetMaxBrl,
+  resolveChannelGoals,
+} from "../lib/marketing-channel-settings.js";
 import { prisma } from "../utils/prisma.js";
 import { getEffectivePlanFeatures } from "./effective-plan-features.service.js";
 import { formatMoney } from "./marketing-settings-format.js";
@@ -117,8 +122,12 @@ function outsideTargetMatches(metric: string, value: number, settings: GoalSnaps
 }
 
 export type CustomAlertKpisContext = {
+  /** Ex.: 7d, 30d — usado para estimar gasto diário quando não há spendTodayBrl. */
+  period: string;
   periodLabel: string;
   totalSpendBrl: number;
+  /** Gasto do dia corrente (BRL), quando o cliente envia na avaliação. */
+  spendTodayBrl?: number | null;
   totalResults: number;
   totalAttributedValueBrl: number;
   totalImpressions?: number;
@@ -128,6 +137,65 @@ export type CustomAlertKpisContext = {
 };
 
 export type RuleEvaluatingChannel = "meta" | "google" | "blended";
+
+function periodDays(p: string): number {
+  if (p === "7d") return 7;
+  if (p === "30d") return 30;
+  if (p === "90d") return 90;
+  return 30;
+}
+
+function channelGoalSnapshot(
+  row: MarketingSettings | null,
+  evaluatingChannel: RuleEvaluatingChannel
+): GoalSnapshot | null {
+  if (!row) return null;
+  if (evaluatingChannel === "blended") {
+    return {
+      targetCpaBrl: row.targetCpaBrl != null ? Number(row.targetCpaBrl) : null,
+      maxCpaBrl: row.maxCpaBrl != null ? Number(row.maxCpaBrl) : null,
+      targetRoas: row.targetRoas != null ? Number(row.targetRoas) : null,
+    };
+  }
+  const g = resolveChannelGoals(row, evaluatingChannel);
+  return {
+    targetCpaBrl: g.targetCpaBrl,
+    maxCpaBrl: g.maxCpaBrl,
+    targetRoas: g.targetRoas,
+  };
+}
+
+function resolveDynamicThreshold(
+  rule: { thresholdRef: string | null; threshold: unknown },
+  row: MarketingSettings | null,
+  evaluatingChannel: RuleEvaluatingChannel
+): number | null {
+  const ref = rule.thresholdRef?.trim() ?? "";
+  if (!ref) {
+    const n = Number(rule.threshold);
+    return Number.isFinite(n) ? n : null;
+  }
+  if (!row) return null;
+  if (ref === "VAR_CHANNEL_MAX_CPA") {
+    if (evaluatingChannel === "blended") {
+      const g = channelGoalSnapshot(row, "blended");
+      return g?.maxCpaBrl ?? g?.targetCpaBrl ?? null;
+    }
+    const g = resolveChannelGoals(row, evaluatingChannel);
+    return g.maxCpaBrl ?? g.targetCpaBrl ?? null;
+  }
+  if (ref === "VAR_CHANNEL_TARGET_ROAS") {
+    if (evaluatingChannel === "blended") {
+      return channelGoalSnapshot(row, "blended")?.targetRoas ?? null;
+    }
+    return resolveChannelGoals(row, evaluatingChannel).targetRoas;
+  }
+  if (ref === "VAR_BLENDED_DAILY_BUDGET_MAX") {
+    return resolveBlendedDailyBudgetMaxBrl(row);
+  }
+  const n = Number(rule.threshold);
+  return Number.isFinite(n) ? n : null;
+}
 
 function ruleMatchesEvalScope(
   appliesToChannel: string | null | undefined,
@@ -154,15 +222,9 @@ export async function appendCustomRuleAlerts(
 
   const settingsRow = await prisma.marketingSettings.findUnique({
     where: { organizationId },
-    select: { targetCpaBrl: true, maxCpaBrl: true, targetRoas: true },
   });
-  const goalSnap: GoalSnapshot | null = settingsRow
-    ? {
-        targetCpaBrl: settingsRow.targetCpaBrl != null ? Number(settingsRow.targetCpaBrl) : null,
-        maxCpaBrl: settingsRow.maxCpaBrl != null ? Number(settingsRow.maxCpaBrl) : null,
-        targetRoas: settingsRow.targetRoas != null ? Number(settingsRow.targetRoas) : null,
-      }
-    : null;
+
+  const goalSnapChannel = channelGoalSnapshot(settingsRow, scope);
 
   const rules = await prisma.alertRule.findMany({
     where: { organizationId, active: true },
@@ -184,6 +246,15 @@ export async function appendCustomRuleAlerts(
       case "spend":
         value = ctx.totalSpendBrl;
         break;
+      case "daily_spend": {
+        const days = Math.max(1, periodDays(ctx.period));
+        const st = ctx.spendTodayBrl;
+        value =
+          st != null && Number.isFinite(st) && st >= 0
+            ? st
+            : ctx.totalSpendBrl / days;
+        break;
+      }
       case "ctr":
         if (
           ctx.totalImpressions != null &&
@@ -199,52 +270,52 @@ export async function appendCustomRuleAlerts(
 
     if (value == null || !Number.isFinite(value)) continue;
 
-    const threshold = Number(rule.threshold);
     let fires = false;
     let v = value;
-    let t = threshold;
+    const tResolved = resolveDynamicThreshold(rule, settingsRow, scope);
+    let t = tResolved ?? NaN;
 
     if (rule.metric === "cpa") {
       v = Math.round(value * 100) / 100;
-      t = Number.isFinite(threshold) ? Math.round(threshold * 100) / 100 : NaN;
+      t = tResolved != null && Number.isFinite(tResolved) ? Math.round(tResolved * 100) / 100 : NaN;
     }
 
     if (rule.operator === "outside_target") {
-      fires = outsideTargetMatches(rule.metric, v, goalSnap);
+      fires = outsideTargetMatches(rule.metric, v, goalSnapChannel);
     } else {
-      if (!Number.isFinite(threshold)) continue;
+      if (tResolved == null || !Number.isFinite(tResolved)) continue;
       fires = compareOp(rule.operator, v, t);
     }
 
     if (!fires) continue;
 
-    const displayTh = rule.metric === "cpa" ? t : threshold;
+    const displayTh = tResolved ?? Number(rule.threshold);
     const metricLabel =
-      rule.metric === "cpa"
+      rule.metric === "cpa" || rule.metric === "spend" || rule.metric === "daily_spend"
         ? formatMoney(v)
-        : rule.metric === "spend"
-          ? formatMoney(value)
-          : rule.metric === "ctr"
-            ? `${value.toFixed(2)}%`
-            : `${value.toFixed(2)}×`;
+        : rule.metric === "ctr"
+          ? `${value.toFixed(2)}%`
+          : `${value.toFixed(2)}×`;
 
     const thLabel =
-      rule.metric === "cpa" || rule.metric === "spend"
-        ? formatMoney(Number.isFinite(displayTh) ? displayTh : threshold)
+      rule.metric === "cpa" || rule.metric === "spend" || rule.metric === "daily_spend"
+        ? formatMoney(Number.isFinite(displayTh) ? displayTh : Number(rule.threshold))
         : rule.metric === "ctr"
-          ? `${(Number.isFinite(threshold) ? threshold : 0).toFixed(2)}%`
-          : `${(Number.isFinite(threshold) ? threshold : 0).toFixed(2)}×`;
+          ? `${(Number.isFinite(tResolved ?? NaN) ? (tResolved as number) : Number(rule.threshold)).toFixed(2)}%`
+          : `${(Number.isFinite(tResolved ?? NaN) ? (tResolved as number) : Number(rule.threshold)).toFixed(2)}×`;
 
     const goalLine =
       rule.metric === "cpa"
-        ? goalSnap?.maxCpaBrl != null
-          ? formatMoney(goalSnap.maxCpaBrl)
-          : goalSnap?.targetCpaBrl != null
-            ? formatMoney(goalSnap.targetCpaBrl)
+        ? goalSnapChannel?.maxCpaBrl != null
+          ? formatMoney(goalSnapChannel.maxCpaBrl)
+          : goalSnapChannel?.targetCpaBrl != null
+            ? formatMoney(goalSnapChannel.targetCpaBrl)
             : thLabel
-        : rule.metric === "roas" && goalSnap?.targetRoas != null
-          ? `${goalSnap.targetRoas.toFixed(2)}×`
-          : thLabel;
+        : rule.metric === "roas" && goalSnapChannel?.targetRoas != null
+          ? `${goalSnapChannel.targetRoas.toFixed(2)}×`
+          : rule.metric === "daily_spend"
+            ? thLabel
+            : thLabel;
 
     const fallbackMsg = `Valor atual ${metricLabel} — ${rule.operator === "outside_target" ? "fora da meta" : `condição ${rule.operator}`} (${ctx.periodLabel}).`;
     const msg = formatRuleMessage(rule.messageTemplate, fallbackMsg, {

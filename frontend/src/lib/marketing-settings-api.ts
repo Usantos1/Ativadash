@@ -18,6 +18,8 @@ export type ChannelGoalsDto = {
   targetRoas: number | null;
   minSpendForAlertsBrl: number | null;
   minResultsForCpa: number;
+  dailyBudgetExpectedBrl: number | null;
+  dailyBudgetMaxBrl: number | null;
 };
 
 export type ChannelAutomationsDto = {
@@ -156,6 +158,10 @@ function parseChannelGoalsJson(input: unknown, legacy: ChannelGoalsDto): Channel
     minSpendForAlertsBrl:
       "minSpendForAlertsBrl" in o ? numOrNull(o.minSpendForAlertsBrl) : legacy.minSpendForAlertsBrl,
     minResultsForCpa: minResults,
+    dailyBudgetExpectedBrl:
+      "dailyBudgetExpectedBrl" in o ? numOrNull(o.dailyBudgetExpectedBrl) : legacy.dailyBudgetExpectedBrl,
+    dailyBudgetMaxBrl:
+      "dailyBudgetMaxBrl" in o ? numOrNull(o.dailyBudgetMaxBrl) : legacy.dailyBudgetMaxBrl,
   };
 }
 
@@ -276,12 +282,15 @@ export function normalizeMarketingSettingsDto(raw: unknown): MarketingSettingsDt
       ? Math.min(500, Math.max(1, Math.trunc(r.minResultsForCpa)))
       : 5;
 
+  const legDaily = numOrNull(r.dailyBudgetExpectedBrl);
   const legacyGoals: ChannelGoalsDto = {
     targetCpaBrl: numOrNull(r.targetCpaBrl),
     maxCpaBrl: numOrNull(r.maxCpaBrl),
     targetRoas: numOrNull(r.targetRoas),
     minSpendForAlertsBrl: numOrNull(r.minSpendForAlertsBrl),
     minResultsForCpa: minResultsForCpa,
+    dailyBudgetExpectedBrl: legDaily,
+    dailyBudgetMaxBrl: null,
   };
 
   const goalsBy = r.goalsByChannel;
@@ -394,6 +403,8 @@ export type ChannelGoalsPatch = Partial<{
   targetRoas: number | null;
   minSpendForAlertsBrl: number | null;
   minResultsForCpa: number;
+  dailyBudgetExpectedBrl: number | null;
+  dailyBudgetMaxBrl: number | null;
 }>;
 
 export type UpdateMarketingSettingsPayload = Partial<{
@@ -473,6 +484,7 @@ export async function evaluateMarketingInsights(
     channels?: Partial<Record<AdsChannelKey, InsightTotalsPayload>>;
     /** Só use true em ação explícita ou cron — não ao carregar o painel. */
     sendWhatsappAlerts?: boolean;
+    spendTodayBrl?: number | null;
   }
 ): Promise<EvaluateInsightsResponse> {
   return api.post<EvaluateInsightsResponse>("/marketing/insights/evaluate", {
@@ -482,5 +494,8 @@ export async function evaluateMarketingInsights(
     ...(opts?.persistOccurrences === false ? { persistOccurrences: false } : {}),
     ...(opts?.channels ? { channels: opts.channels } : {}),
     ...(opts?.sendWhatsappAlerts === true ? { sendWhatsappAlerts: true } : {}),
+    ...(opts?.spendTodayBrl != null && opts.spendTodayBrl !== undefined
+      ? { spendTodayBrl: opts.spendTodayBrl }
+      : {}),
   });
 }

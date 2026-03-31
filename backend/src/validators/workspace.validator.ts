@@ -68,6 +68,14 @@ export const createWorkspaceMemberSchema = z.object({
   whatsappNumber: z.string().max(32).optional().nullable(),
 });
 
+const alertHourSchema = z
+  .union([
+    z.string().regex(/^([01]?\d|2[0-3]):[0-5]\d$/, "Use HH:mm (ex.: 09:00)"),
+    z.literal(""),
+    z.null(),
+  ])
+  .optional();
+
 export const patchWorkspaceMemberSchema = z
   .object({
     role: assignableRoleSchema.optional(),
@@ -77,6 +85,9 @@ export const patchWorkspaceMemberSchema = z
     jobTitle: z.union([teamJobTitleFieldSchema, z.literal("")]).optional(),
     accessLevel: teamAccessLevelSchema.optional(),
     whatsappNumber: z.union([z.string().max(32), z.literal("")]).optional().nullable(),
+    receiveWhatsappAlerts: z.boolean().optional(),
+    alertStartHour: alertHourSchema,
+    alertEndHour: alertHourSchema,
   })
   .refine(
     (b) =>
@@ -86,7 +97,10 @@ export const patchWorkspaceMemberSchema = z
       b.suspended !== undefined ||
       b.jobTitle !== undefined ||
       b.accessLevel !== undefined ||
-      b.whatsappNumber !== undefined,
+      b.whatsappNumber !== undefined ||
+      b.receiveWhatsappAlerts !== undefined ||
+      b.alertStartHour !== undefined ||
+      b.alertEndHour !== undefined,
     { message: "Informe pelo menos um campo para atualizar" }
   );
 
