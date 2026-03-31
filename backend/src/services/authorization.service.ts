@@ -201,7 +201,11 @@ export async function assertCanMutateAds(userId: string, organizationId: string)
         isMatrixWideAdminRole(role) ||
         role === "media_meta_manager" ||
         role === "media_google_manager" ||
-        role === "media_manager"),
+        role === "media_manager" ||
+        role === "member" ||
+        role === "analyst" ||
+        role === "performance_analyst" ||
+        role === "agency_ops"),
     "Sem permissão para alterar campanhas nas redes"
   );
 }

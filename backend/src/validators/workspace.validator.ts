@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ASSIGNABLE_MEMBER_ROLES } from "../constants/roles.js";
+import { isValidTeamJobTitleSlug } from "../constants/team-job-titles.js";
 
 const assignableRoleSchema = z.enum(ASSIGNABLE_MEMBER_ROLES);
 export const createClientSchema = z.object({
@@ -34,9 +35,18 @@ export const updateLaunchSchema = z.object({
   checklistJson: z.string().max(500_000).optional().nullable(),
 });
 
+const teamJobTitleFieldSchema = z
+  .string()
+  .min(1)
+  .refine((s) => isValidTeamJobTitleSlug(s.trim()), { message: "Cargo inválido" });
+
+const teamAccessLevelSchema = z.enum(["ADMIN", "OPERADOR", "VIEWER"]);
+
 export const createInvitationSchema = z.object({
   email: z.string().email("E-mail inválido"),
   role: z.enum(["admin", "member", "media_manager", "analyst"]).optional(),
+  jobTitle: teamJobTitleFieldSchema.optional(),
+  accessLevel: teamAccessLevelSchema.optional(),
   /** Workspace onde o membro será vinculado (filho na hierarquia). Se omitido, usa a org do JWT. */
   organizationId: z.string().min(1).optional(),
 });
@@ -50,7 +60,8 @@ export const createWorkspaceMemberSchema = z.object({
   email: z.string().email("E-mail inválido"),
   name: z.string().min(1, "Nome obrigatório").max(200),
   password: z.string().min(8, "Senha deve ter pelo menos 8 caracteres").max(128),
-  role: assignableRoleSchema,
+  jobTitle: teamJobTitleFieldSchema,
+  accessLevel: teamAccessLevelSchema,
 });
 
 export const patchWorkspaceMemberSchema = z
@@ -59,10 +70,17 @@ export const patchWorkspaceMemberSchema = z
     email: z.string().email("E-mail inválido").optional(),
     name: z.string().min(1).max(200).optional(),
     suspended: z.boolean().optional(),
+    jobTitle: z.union([teamJobTitleFieldSchema, z.literal("")]).optional(),
+    accessLevel: teamAccessLevelSchema.optional(),
   })
   .refine(
     (b) =>
-      b.role !== undefined || b.email !== undefined || b.name !== undefined || b.suspended !== undefined,
+      b.role !== undefined ||
+      b.email !== undefined ||
+      b.name !== undefined ||
+      b.suspended !== undefined ||
+      b.jobTitle !== undefined ||
+      b.accessLevel !== undefined,
     { message: "Informe pelo menos um campo para atualizar" }
   );
 

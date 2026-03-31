@@ -273,7 +273,11 @@ export async function invitationsCreate(req: Request, res: Response) {
     if (targetOrg !== jwtOrg) {
       await assertManagedDescendantOrganization(jwtOrg, targetOrg);
     }
-    const out = await createInvitation(targetOrg, userId, parsed.data.email, parsed.data.role ?? "member");
+    const out = await createInvitation(targetOrg, userId, parsed.data.email, {
+      legacyRole: parsed.data.role,
+      accessLevel: parsed.data.accessLevel,
+      jobTitle: parsed.data.jobTitle,
+    });
     return res.status(201).json(out);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro ao convidar";

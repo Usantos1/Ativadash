@@ -13,6 +13,8 @@ export type MembershipOrganizationKind = "MATRIX" | "DIRECT" | "CLIENT_WORKSPACE
 export interface MembershipSummary {
   organizationId: string;
   role: string;
+  /** Cargo na equipe (slug), ex.: traffic_manager */
+  jobTitle?: string | null;
   organization: OrganizationSummary;
   /** Tipo de tenant (enviado pelo GET /auth/me). */
   organizationKind?: MembershipOrganizationKind;

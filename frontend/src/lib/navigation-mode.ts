@@ -4,7 +4,7 @@ import type { MembershipSummary, User } from "@/stores/auth-store";
 export type OrganizationKindDto = "MATRIX" | "DIRECT" | "CLIENT_WORKSPACE";
 
 /** Variante do menu lateral (formato da org ativa; não confundir com `platformAdmin`). */
-export type SidebarNavVariant = "full" | "agency_branch" | "client_workspace";
+export type SidebarNavVariant = "full" | "agency_branch" | "client_workspace" | "agency_client_portal";
 
 export type AppNavMode = "platform_full" | "operational_full" | "agency_branch" | "client_workspace";
 
@@ -24,8 +24,12 @@ export function resolveOrganizationKind(user: User | null): OrganizationKindDto 
 }
 
 /** Menu lateral: filial e workspace cliente são sempre “enxutos”, inclusive para admin global no contexto dessa org. */
-export function resolveSidebarNavVariant(user: User | null): SidebarNavVariant {
+export function resolveSidebarNavVariant(
+  user: User | null,
+  memberships: MembershipSummary[] | null = null
+): SidebarNavVariant {
   if (!user?.organizationId) return "full";
+  if (isAgencyClientPortalUser(user, memberships)) return "agency_client_portal";
   const kind = resolveOrganizationKind(user);
   if (kind === "CLIENT_WORKSPACE") return "client_workspace";
   if (user.parentOrganizationId != null) return "agency_branch";
@@ -43,11 +47,11 @@ export function resolveAppNavMode(user: User | null): AppNavMode {
 }
 
 export function shouldEnforceAgencyBranchRouteGuard(user: User | null): boolean {
-  return resolveSidebarNavVariant(user) === "agency_branch" && user?.platformAdmin !== true;
+  return resolveSidebarNavVariant(user, null) === "agency_branch" && user?.platformAdmin !== true;
 }
 
 export function shouldEnforceClientWorkspaceClientsGuard(user: User | null): boolean {
-  return resolveSidebarNavVariant(user) === "client_workspace" && user?.platformAdmin !== true;
+  return resolveSidebarNavVariant(user, null) === "client_workspace" && user?.platformAdmin !== true;
 }
 
 export function getActiveMembership(
@@ -57,6 +61,28 @@ export function getActiveMembership(
   const oid = user?.organizationId;
   if (!oid || !memberships?.length) return null;
   return memberships.find((m) => m.organizationId === oid) ?? null;
+}
+
+/** Cliente da agência: `report_viewer` ou cargo "Cliente" — navegação e rotas restritas. */
+export function isAgencyClientPortalUser(
+  user: User | null,
+  memberships: MembershipSummary[] | null
+): boolean {
+  if (!user?.organizationId || user.platformAdmin) return false;
+  const m = getActiveMembership(user, memberships);
+  if (!m) return false;
+  if (m.role === "report_viewer") return true;
+  if (m.jobTitle === "client_viewer") return true;
+  return false;
+}
+
+export function isPathAllowedForAgencyClientPortal(pathname: string): boolean {
+  const p = pathname.replace(/\/$/, "") || "/";
+  if (p === "/" || p === "/dashboard") return true;
+  if (p === "/marketing" || p === "/marketing/captacao" || p === "/marketing/conversao" || p === "/marketing/receita")
+    return true;
+  if (p === "/perfil") return true;
+  return false;
 }
 
 /**

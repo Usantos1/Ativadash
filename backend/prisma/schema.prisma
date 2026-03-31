@@ -216,6 +216,7 @@ model Invitation {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   role           String   @default("member")
+  jobTitle       String?
   token          String   @unique
   invitedByUserId String
   invitedBy      User     @relation("InvitationInvitedBy", fields: [invitedByUserId], references: [id], onDelete: Cascade)
@@ -429,6 +430,8 @@ model Membership {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   role           String   @default("member")
+  /// Cargo exibido na equipe (ex.: gestor de tráfego, cliente). Independente do `role` de sistema.
+  jobTitle       String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

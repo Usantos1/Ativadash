@@ -12,10 +12,12 @@ import {
   resolveAppNavMode,
   isPathAllowedForAgencyBranch,
   isPathBlockedForClientWorkspaceClients,
+  isPathAllowedForAgencyClientPortal,
   canAccessAdminPage,
   shouldEnforceAgencyBranchRouteGuard,
   shouldEnforceClientWorkspaceClientsGuard,
   canAccessMatrizResellerNav,
+  isAgencyClientPortalUser,
 } from "@/lib/navigation-mode";
 
 export function MainLayout() {
@@ -59,7 +61,10 @@ export function MainLayout() {
             organizationKind: profile.organizationKind,
             parentOrganizationId: profile.parentOrganizationId,
           },
-          memberships: profile.memberships,
+          memberships: profile.memberships.map((m) => ({
+            ...m,
+            jobTitle: m.jobTitle ?? null,
+          })),
           managedOrganizations: profile.managedOrganizations,
         });
       })
@@ -91,6 +96,10 @@ export function MainLayout() {
       return;
     }
     if (shouldEnforceClientWorkspaceClientsGuard(user) && isPathBlockedForClientWorkspaceClients(path)) {
+      navigate("/dashboard", { replace: true });
+      return;
+    }
+    if (isAgencyClientPortalUser(user, memberships) && !isPathAllowedForAgencyClientPortal(path)) {
       navigate("/dashboard", { replace: true });
       return;
     }

@@ -46,6 +46,8 @@ export type AuthUserDto = {
 export type MembershipSummaryDto = {
   organizationId: string;
   role: string;
+  /** Cargo na equipe (slug), ex.: traffic_manager. */
+  jobTitle: string | null;
   organization: AuthOrganizationDto;
   organizationKind: import("@prisma/client").OrganizationKind;
   /** Filial na hierarquia quando não nulo (espelha a org do vínculo). */
@@ -119,6 +121,7 @@ async function listMembershipSummaries(userId: string): Promise<MembershipSummar
     .map((m) => ({
       organizationId: m.organizationId,
       role: m.role,
+      jobTitle: m.jobTitle ?? null,
       organization: {
         id: m.organization.id,
         name: m.organization.name,

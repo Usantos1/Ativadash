@@ -44,6 +44,7 @@ import {
   patchMarketingMetaCampaignStatus,
 } from "@/lib/marketing-contract-api";
 import { canUserMutateMarketingAds } from "@/lib/marketing-ads-permissions";
+import { isAgencyClientPortalUser } from "@/lib/navigation-mode";
 
 export type FunnelVariant = "captacao" | "conversao" | "receita";
 
@@ -201,7 +202,11 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
     if (!user?.organizationId) return null;
     return memberships?.find((m) => m.organizationId === user.organizationId)?.role ?? null;
   }, [user?.organizationId, memberships]);
-  const canMutateAds = canUserMutateMarketingAds(membershipRole);
+  const isClientPortalUser = useMemo(
+    () => isAgencyClientPortalUser(user, memberships ?? null),
+    [user, memberships]
+  );
+  const canMutateAds = canUserMutateMarketingAds(membershipRole) && !isClientPortalUser;
   const planAllowsCampaignWrite = orgCtx?.enabledFeatures?.campaignWrite !== false;
   const canMutateCampaigns = canMutateAds && planAllowsCampaignWrite;
 
@@ -610,25 +615,31 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                   initialCompare={false}
                   onApply={applyDateFilter}
                 />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 rounded-lg border-border/70 bg-background/80 shadow-sm"
-                  disabled={metricsLoading || metaMetricsLoading}
-                  onClick={() => refreshAll()}
-                >
-                  <RefreshCw
-                    className={`mr-1.5 h-3.5 w-3.5 ${metricsLoading || metaMetricsLoading ? "animate-spin" : ""}`}
-                  />
-                  Atualizar
-                </Button>
-                <Button size="sm" className="h-9 rounded-lg shadow-sm" variant="secondary" type="button" onClick={handleShare}>
-                  <Share2 className="mr-1.5 h-3.5 w-3.5" />
-                  Compartilhar
-                </Button>
-                <Button variant="default" size="sm" className="h-9 rounded-lg shadow-sm" asChild>
-                  <Link to="/marketing/configuracoes">Metas e alertas</Link>
-                </Button>
+                {!isClientPortalUser ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 rounded-lg border-border/70 bg-background/80 shadow-sm"
+                    disabled={metricsLoading || metaMetricsLoading}
+                    onClick={() => refreshAll()}
+                  >
+                    <RefreshCw
+                      className={`mr-1.5 h-3.5 w-3.5 ${metricsLoading || metaMetricsLoading ? "animate-spin" : ""}`}
+                    />
+                    Atualizar
+                  </Button>
+                ) : null}
+                {!isClientPortalUser ? (
+                  <Button size="sm" className="h-9 rounded-lg shadow-sm" variant="secondary" type="button" onClick={handleShare}>
+                    <Share2 className="mr-1.5 h-3.5 w-3.5" />
+                    Compartilhar
+                  </Button>
+                ) : null}
+                {!isClientPortalUser ? (
+                  <Button variant="default" size="sm" className="h-9 rounded-lg shadow-sm" asChild>
+                    <Link to="/marketing/configuracoes">Metas e alertas</Link>
+                  </Button>
+                ) : null}
               </div>
               {shareHint ? <span className="text-right text-xs text-muted-foreground">{shareHint}</span> : null}
             </div>
@@ -669,9 +680,13 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
         <EmptyState
           icon={BarChart3}
           title="Sem integrações"
-          description="Conecte Google ou Meta nas Integrações."
-          actionLabel="Integrações"
-          onAction={() => navigate("/marketing/integracoes")}
+          description={
+            isClientPortalUser
+              ? "Os dados de mídia ainda não estão disponíveis para esta conta."
+              : "Conecte Google ou Meta nas Integrações."
+          }
+          actionLabel={isClientPortalUser ? undefined : "Integrações"}
+          onAction={isClientPortalUser ? undefined : () => navigate("/marketing/integracoes")}
           className="min-h-[280px]"
         />
       ) : hasData ? (
@@ -912,15 +927,16 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
             />
           </div>
 
-          <div
-            className={cn(
-              "grid gap-3",
-              variant === "captacao" ? "lg:grid-cols-2 xl:grid-cols-4" : "lg:grid-cols-3"
-            )}
-          >
-            {variant === "captacao" && (
-              <>
-                <RankBlock title="Melhor CTR">
+          {!isClientPortalUser ? (
+            <div
+              className={cn(
+                "grid gap-3",
+                variant === "captacao" ? "lg:grid-cols-2 xl:grid-cols-4" : "lg:grid-cols-3"
+              )}
+            >
+              {variant === "captacao" && (
+                <>
+                  <RankBlock title="Melhor CTR">
                   <ScrollTable minWidth="min-w-[360px]">
                     <thead>
                       <tr className="border-b text-left text-[11px] font-semibold uppercase text-muted-foreground">
@@ -1131,33 +1147,36 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                     </tbody>
                   </ScrollTable>
                 </RankBlock>
-              </>
-            )}
-          </div>
+                </>
+              )}
+            </div>
+          ) : null}
 
-          <AnalyticsSection eyebrow="Operação" title="Central de controle" dense>
-            {osRows.length > 0 ? (
-              <MarketingCampaignsOsTable
-                rows={osRows}
-                goalMode={goalMode}
-                targetCplBrl={settings?.targetCpaBrl ?? null}
-                maxCplBrl={settings?.maxCpaBrl ?? null}
-                targetRoas={settings?.targetRoas ?? null}
-                periodDays={periodDays}
-                canMutateCampaigns={canMutateCampaigns}
-                mutatingAdsKey={mutatingAdsKey}
-                runMetaStatus={(id, s) => void runMetaStatus(id, s)}
-                runGoogleStatus={(id, s) => void runGoogleStatus(id, s)}
-                openBudgetDialog={openBudgetDialog}
-                onAfterMutation={() => void refreshAll()}
-                combinedCampaignMode
-                hasMeta={hasMeta}
-                hasGoogle={hasGoogle}
-              />
-            ) : (
-              <p className="py-8 text-center text-sm text-muted-foreground">Sem linhas no período.</p>
-            )}
-          </AnalyticsSection>
+          {!isClientPortalUser ? (
+            <AnalyticsSection eyebrow="Operação" title="Central de controle" dense>
+              {osRows.length > 0 ? (
+                <MarketingCampaignsOsTable
+                  rows={osRows}
+                  goalMode={goalMode}
+                  targetCplBrl={settings?.targetCpaBrl ?? null}
+                  maxCplBrl={settings?.maxCpaBrl ?? null}
+                  targetRoas={settings?.targetRoas ?? null}
+                  periodDays={periodDays}
+                  canMutateCampaigns={canMutateCampaigns}
+                  mutatingAdsKey={mutatingAdsKey}
+                  runMetaStatus={(id, s) => void runMetaStatus(id, s)}
+                  runGoogleStatus={(id, s) => void runGoogleStatus(id, s)}
+                  openBudgetDialog={openBudgetDialog}
+                  onAfterMutation={() => void refreshAll()}
+                  combinedCampaignMode
+                  hasMeta={hasMeta}
+                  hasGoogle={hasGoogle}
+                />
+              ) : (
+                <p className="py-8 text-center text-sm text-muted-foreground">Sem linhas no período.</p>
+              )}
+            </AnalyticsSection>
+          ) : null}
         </div>
       ) : (
         <div className="rounded-xl border border-border/80 bg-card p-6">

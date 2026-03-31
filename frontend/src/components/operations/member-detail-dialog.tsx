@@ -5,11 +5,32 @@ import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { StatusBadge } from "@/components/premium";
 import type { MemberRow, PatchMemberPayload } from "@/lib/workspace-api";
 import { patchMember, resetMemberPassword } from "@/lib/workspace-api";
 import { Link } from "react-router-dom";
 import { membershipRoleLabelPt } from "@/lib/membership-role-labels";
+import {
+  TEAM_ACCESS_LEVEL_OPTIONS,
+  TEAM_JOB_TITLE_OPTIONS,
+  accessLevelFromSystemRole,
+  accessLevelLabelPt,
+  jobTitleLabelPt,
+  type TeamJobTitleValue,
+} from "@/lib/team-access-ui";
+
+type AccessLevelUi = "ADMIN" | "OPERADOR" | "VIEWER";
+
+function canEditMemberJobAndAccess(role: string): boolean {
+  return role !== "owner" && role !== "workspace_owner" && role !== "agency_owner";
+}
 
 type Props = {
   open: boolean;
@@ -41,14 +62,18 @@ export function MemberDetailDialog({
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [forceChangeOnLogin, setForceChangeOnLogin] = useState(true);
-  const [busy, setBusy] = useState<"profile" | "password" | null>(null);
+  const [busy, setBusy] = useState<"profile" | "password" | "jobAccess" | null>(null);
   const [localMsg, setLocalMsg] = useState<string | null>(null);
+  const [draftJobTitle, setDraftJobTitle] = useState<TeamJobTitleValue>("traffic_manager");
+  const [draftAccessLevel, setDraftAccessLevel] = useState<AccessLevelUi>("OPERADOR");
 
   useEffect(() => {
     if (!member || !open) return;
     setDraftName(member.name);
     setDraftEmail(member.email);
     setDraftSuspended(!!member.suspended);
+    setDraftJobTitle((member.jobTitle as TeamJobTitleValue) || "traffic_manager");
+    setDraftAccessLevel(accessLevelFromSystemRole(member.role));
     setNewPassword("");
     setConfirmPassword("");
     setForceChangeOnLogin(true);
@@ -59,6 +84,7 @@ export function MemberDetailDialog({
   const isDirect = member?.source !== "agency";
   const isSelf = !!(member && currentUserId && member.userId === currentUserId);
   const showAdminBlock = !!(member && isDirect && !isSelf);
+  const canEditJobAccess = !!(member && showAdminBlock && canEditMemberJobAndAccess(member.role));
 
   async function handleSaveProfile() {
     if (!member || !showAdminBlock) return;
@@ -76,6 +102,28 @@ export function MemberDetailDialog({
       onOpenChange(false);
     } catch (e) {
       setLocalMsg(e instanceof Error ? e.message : "Erro ao salvar");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleSaveJobAccess() {
+    if (!member || !canEditJobAccess) return;
+    setLocalMsg(null);
+    setBusy("jobAccess");
+    try {
+      const currentTitle = (member.jobTitle as TeamJobTitleValue) || "traffic_manager";
+      const currentLevel = accessLevelFromSystemRole(member.role);
+      const payload: PatchMemberPayload = {};
+      if (draftJobTitle !== currentTitle) payload.jobTitle = draftJobTitle;
+      if (draftAccessLevel !== currentLevel) payload.accessLevel = draftAccessLevel;
+      if (Object.keys(payload).length === 0) return;
+
+      await patchMember(member.userId, payload, organizationId);
+      await onMemberUpdated?.();
+      onOpenChange(false);
+    } catch (e) {
+      setLocalMsg(e instanceof Error ? e.message : "Erro ao salvar cargo ou nível");
     } finally {
       setBusy(null);
     }
@@ -116,6 +164,12 @@ export function MemberDetailDialog({
       draftEmail.trim().toLowerCase() !== member.email.toLowerCase() ||
       draftSuspended !== !!member.suspended);
 
+  const jobAccessDirty =
+    !!member &&
+    canEditJobAccess &&
+    (draftJobTitle !== ((member.jobTitle as TeamJobTitleValue) || "traffic_manager") ||
+      draftAccessLevel !== accessLevelFromSystemRole(member.role));
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title="Membro da equipe" showClose className="max-w-md">
@@ -136,7 +190,15 @@ export function MemberDetailDialog({
                   </StatusBadge>
                 ) : null}
                 <span className="text-xs text-muted-foreground">
-                  Papel global: <strong className="text-foreground">{membershipRoleLabelPt(member.role)}</strong>
+                  Papel no sistema:{" "}
+                  <strong className="text-foreground">{membershipRoleLabelPt(member.role)}</strong>
+                  <span className="text-muted-foreground/80"> · </span>
+                  Cargo: <strong className="text-foreground">{jobTitleLabelPt(member.jobTitle)}</strong>
+                  <span className="text-muted-foreground/80"> · </span>
+                  Nível:{" "}
+                  <strong className="text-foreground">
+                    {accessLevelLabelPt(accessLevelFromSystemRole(member.role))}
+                  </strong>
                 </span>
               </div>
               <div className="grid gap-2 rounded-xl border border-border/45 bg-muted/10 p-3 text-sm">
@@ -160,6 +222,60 @@ export function MemberDetailDialog({
                     <p className="rounded-lg border border-border/50 bg-muted/20 px-2 py-1.5 text-xs text-foreground">
                       {localMsg}
                     </p>
+                  ) : null}
+                  {canEditJobAccess ? (
+                    <div className="grid gap-3 rounded-lg border border-border/40 bg-muted/10 p-3 sm:grid-cols-2">
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Cargo e nível de acesso
+                        </p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Cargo</Label>
+                        <Select value={draftJobTitle} onValueChange={(v) => setDraftJobTitle(v as TeamJobTitleValue)}>
+                          <SelectTrigger className="h-9 rounded-lg">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TEAM_JOB_TITLE_OPTIONS.map((o) => (
+                              <SelectItem key={o.value} value={o.value}>
+                                {o.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Nível de acesso</Label>
+                        <Select
+                          value={draftAccessLevel}
+                          onValueChange={(v) => setDraftAccessLevel(v as AccessLevelUi)}
+                        >
+                          <SelectTrigger className="h-9 rounded-lg">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TEAM_ACCESS_LEVEL_OPTIONS.map((o) => (
+                              <SelectItem key={o.value} value={o.value}>
+                                {o.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="w-full rounded-lg"
+                          disabled={!jobAccessDirty || busy !== null}
+                          onClick={() => void handleSaveJobAccess()}
+                        >
+                          {busy === "jobAccess" ? "Salvando…" : "Salvar cargo e nível"}
+                        </Button>
+                      </div>
+                    </div>
                   ) : null}
                   <div className="space-y-1.5">
                     <Label htmlFor="md-name" className="text-xs font-semibold">

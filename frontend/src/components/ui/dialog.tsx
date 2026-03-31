@@ -29,15 +29,17 @@ const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     showClose?: boolean;
     title?: string;
+    /** Classes do backdrop (ex.: `bg-black/70 backdrop-blur-sm`). */
+    overlayClassName?: string;
     /**
      * Alinha o modal ao topo da viewport (recomendado para formulários longos).
      * Evita cortar o conteúdo quando `translate-y-1/2` centraliza um painel alto.
      */
     alignTop?: boolean;
   }
->(({ className, children, showClose = true, title, alignTop = false, ...props }, ref) => (
+>(({ className, children, showClose = true, title, alignTop = false, overlayClassName, ...props }, ref) => (
   <DialogPortal>
-    <DialogOverlay />
+    <DialogOverlay className={overlayClassName} />
     <DialogPrimitive.Content
       ref={ref}
       className={cn(

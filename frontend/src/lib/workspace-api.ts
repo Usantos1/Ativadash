@@ -39,7 +39,10 @@ export type MemberRow = {
   email: string;
   name: string;
   role: string;
+  jobTitle?: string | null;
   joinedAt: string;
+  /** Último login bem-sucedido (quando disponível) */
+  lastLoginAt?: string | null;
   /** Conta suspensa (login bloqueado) */
   suspended?: boolean;
   suspendedAt?: string | null;
@@ -120,6 +123,7 @@ export type InvitationRow = {
   id: string;
   email: string;
   role: string;
+  jobTitle?: string | null;
   expiresAt: string;
   createdAt: string;
 };
@@ -129,15 +133,20 @@ export async function fetchPendingInvitations(organizationId?: string): Promise<
   return api.get<InvitationRow[]>(`/workspace/invitations${q}`);
 }
 
-export async function createInvitation(
-  email: string,
-  role: "admin" | "member" | "media_manager" | "analyst" = "member",
-  organizationId?: string
-): Promise<{ invitation: InvitationRow; inviteLink: string }> {
+export async function createInvitation(opts: {
+  email: string;
+  organizationId?: string;
+  /** Fluxo legado (sem cargo / nível). */
+  role?: "admin" | "member" | "media_manager" | "analyst";
+  jobTitle?: string;
+  accessLevel?: "ADMIN" | "OPERADOR" | "VIEWER";
+}): Promise<{ invitation: InvitationRow; inviteLink: string }> {
   return api.post("/workspace/invitations", {
-    email,
-    role,
-    ...(organizationId ? { organizationId } : {}),
+    email: opts.email,
+    ...(opts.organizationId ? { organizationId: opts.organizationId } : {}),
+    ...(opts.role ? { role: opts.role } : {}),
+    ...(opts.jobTitle ? { jobTitle: opts.jobTitle } : {}),
+    ...(opts.accessLevel ? { accessLevel: opts.accessLevel } : {}),
   });
 }
 
@@ -150,6 +159,8 @@ export type PatchMemberPayload = {
   email?: string;
   name?: string;
   suspended?: boolean;
+  jobTitle?: string | null;
+  accessLevel?: "ADMIN" | "OPERADOR" | "VIEWER";
 };
 
 export async function patchMember(
@@ -166,7 +177,13 @@ export async function patchMemberRole(userId: string, role: string, organization
 }
 
 export async function createWorkspaceMember(
-  body: { email: string; name: string; password: string; role: string },
+  body: {
+    email: string;
+    name: string;
+    password: string;
+    jobTitle: string;
+    accessLevel: "ADMIN" | "OPERADOR" | "VIEWER";
+  },
   organizationId?: string
 ): Promise<MemberRow> {
   const q = organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : "";

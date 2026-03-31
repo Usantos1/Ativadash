@@ -9,6 +9,10 @@ const MUTATE_MARKETING_ADS_ROLES = new Set([
   "media_meta_manager",
   "media_google_manager",
   "media_manager",
+  "member",
+  "analyst",
+  "performance_analyst",
+  "agency_ops",
 ]);
 
 export function canUserMutateMarketingAds(role: string | undefined | null): boolean {

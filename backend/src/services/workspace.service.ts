@@ -4,6 +4,10 @@ import { prisma } from "../utils/prisma.js";
 import { assertCanAddClientAccount, assertCanAddDirectMemberOrInvitation } from "./plan-limits.service.js";
 import { assertOrgAdminOrParentAgency } from "./auth.service.js";
 import { ASSIGNABLE_MEMBER_ROLES } from "../constants/roles.js";
+import {
+  isValidTeamJobTitleSlug,
+  resolveNewMemberRoleAndJobTitle,
+} from "../constants/team-job-titles.js";
 import { updateMemberRole } from "./members.service.js";
 
 const SALT_ROUNDS = 10;
@@ -216,7 +220,9 @@ type MemberListItem = {
   email: string;
   name: string;
   role: string;
+  jobTitle: string | null;
   joinedAt: string;
+  lastLoginAt: string | null;
   suspended: boolean;
   suspendedAt: string | null;
   /** Membro direto da empresa vs acesso via agência (revenda) */
@@ -233,7 +239,14 @@ export async function listOrganizationMembers(organizationId: string): Promise<M
     where: { organizationId },
     include: {
       user: {
-        select: { id: true, email: true, name: true, deletedAt: true, suspendedAt: true },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          deletedAt: true,
+          suspendedAt: true,
+          lastLoginAt: true,
+        },
       },
     },
     orderBy: { createdAt: "asc" },
@@ -247,7 +260,9 @@ export async function listOrganizationMembers(organizationId: string): Promise<M
       email: m.user.email,
       name: m.user.name,
       role: m.role,
+      jobTitle: m.jobTitle ?? null,
       joinedAt: m.createdAt.toISOString(),
+      lastLoginAt: m.user.lastLoginAt?.toISOString() ?? null,
       suspended: m.user.suspendedAt != null,
       suspendedAt: m.user.suspendedAt?.toISOString() ?? null,
       source: "direct" as const,
@@ -268,7 +283,14 @@ export async function listOrganizationMembers(organizationId: string): Promise<M
     },
     include: {
       user: {
-        select: { id: true, email: true, name: true, deletedAt: true, suspendedAt: true },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          deletedAt: true,
+          suspendedAt: true,
+          lastLoginAt: true,
+        },
       },
     },
     orderBy: { createdAt: "asc" },
@@ -282,7 +304,9 @@ export async function listOrganizationMembers(organizationId: string): Promise<M
       email: m.user.email,
       name: m.user.name,
       role: m.role,
+      jobTitle: m.jobTitle ?? null,
       joinedAt: m.createdAt.toISOString(),
+      lastLoginAt: m.user.lastLoginAt?.toISOString() ?? null,
       suspended: m.user.suspendedAt != null,
       suspendedAt: m.user.suspendedAt?.toISOString() ?? null,
       source: "agency" as const,
@@ -294,7 +318,7 @@ export async function listOrganizationMembers(organizationId: string): Promise<M
 export async function createWorkspaceDirectMember(
   organizationId: string,
   actorUserId: string,
-  data: { email: string; name: string; password: string; role: string }
+  data: { email: string; name: string; password: string; accessLevel: string; jobTitle: string }
 ): Promise<MemberListItem> {
   await assertOrgAdminOrParentAgency(actorUserId, organizationId);
   await assertCanAddDirectMemberOrInvitation(organizationId);
@@ -305,7 +329,7 @@ export async function createWorkspaceDirectMember(
     throw new Error("Já existe usuário com este e-mail");
   }
 
-  const r = data.role.trim();
+  const { role: r, jobTitle: jt } = resolveNewMemberRoleAndJobTitle(data.accessLevel, data.jobTitle);
   if (!(ASSIGNABLE_MEMBER_ROLES as readonly string[]).includes(r)) {
     throw new Error("Papel inválido");
   }
@@ -325,6 +349,7 @@ export async function createWorkspaceDirectMember(
       userId: user.id,
       organizationId,
       role: r,
+      jobTitle: jt,
     },
   });
 
@@ -334,7 +359,9 @@ export async function createWorkspaceDirectMember(
     email: user.email,
     name: user.name,
     role: membership.role,
+    jobTitle: membership.jobTitle ?? null,
     joinedAt: membership.createdAt.toISOString(),
+    lastLoginAt: null,
     suspended: false,
     suspendedAt: null,
     source: "direct",
@@ -345,7 +372,14 @@ export async function patchWorkspaceMember(
   organizationId: string,
   actorUserId: string,
   targetUserId: string,
-  patch: { role?: string; email?: string; name?: string; suspended?: boolean }
+  patch: {
+    role?: string;
+    email?: string;
+    name?: string;
+    suspended?: boolean;
+    jobTitle?: string | null;
+    accessLevel?: string;
+  }
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   await assertOrgAdminOrParentAgency(actorUserId, organizationId);
 
@@ -358,6 +392,27 @@ export async function patchWorkspaceMember(
 
   if (patch.suspended === true && targetUserId === actorUserId) {
     return { ok: false, message: "Não é possível suspender a si mesmo" };
+  }
+
+  if (patch.jobTitle !== undefined) {
+    let nextJt: string | null;
+    if (patch.jobTitle === null || patch.jobTitle === "") {
+      nextJt = null;
+    } else if (isValidTeamJobTitleSlug(patch.jobTitle.trim())) {
+      nextJt = patch.jobTitle.trim();
+    } else {
+      return { ok: false, message: "Cargo inválido" };
+    }
+    await prisma.membership.update({
+      where: { id: targetMembership.id },
+      data: { jobTitle: nextJt },
+    });
+    if (nextJt === "client_viewer") {
+      const rr = await updateMemberRole(organizationId, actorUserId, targetUserId, "report_viewer");
+      if (!rr.ok) {
+        return rr;
+      }
+    }
   }
 
   if (patch.email !== undefined || patch.name !== undefined || patch.suspended !== undefined) {
@@ -394,7 +449,18 @@ export async function patchWorkspaceMember(
     await prisma.user.update({ where: { id: targetUserId }, data });
   }
 
-  if (patch.role !== undefined) {
+  if (patch.accessLevel !== undefined) {
+    const mem = await prisma.membership.findUnique({
+      where: { id: targetMembership.id },
+      select: { jobTitle: true },
+    });
+    const jtSlug = mem?.jobTitle ?? "traffic_manager";
+    const { role: mappedRole } = resolveNewMemberRoleAndJobTitle(patch.accessLevel, jtSlug);
+    const roleResult = await updateMemberRole(organizationId, actorUserId, targetUserId, mappedRole);
+    if (!roleResult.ok) {
+      return roleResult;
+    }
+  } else if (patch.role !== undefined) {
     const roleResult = await updateMemberRole(organizationId, actorUserId, targetUserId, patch.role);
     if (!roleResult.ok) {
       return roleResult;

@@ -86,6 +86,24 @@ function buildNavGroups(
   }
   contaItems.push({ to: "/configuracoes", label: "Configurações", icon: Settings });
 
+  if (variant === "agency_client_portal") {
+    return [
+      {
+        label: "Visão geral",
+        items: [{ to: "/dashboard", label: "Dashboard", icon: LayoutDashboard }],
+      },
+      {
+        label: "ADS",
+        items: [
+          { to: "/marketing", label: "Painel ADS", icon: Megaphone, end: true },
+          { to: "/marketing/captacao", label: "Captação", icon: Target },
+          { to: "/marketing/conversao", label: "Conversão", icon: TrendingUp },
+          { to: "/marketing/receita", label: "Receita", icon: DollarSign },
+        ],
+      },
+    ];
+  }
+
   if (variant === "agency_branch") {
     return [
       {
@@ -138,7 +156,7 @@ function NavBlock({
   const memberships = useAuthStore((s) => s.memberships);
   const showMatrizNav = canAccessMatrizResellerNav(user ?? null, memberships);
 
-  const variant = resolveSidebarNavVariant(user ?? null);
+  const variant = resolveSidebarNavVariant(user ?? null, memberships ?? null);
   const baseNav = buildNavGroups(variant, { showMatrizNav });
 
   const groups: NavGroup[] = baseNav;

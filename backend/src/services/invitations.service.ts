@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../utils/prisma.js";
 import { assertOrgAdminOrParentAgency } from "./auth.service.js";
 import { assertCanAddDirectMemberOrInvitation } from "./plan-limits.service.js";
+import { isValidTeamJobTitleSlug, teamAccessLevelToRole } from "../constants/team-job-titles.js";
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const SALT_ROUNDS = 10;
@@ -26,9 +27,28 @@ export type InvitationRow = {
   id: string;
   email: string;
   role: string;
+  jobTitle: string | null;
   expiresAt: string;
   createdAt: string;
 };
+
+function resolveInviteRoleAndJobTitle(input: {
+  legacyRole?: string;
+  accessLevel?: string;
+  jobTitle?: string;
+}): { role: string; jobTitle: string | null } {
+  const jt = input.jobTitle?.trim();
+  const jobTitleNorm = jt && isValidTeamJobTitleSlug(jt) ? jt : null;
+  if (jobTitleNorm === "client_viewer") {
+    return { role: "report_viewer", jobTitle: "client_viewer" };
+  }
+  if (input.accessLevel?.trim()) {
+    const role = teamAccessLevelToRole(input.accessLevel);
+    return { role, jobTitle: jobTitleNorm };
+  }
+  const r = (input.legacyRole ?? "member").trim();
+  return { role: r, jobTitle: jobTitleNorm };
+}
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -38,10 +58,13 @@ export async function createInvitation(
   organizationId: string,
   actorUserId: string,
   email: string,
-  role: string
+  roleOrOpts: string | { legacyRole?: string; accessLevel?: string; jobTitle?: string }
 ): Promise<{ invitation: InvitationRow; inviteLink: string }> {
   await assertOrgAdminOrParentAgency(actorUserId, organizationId);
-  const r = role.trim() || "member";
+  const { role: r, jobTitle: jtStored } =
+    typeof roleOrOpts === "string"
+      ? resolveInviteRoleAndJobTitle({ legacyRole: roleOrOpts })
+      : resolveInviteRoleAndJobTitle(roleOrOpts);
   if (!ALLOWED_ROLES.has(r) || r === "owner" || r === "agency_owner" || r === "workspace_owner") {
     throw new Error("Papel inválido para convite");
   }
@@ -82,6 +105,7 @@ export async function createInvitation(
       email: norm,
       organizationId,
       role: r,
+      jobTitle: jtStored,
       token,
       invitedByUserId: actorUserId,
       expiresAt,
@@ -96,6 +120,7 @@ export async function createInvitation(
       id: row.id,
       email: row.email,
       role: row.role,
+      jobTitle: row.jobTitle ?? null,
       expiresAt: row.expiresAt.toISOString(),
       createdAt: row.createdAt.toISOString(),
     },
@@ -117,6 +142,7 @@ export async function listPendingInvitations(organizationId: string, actorUserId
     id: row.id,
     email: row.email,
     role: row.role,
+    jobTitle: row.jobTitle ?? null,
     expiresAt: row.expiresAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
   }));
@@ -198,6 +224,7 @@ export async function acceptInvitationNewUser(token: string, name: string, passw
       userId: user.id,
       organizationId: inv.organizationId,
       role: inv.role,
+      jobTitle: inv.jobTitle ?? null,
     },
   });
 
@@ -236,6 +263,7 @@ export async function acceptInvitationExistingUser(token: string, userId: string
       userId,
       organizationId: inv.organizationId,
       role: inv.role,
+      jobTitle: inv.jobTitle ?? null,
     },
   });
 

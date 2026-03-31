@@ -25,8 +25,20 @@ import {
 import { useAuthStore } from "@/stores/auth-store";
 import { MemberDetailDialog } from "@/components/operations/member-detail-dialog";
 import { membershipRoleLabelPt } from "@/lib/membership-role-labels";
+import type { TeamJobTitleValue } from "@/lib/team-access-ui";
 
 const INVITE_ROLES = ["admin", "member", "media_manager", "analyst"] as const;
+
+type AccessLevelUi = "ADMIN" | "OPERADOR" | "VIEWER";
+
+function legacyInviteRoleToJobAndAccess(role: (typeof INVITE_ROLES)[number]): {
+  jobTitle: TeamJobTitleValue;
+  accessLevel: AccessLevelUi;
+} {
+  if (role === "admin") return { jobTitle: "traffic_manager", accessLevel: "ADMIN" };
+  if (role === "media_manager") return { jobTitle: "media_manager", accessLevel: "OPERADOR" };
+  return { jobTitle: "traffic_manager", accessLevel: "OPERADOR" };
+}
 
 type Props = {
   open: boolean;
@@ -102,7 +114,11 @@ export function ClientWorkspaceTeamDialog({ open, onOpenChange, workspaceId, wor
     if (!inviteEmail.trim()) return;
     setInviteBusy(true);
     try {
-      const r = await createInvitation(inviteEmail.trim(), inviteRole, workspaceId);
+      const r = await createInvitation({
+        email: inviteEmail.trim(),
+        role: inviteRole,
+        organizationId: workspaceId,
+      });
       setInviteLink(r.inviteLink);
       setInviteEmail("");
       await load();
@@ -152,12 +168,14 @@ export function ClientWorkspaceTeamDialog({ open, onOpenChange, workspaceId, wor
     }
     setRegBusy(true);
     try {
+      const { jobTitle, accessLevel } = legacyInviteRoleToJobAndAccess(regRole);
       await createWorkspaceMember(
         {
           email: regEmail.trim(),
           name: regName.trim(),
           password: regPassword,
-          role: regRole,
+          jobTitle,
+          accessLevel,
         },
         workspaceId
       );
