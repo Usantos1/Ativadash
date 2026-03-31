@@ -54,8 +54,11 @@ import {
   accessLevelBadgeClass,
   accessLevelFromSystemRole,
   accessLevelLabelPt,
-  jobTitleBadgeClass,
+  jobTitleCellBadgeClass,
   jobTitleLabelPt,
+  teamModalInputClass,
+  teamModalLabelClass,
+  teamModalSelectTriggerClass,
   type TeamJobTitleValue,
 } from "@/lib/team-access-ui";
 import { cn } from "@/lib/utils";
@@ -70,12 +73,12 @@ function formatMemberDate(iso: string): string {
   }
 }
 
-function formatLastActive(iso: string | null | undefined): string {
-  if (!iso) return "Nunca";
+function formatLastActive(iso: string | null | undefined): string | null {
+  if (!iso) return null;
   try {
     return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: ptBR });
   } catch {
-    return "—";
+    return null;
   }
 }
 
@@ -115,7 +118,8 @@ export function TeamPage() {
   const [detailMember, setDetailMember] = useState<MemberRow | null>(null);
 
   const [search, setSearch] = useState("");
-  const [accessFilter, setAccessFilter] = useState<string>("all");
+  /** Filtro por cargo (`jobTitle`); `__none__` = sem cargo definido. */
+  const [jobFilter, setJobFilter] = useState<string>("all");
 
   const load = useCallback(async () => {
     setError(null);
@@ -156,19 +160,28 @@ export function TeamPage() {
   const planNote =
     orgCtx?.planSource === "parent" ? "Limites herdados da matriz." : "Limites do plano desta organização.";
 
-  const uniqueAccessLevels = useMemo(() => {
-    const s = new Set(rows.map((r) => accessLevelFromSystemRole(r.role)));
-    return Array.from(s).sort();
+  const jobFilterOptions = useMemo(() => {
+    const hasEmpty = rows.some((r) => !r.jobTitle);
+    const slugs = Array.from(
+      new Set(rows.map((r) => r.jobTitle).filter((j): j is string => Boolean(j)))
+    ).sort();
+    return { hasEmpty, slugs };
   }, [rows]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
-      if (accessFilter !== "all" && accessLevelFromSystemRole(r.role) !== accessFilter) return false;
+      if (jobFilter !== "all") {
+        if (jobFilter === "__none__") {
+          if (r.jobTitle) return false;
+        } else if (r.jobTitle !== jobFilter) {
+          return false;
+        }
+      }
       if (!q) return true;
       return r.name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q);
     });
-  }, [rows, search, accessFilter]);
+  }, [rows, search, jobFilter]);
 
   async function copyInviteLink(link: string) {
     try {
@@ -363,38 +376,45 @@ export function TeamPage() {
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent
+          centered
           showClose={false}
-          alignTop
-          overlayClassName="fixed inset-0 z-50 bg-black/70 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
-          className="flex w-[min(100vw-1.5rem,600px)] max-w-[600px] flex-col gap-0 overflow-hidden rounded-xl border-border/40 p-0 shadow-2xl sm:max-h-[min(100dvh-2rem,720px)]"
+          className="flex max-h-[min(100dvh-2rem,44rem)] w-[min(100vw-1.5rem,600px)] max-w-[600px] flex-col gap-0 overflow-hidden rounded-xl border-neutral-200 bg-background p-0 shadow-2xl dark:border-neutral-700"
         >
           <DialogDescription className="sr-only">
             Convide por e-mail ou cadastre manualmente com senha, cargo e nível de acesso.
           </DialogDescription>
-          <div className="relative border-b border-border/35 bg-muted/20 px-5 py-4 pr-14">
-            <DialogTitle className="pr-2 text-base font-semibold tracking-tight text-foreground">
+          <div className="relative border-b border-neutral-200 bg-neutral-50/80 px-6 py-5 pr-14 dark:border-neutral-800 dark:bg-neutral-900/40">
+            <DialogTitle className="pr-2 text-lg font-semibold tracking-tight text-foreground">
               Adicionar à equipe
             </DialogTitle>
-            <p className="mt-1 text-xs text-muted-foreground">Convite por e-mail ou cadastro manual com cargo e nível de acesso.</p>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              Convite por e-mail ou cadastro manual com cargo e nível de acesso.
+            </p>
             <DialogClose asChild>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="absolute right-3 top-3 h-8 w-8 shrink-0 rounded-lg"
+                className="absolute right-4 top-4 h-9 w-9 shrink-0 rounded-lg hover:bg-neutral-200/80 dark:hover:bg-neutral-800"
                 aria-label="Fechar"
               >
                 <X className="h-4 w-4" />
               </Button>
             </DialogClose>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
             <Tabs value={addTab} onValueChange={(v) => setAddTab(v as "invite" | "register")} className="w-full">
-              <TabsList className="grid h-9 w-full grid-cols-2 rounded-lg bg-muted/60 p-1">
-                <TabsTrigger value="invite" className="rounded-md text-xs sm:text-sm">
+              <TabsList className="grid h-11 w-full grid-cols-2 gap-1 rounded-xl border border-neutral-200 bg-neutral-100/95 p-1 dark:border-neutral-700 dark:bg-neutral-900/70">
+                <TabsTrigger
+                  value="invite"
+                  className="rounded-lg border-0 text-xs font-semibold text-neutral-600 shadow-none transition-all data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-md dark:text-neutral-400 dark:data-[state=active]:bg-neutral-800 dark:data-[state=active]:text-indigo-300 sm:text-sm"
+                >
                   Convite por e-mail
                 </TabsTrigger>
-                <TabsTrigger value="register" className="rounded-md text-xs sm:text-sm">
+                <TabsTrigger
+                  value="register"
+                  className="rounded-lg border-0 text-xs font-semibold text-neutral-600 shadow-none transition-all data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-md dark:text-neutral-400 dark:data-[state=active]:bg-neutral-800 dark:data-[state=active]:text-indigo-300 sm:text-sm"
+                >
                   Cadastro manual
                 </TabsTrigger>
               </TabsList>
@@ -405,13 +425,13 @@ export function TeamPage() {
                 </p>
               ) : null}
 
-              <TabsContent value="invite" className="mt-5 space-y-4 outline-none">
-                <p className="text-xs leading-relaxed text-muted-foreground">
+              <TabsContent value="invite" className="mt-6 space-y-5 outline-none">
+                <p className="text-sm leading-relaxed text-muted-foreground">
                   Gera convite e link único. Defina o cargo na agência e o nível de acesso no sistema.
                 </p>
-                <form onSubmit={handleInvite} className="space-y-4">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="modal-invite-email" className="text-xs font-medium">
+                <form onSubmit={handleInvite} className="space-y-5">
+                  <div className="space-y-2">
+                    <Label htmlFor="modal-invite-email" className={teamModalLabelClass}>
                       E-mail
                     </Label>
                     <Input
@@ -421,14 +441,14 @@ export function TeamPage() {
                       onChange={(ev) => setInviteEmail(ev.target.value)}
                       placeholder="colega@empresa.com"
                       required
-                      className="h-10 rounded-lg border-border/50"
+                      className={teamModalInputClass}
                     />
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-medium">Cargo</Label>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label className={teamModalLabelClass}>Cargo</Label>
                       <Select value={inviteJobTitle} onValueChange={(v) => setInviteJobTitle(v as TeamJobTitleValue)}>
-                        <SelectTrigger className="h-10 rounded-lg border-border/50">
+                        <SelectTrigger className={teamModalSelectTriggerClass}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -440,13 +460,13 @@ export function TeamPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-medium">Nível de acesso</Label>
+                    <div className="space-y-2">
+                      <Label className={teamModalLabelClass}>Nível de acesso</Label>
                       <Select
                         value={inviteAccessLevel}
                         onValueChange={(v) => setInviteAccessLevel(v as AccessLevelUi)}
                       >
-                        <SelectTrigger className="h-10 rounded-lg border-border/50">
+                        <SelectTrigger className={teamModalSelectTriggerClass}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -459,14 +479,18 @@ export function TeamPage() {
                       </Select>
                     </div>
                   </div>
-                  <Button type="submit" disabled={inviteBusy} className="h-10 w-full rounded-lg">
+                  <Button
+                    type="submit"
+                    disabled={inviteBusy}
+                    className="h-11 w-full rounded-md bg-indigo-600 text-base font-semibold shadow-sm hover:bg-indigo-700"
+                  >
                     {inviteBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
                     Gerar convite e link
                   </Button>
                 </form>
 
                 {inviteLink ? (
-                  <div className="space-y-2 rounded-lg border border-border/40 bg-muted/20 p-3">
+                  <div className="space-y-2 rounded-lg border border-neutral-200 bg-neutral-50/80 p-4 dark:border-neutral-700 dark:bg-neutral-900/50">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Link do convite</p>
                     <p className="break-all font-mono text-[11px] leading-snug text-foreground">{inviteLink}</p>
                     <Button
@@ -483,14 +507,14 @@ export function TeamPage() {
                 ) : null}
               </TabsContent>
 
-              <TabsContent value="register" className="mt-5 space-y-4 outline-none">
-                <p className="text-xs leading-relaxed text-muted-foreground">
+              <TabsContent value="register" className="mt-6 space-y-5 outline-none">
+                <p className="text-sm leading-relaxed text-muted-foreground">
                   Cria o usuário e o vínculo imediatamente. No primeiro login pode ser exigida troca de senha.
                 </p>
-                <form onSubmit={handleRegister} className="space-y-4">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <Label htmlFor="modal-reg-name" className="text-xs font-medium">
+                <form onSubmit={handleRegister} className="space-y-5">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label htmlFor="modal-reg-name" className={teamModalLabelClass}>
                         Nome
                       </Label>
                       <Input
@@ -498,11 +522,11 @@ export function TeamPage() {
                         value={regName}
                         onChange={(ev) => setRegName(ev.target.value)}
                         required
-                        className="h-10 rounded-lg border-border/50"
+                        className={teamModalInputClass}
                       />
                     </div>
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <Label htmlFor="modal-reg-email" className="text-xs font-medium">
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label htmlFor="modal-reg-email" className={teamModalLabelClass}>
                         E-mail
                       </Label>
                       <Input
@@ -511,11 +535,11 @@ export function TeamPage() {
                         value={regEmail}
                         onChange={(ev) => setRegEmail(ev.target.value)}
                         required
-                        className="h-10 rounded-lg border-border/50"
+                        className={teamModalInputClass}
                       />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="modal-reg-pass" className="text-xs font-medium">
+                    <div className="space-y-2">
+                      <Label htmlFor="modal-reg-pass" className={teamModalLabelClass}>
                         Senha
                       </Label>
                       <Input
@@ -526,11 +550,11 @@ export function TeamPage() {
                         onChange={(ev) => setRegPassword(ev.target.value)}
                         required
                         minLength={8}
-                        className="h-10 rounded-lg border-border/50"
+                        className={teamModalInputClass}
                       />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="modal-reg-pass2" className="text-xs font-medium">
+                    <div className="space-y-2">
+                      <Label htmlFor="modal-reg-pass2" className={teamModalLabelClass}>
                         Confirmar
                       </Label>
                       <Input
@@ -541,15 +565,15 @@ export function TeamPage() {
                         onChange={(ev) => setRegPassword2(ev.target.value)}
                         required
                         minLength={8}
-                        className="h-10 rounded-lg border-border/50"
+                        className={teamModalInputClass}
                       />
                     </div>
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-medium">Cargo</Label>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label className={teamModalLabelClass}>Cargo</Label>
                       <Select value={regJobTitle} onValueChange={(v) => setRegJobTitle(v as TeamJobTitleValue)}>
-                        <SelectTrigger className="h-10 rounded-lg border-border/50">
+                        <SelectTrigger className={teamModalSelectTriggerClass}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -561,10 +585,10 @@ export function TeamPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-medium">Nível de acesso</Label>
+                    <div className="space-y-2">
+                      <Label className={teamModalLabelClass}>Nível de acesso</Label>
                       <Select value={regAccessLevel} onValueChange={(v) => setRegAccessLevel(v as AccessLevelUi)}>
-                        <SelectTrigger className="h-10 rounded-lg border-border/50">
+                        <SelectTrigger className={teamModalSelectTriggerClass}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -577,7 +601,11 @@ export function TeamPage() {
                       </Select>
                     </div>
                   </div>
-                  <Button type="submit" disabled={regBusy} className="h-10 w-full rounded-lg">
+                  <Button
+                    type="submit"
+                    disabled={regBusy}
+                    className="h-11 w-full rounded-md bg-indigo-600 text-base font-semibold shadow-sm hover:bg-indigo-700"
+                  >
                     {regBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
                     Cadastrar usuário
                   </Button>
@@ -594,47 +622,50 @@ export function TeamPage() {
           <div className="overflow-hidden rounded-lg border border-border/35 bg-card/20 shadow-[var(--shadow-surface-sm)]">
             <table className="w-full border-collapse text-sm">
               <thead>
-                <tr className="border-b border-border/40 text-left">
-                  <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <tr className="border-b border-neutral-200 dark:border-neutral-700">
+                  <th className="px-4 py-3 text-left text-[10px] font-extrabold uppercase tracking-wider text-neutral-600 dark:text-neutral-300">
                     E-mail
                   </th>
-                  <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <th className="px-4 py-3 text-left text-[10px] font-extrabold uppercase tracking-wider text-neutral-600 dark:text-neutral-300">
                     Cargo
                   </th>
-                  <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Papel
+                  <th className="px-4 py-3 text-left text-[10px] font-extrabold uppercase tracking-wider text-neutral-600 dark:text-neutral-300">
+                    Nível de acesso
                   </th>
-                  <th className="w-24 px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <th className="w-[5.5rem] px-4 py-3 text-right text-[10px] font-extrabold uppercase tracking-wider text-neutral-600 dark:text-neutral-300">
                     Ações
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {invites.map((inv) => (
-                  <tr key={inv.id} className="border-b border-border/30 last:border-0">
-                    <td className="px-4 py-2.5 font-medium text-foreground">{inv.email}</td>
-                    <td className="px-4 py-2.5">
+                  <tr
+                    key={inv.id}
+                    className="border-b border-neutral-200 last:border-0 dark:border-neutral-700/80"
+                  >
+                    <td className="px-4 py-2.5 text-left font-medium text-foreground">{inv.email}</td>
+                    <td className="px-4 py-2.5 text-left align-top">
                       <span
                         className={cn(
-                          "inline-flex max-w-[200px] truncate rounded-md border px-2 py-0.5 text-[11px] font-medium",
-                          jobTitleBadgeClass(inv.jobTitle)
+                          "inline-flex max-w-[220px] truncate rounded-md border px-2 py-0.5 text-[11px] font-medium",
+                          jobTitleCellBadgeClass(inv.jobTitle)
                         )}
                         title={jobTitleLabelPt(inv.jobTitle)}
                       >
                         {jobTitleLabelPt(inv.jobTitle)}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-4 py-2.5 text-left align-top">
                       <span
                         className={cn(
-                          "inline-flex rounded-md border px-2 py-0.5 text-[11px] font-medium",
+                          "inline-flex rounded-md border px-2 py-0.5 text-left text-[11px] font-medium",
                           accessLevelBadgeClass(accessLevelFromSystemRole(inv.role))
                         )}
                       >
                         {accessLevelLabelPt(accessLevelFromSystemRole(inv.role))}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-right">
+                    <td className="px-4 py-2.5 text-right align-middle">
                       <Button
                         type="button"
                         variant="ghost"
@@ -682,15 +713,18 @@ export function TeamPage() {
                 aria-label="Buscar membros"
               />
             </div>
-            <Select value={accessFilter} onValueChange={setAccessFilter}>
-              <SelectTrigger className="h-9 w-full rounded-lg border-border/50 sm:w-[220px]">
-                <SelectValue placeholder="Nível de acesso" />
+            <Select value={jobFilter} onValueChange={setJobFilter}>
+              <SelectTrigger className="h-9 w-full rounded-lg border-border/50 sm:w-[min(100%,240px)]">
+                <SelectValue placeholder="Cargo" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos os níveis</SelectItem>
-                {uniqueAccessLevels.map((lvl) => (
-                  <SelectItem key={lvl} value={lvl}>
-                    {accessLevelLabelPt(lvl)}
+                <SelectItem value="all">Todos os cargos</SelectItem>
+                {jobFilterOptions.hasEmpty ? (
+                  <SelectItem value="__none__">Sem cargo definido</SelectItem>
+                ) : null}
+                {jobFilterOptions.slugs.map((slug) => (
+                  <SelectItem key={slug} value={slug}>
+                    {jobTitleLabelPt(slug)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -711,26 +745,40 @@ export function TeamPage() {
             description={
               rows.length === 0
                 ? "Convide colegas ou cadastre manualmente para começar."
-                : "Ajuste a busca ou o filtro de nível de acesso."
+                : "Ajuste a busca ou o filtro de cargo."
             }
             actionLabel={rows.length === 0 ? "Convidar membro" : undefined}
             onAction={rows.length === 0 ? () => setAddOpen(true) : undefined}
           />
         ) : (
           <DataTablePremium
-            shellClassName="rounded-lg border-border/35 bg-card/30 shadow-[var(--shadow-surface-sm)]"
+            shellClassName="rounded-lg border-neutral-200 bg-card/30 shadow-[var(--shadow-surface-sm)] dark:border-neutral-800"
+            className="table-fixed [&_thead_th]:font-extrabold [&_thead_th]:tracking-wider [&_thead_th]:text-neutral-600 dark:[&_thead_th]:text-neutral-300 [&_tbody_tr]:border-b [&_tbody_tr]:border-neutral-200 dark:[&_tbody_tr]:border-neutral-700/90"
             stickyHeader
             minHeight="min-h-[200px]"
           >
+            <colgroup>
+              <col className="w-[30%]" />
+              <col className="w-[19%]" />
+              <col className="w-[19%]" />
+              <col className="w-[26%]" />
+              <col className="w-14" />
+            </colgroup>
             <thead>
               <tr>
-                <th scope="col" className="!pl-4">
+                <th scope="col" className="!pl-4 text-left">
                   Usuário
                 </th>
-                <th scope="col">Cargo</th>
-                <th scope="col">Papel</th>
-                <th scope="col">Última atividade</th>
-                <th scope="col" className="w-12 !pr-4 text-right">
+                <th scope="col" className="text-left">
+                  Cargo
+                </th>
+                <th scope="col" className="text-left">
+                  Nível de acesso
+                </th>
+                <th scope="col" className="text-left">
+                  Última atividade
+                </th>
+                <th scope="col" className="!w-14 !min-w-[3.5rem] !pr-4 text-right">
                   <span className="sr-only">Ações</span>
                 </th>
               </tr>
@@ -742,10 +790,11 @@ export function TeamPage() {
                   direct && currentUserId && row.userId !== currentUserId && canChangeOrRemoveRole(row.role);
                 const initials = userInitials(row.name, row.email);
                 const levelUi = accessLevelFromSystemRole(row.role);
+                const lastActiveLabel = formatLastActive(row.lastLoginAt);
 
                 return (
                   <tr key={row.membershipId}>
-                    <td className="!pl-4">
+                    <td className="!pl-4 text-left">
                       <button
                         type="button"
                         className="flex min-w-0 max-w-[280px] items-center gap-3 rounded-md text-left transition-colors hover:bg-muted/30 -m-1 p-1"
@@ -766,12 +815,12 @@ export function TeamPage() {
                         </span>
                       </button>
                     </td>
-                    <td>
-                      <div className="flex flex-wrap items-center gap-1.5">
+                    <td className="text-left">
+                      <div className="flex flex-wrap items-start justify-start gap-1.5">
                         <span
                           className={cn(
-                            "inline-flex max-w-[200px] truncate rounded-md border px-2 py-0.5 text-[11px] font-medium",
-                            jobTitleBadgeClass(row.jobTitle)
+                            "inline-flex max-w-full truncate rounded-md border px-2 py-0.5 text-left text-[11px] font-medium",
+                            jobTitleCellBadgeClass(row.jobTitle)
                           )}
                           title={jobTitleLabelPt(row.jobTitle)}
                         >
@@ -784,10 +833,10 @@ export function TeamPage() {
                         ) : null}
                       </div>
                     </td>
-                    <td>
+                    <td className="text-left">
                       <span
                         className={cn(
-                          "inline-flex max-w-[200px] truncate rounded-md border px-2 py-0.5 text-[11px] font-medium",
+                          "inline-flex max-w-full truncate rounded-md border px-2 py-0.5 text-left text-[11px] font-medium",
                           accessLevelBadgeClass(levelUi)
                         )}
                         title={accessLevelLabelPt(levelUi)}
@@ -795,22 +844,29 @@ export function TeamPage() {
                         {accessLevelLabelPt(levelUi)}
                       </span>
                     </td>
-                    <td>
-                      <div className="flex flex-col gap-0.5 text-xs">
-                        <span className="font-medium text-foreground">{formatLastActive(row.lastLoginAt)}</span>
+                    <td className="text-left">
+                      <div className="flex flex-col items-start gap-1.5 text-left text-xs">
+                        {lastActiveLabel ? (
+                          <span className="font-medium text-foreground">{lastActiveLabel}</span>
+                        ) : (
+                          <span className="inline-flex w-fit rounded-full border border-neutral-200 bg-neutral-100 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400">
+                            Sem atividade
+                          </span>
+                        )}
                         <span className="text-[10px] text-muted-foreground">
                           Entrada {formatMemberDate(row.joinedAt)}
                         </span>
                       </div>
                     </td>
-                    <td className="!pr-4 text-right">
+                    <td className="!pr-4 text-right align-middle">
+                      <div className="flex justify-end">
                       <DropdownMenu.Root>
                         <DropdownMenu.Trigger asChild>
                           <Button
                             type="button"
-                            variant="ghost"
+                            variant="outline"
                             size="icon"
-                            className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
+                            className="h-9 w-9 rounded-lg border-neutral-200 bg-background text-muted-foreground shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-neutral-700 dark:hover:border-indigo-600 dark:hover:bg-indigo-950/40"
                             aria-label={`Ações para ${row.name}`}
                           >
                             <MoreHorizontal className="h-4 w-4" />
@@ -895,6 +951,7 @@ export function TeamPage() {
                           </DropdownMenu.Content>
                         </DropdownMenu.Portal>
                       </DropdownMenu.Root>
+                      </div>
                     </td>
                   </tr>
                 );

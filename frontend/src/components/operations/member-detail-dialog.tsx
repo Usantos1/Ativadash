@@ -23,6 +23,7 @@ import {
   accessLevelFromSystemRole,
   accessLevelLabelPt,
   jobTitleLabelPt,
+  teamModalSelectTriggerClass,
   type TeamJobTitleValue,
 } from "@/lib/team-access-ui";
 
@@ -190,15 +191,15 @@ export function MemberDetailDialog({
                   </StatusBadge>
                 ) : null}
                 <span className="text-xs text-muted-foreground">
-                  Papel no sistema:{" "}
-                  <strong className="text-foreground">{membershipRoleLabelPt(member.role)}</strong>
-                  <span className="text-muted-foreground/80"> · </span>
                   Cargo: <strong className="text-foreground">{jobTitleLabelPt(member.jobTitle)}</strong>
                   <span className="text-muted-foreground/80"> · </span>
-                  Nível:{" "}
+                  Nível de acesso:{" "}
                   <strong className="text-foreground">
                     {accessLevelLabelPt(accessLevelFromSystemRole(member.role))}
                   </strong>
+                  <span className="text-muted-foreground/80"> · </span>
+                  Função técnica:{" "}
+                  <strong className="text-foreground">{membershipRoleLabelPt(member.role)}</strong>
                 </span>
               </div>
               <div className="grid gap-2 rounded-xl border border-border/45 bg-muted/10 p-3 text-sm">
@@ -233,7 +234,7 @@ export function MemberDetailDialog({
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold">Cargo</Label>
                         <Select value={draftJobTitle} onValueChange={(v) => setDraftJobTitle(v as TeamJobTitleValue)}>
-                          <SelectTrigger className="h-9 rounded-lg">
+                          <SelectTrigger className={teamModalSelectTriggerClass}>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -251,7 +252,7 @@ export function MemberDetailDialog({
                           value={draftAccessLevel}
                           onValueChange={(v) => setDraftAccessLevel(v as AccessLevelUi)}
                         >
-                          <SelectTrigger className="h-9 rounded-lg">
+                          <SelectTrigger className={teamModalSelectTriggerClass}>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>

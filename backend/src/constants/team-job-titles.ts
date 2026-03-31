@@ -1,8 +1,15 @@
 /** Cargos da equipe (UI / agência) — armazenados em `Membership.jobTitle` e `Invitation.jobTitle`. */
 export const TEAM_JOB_TITLE_SLUGS = [
+  "owner_ceo",
+  "partner_director",
+  "launch_strategist",
   "traffic_manager",
-  "social_media",
   "media_manager",
+  "social_media",
+  "copywriter",
+  "designer_audiovisual",
+  "support_cs",
+  "data_analyst",
   "client_viewer",
 ] as const;
 

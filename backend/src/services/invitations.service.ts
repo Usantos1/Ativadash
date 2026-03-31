@@ -44,10 +44,12 @@ function resolveInviteRoleAndJobTitle(input: {
   }
   if (input.accessLevel?.trim()) {
     const role = teamAccessLevelToRole(input.accessLevel);
-    return { role, jobTitle: jobTitleNorm };
+    /** Sempre persiste um cargo quando há nível de acesso (evita coluna vazia na equipe). */
+    const jobTitle = jobTitleNorm ?? "traffic_manager";
+    return { role, jobTitle };
   }
   const r = (input.legacyRole ?? "member").trim();
-  return { role: r, jobTitle: jobTitleNorm };
+  return { role: r, jobTitle: jobTitleNorm ?? "traffic_manager" };
 }
 
 function normalizeEmail(email: string) {
