@@ -14,6 +14,7 @@ router.get("/children/portfolio", orgController.listChildrenPortfolioHandler);
 router.get("/children", orgController.listManagedOrganizations);
 router.post("/children", orgController.createManagedOrganization);
 router.patch("/children/:childId", orgController.patchChildOrganizationHandler);
+router.post("/children/:childId/members/assign", orgController.assignChildWorkspaceMemberHandler);
 router.patch("/plan-settings", orgController.patchOrganizationPlanSettingsHandler);
 
 export default router;

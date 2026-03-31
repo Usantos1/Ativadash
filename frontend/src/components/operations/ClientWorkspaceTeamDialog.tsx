@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Users2 } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -11,83 +11,58 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  fetchMembers,
-  fetchPendingInvitations,
-  createInvitation,
-  revokeInvitation,
-  patchMemberRole,
-  createWorkspaceMember,
-  removeMember,
-  type MemberRow,
-  type InvitationRow,
-} from "@/lib/workspace-api";
+import { fetchMembers, removeMember, type MemberRow } from "@/lib/workspace-api";
+import { assignChildWorkspaceMember } from "@/lib/organization-api";
 import { useAuthStore } from "@/stores/auth-store";
-import { MemberDetailDialog } from "@/components/operations/member-detail-dialog";
-import { membershipRoleLabelPt } from "@/lib/membership-role-labels";
-import type { TeamJobTitleValue } from "@/lib/team-access-ui";
-
-const INVITE_ROLES = ["admin", "member", "media_manager", "analyst"] as const;
-
-type AccessLevelUi = "ADMIN" | "OPERADOR" | "VIEWER";
-
-function legacyInviteRoleToJobAndAccess(role: (typeof INVITE_ROLES)[number]): {
-  jobTitle: TeamJobTitleValue;
-  accessLevel: AccessLevelUi;
-} {
-  if (role === "admin") return { jobTitle: "traffic_manager", accessLevel: "ADMIN" };
-  if (role === "media_manager") return { jobTitle: "media_manager", accessLevel: "OPERADOR" };
-  return { jobTitle: "traffic_manager", accessLevel: "OPERADOR" };
-}
+import {
+  TEAM_ACCESS_LEVEL_OPTIONS,
+  accessLevelFromSystemRole,
+  accessLevelLabelPt,
+  jobTitleLabelPt,
+} from "@/lib/team-access-ui";
 
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   workspaceId: string;
   workspaceName: string;
+  /** Só administradores da agência podem vincular/remover acessos diretos no cliente. */
+  canManageAccess: boolean;
 };
 
-function formatMemberDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
-  } catch {
-    return "—";
-  }
+function isProtectedOwnerRole(role: string): boolean {
+  return role === "owner" || role === "workspace_owner" || role === "agency_owner";
 }
 
-export function ClientWorkspaceTeamDialog({ open, onOpenChange, workspaceId, workspaceName }: Props) {
+export function ClientWorkspaceTeamDialog({
+  open,
+  onOpenChange,
+  workspaceId,
+  workspaceName,
+  canManageAccess,
+}: Props) {
   const currentUserId = useAuthStore((s) => s.user?.id);
-  const [members, setMembers] = useState<MemberRow[]>([]);
-  const [invites, setInvites] = useState<InvitationRow[]>([]);
+  const [agencyMembers, setAgencyMembers] = useState<MemberRow[]>([]);
+  const [childMembers, setChildMembers] = useState<MemberRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<(typeof INVITE_ROLES)[number]>("member");
-  const [inviteBusy, setInviteBusy] = useState(false);
-  const [inviteLink, setInviteLink] = useState<string | null>(null);
-  const [actionBusy, setActionBusy] = useState<string | null>(null);
-  const [regName, setRegName] = useState("");
-  const [regEmail, setRegEmail] = useState("");
-  const [regPassword, setRegPassword] = useState("");
-  const [regPassword2, setRegPassword2] = useState("");
-  const [regRole, setRegRole] = useState<(typeof INVITE_ROLES)[number]>("member");
-  const [regBusy, setRegBusy] = useState(false);
-  const [detailMember, setDetailMember] = useState<MemberRow | null>(null);
+  const [agencySearch, setAgencySearch] = useState("");
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
+  const [clientAccessLevel, setClientAccessLevel] = useState<"ADMIN" | "OPERADOR" | "VIEWER">("OPERADOR");
+  const [assignBusy, setAssignBusy] = useState(false);
+  const [removeBusy, setRemoveBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
-      const [m, inv] = await Promise.all([
-        fetchMembers(workspaceId),
-        fetchPendingInvitations(workspaceId),
-      ]);
-      setMembers(m);
-      setInvites(inv);
+      const [agency, child] = await Promise.all([fetchMembers(), fetchMembers(workspaceId)]);
+      setAgencyMembers(agency);
+      setChildMembers(child);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao carregar equipe");
-      setMembers([]);
-      setInvites([]);
+      setAgencyMembers([]);
+      setChildMembers([]);
     } finally {
       setLoading(false);
     }
@@ -95,126 +70,67 @@ export function ClientWorkspaceTeamDialog({ open, onOpenChange, workspaceId, wor
 
   useEffect(() => {
     if (!open) return;
-    setInviteLink(null);
-    setInviteEmail("");
-    setInviteRole("member");
-    setRegName("");
-    setRegEmail("");
-    setRegPassword("");
-    setRegPassword2("");
-    setRegRole("member");
-    setDetailMember(null);
+    setAgencySearch("");
+    setSelectedUserId("");
+    setClientAccessLevel("OPERADOR");
     void load();
   }, [open, load]);
 
-  async function submitInvite(e: React.FormEvent) {
-    e.preventDefault();
-    setInviteLink(null);
+  const filteredAgencyOptions = useMemo(() => {
+    const q = agencySearch.trim().toLowerCase();
+    const list = !q
+      ? agencyMembers
+      : agencyMembers.filter(
+          (m) =>
+            m.name.toLowerCase().includes(q) ||
+            m.email.toLowerCase().includes(q) ||
+            (m.jobTitle ?? "").toLowerCase().includes(q)
+        );
+    return [...list].sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email, "pt-BR"));
+  }, [agencyMembers, agencySearch]);
+
+  async function onAssign() {
+    if (!selectedUserId) return;
     setError(null);
-    if (!inviteEmail.trim()) return;
-    setInviteBusy(true);
+    setAssignBusy(true);
     try {
-      const r = await createInvitation({
-        email: inviteEmail.trim(),
-        role: inviteRole,
-        organizationId: workspaceId,
+      await assignChildWorkspaceMember(workspaceId, {
+        userId: selectedUserId,
+        clientAccessLevel,
       });
-      setInviteLink(r.inviteLink);
-      setInviteEmail("");
+      setSelectedUserId("");
       await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao convidar");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao vincular usuário");
     } finally {
-      setInviteBusy(false);
+      setAssignBusy(false);
     }
   }
 
-  async function onRevokeInvite(id: string) {
+  async function onRevokeAccess(userId: string) {
     setError(null);
-    setActionBusy(`inv-${id}`);
-    try {
-      await revokeInvitation(id);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao revogar");
-    } finally {
-      setActionBusy(null);
-    }
-  }
-
-  async function onChangeRole(userId: string, role: string) {
-    setError(null);
-    setActionBusy(`role-${userId}`);
-    try {
-      await patchMemberRole(userId, role, workspaceId);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao alterar papel");
-    } finally {
-      setActionBusy(null);
-    }
-  }
-
-  async function submitRegister(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (regPassword.length < 8) {
-      setError("A senha deve ter pelo menos 8 caracteres.");
-      return;
-    }
-    if (regPassword !== regPassword2) {
-      setError("Confirmação da senha não confere.");
-      return;
-    }
-    setRegBusy(true);
-    try {
-      const { jobTitle, accessLevel } = legacyInviteRoleToJobAndAccess(regRole);
-      await createWorkspaceMember(
-        {
-          email: regEmail.trim(),
-          name: regName.trim(),
-          password: regPassword,
-          jobTitle,
-          accessLevel,
-        },
-        workspaceId
-      );
-      setRegName("");
-      setRegEmail("");
-      setRegPassword("");
-      setRegPassword2("");
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao cadastrar");
-    } finally {
-      setRegBusy(false);
-    }
-  }
-
-  async function onRemove(userId: string) {
-    setError(null);
-    setActionBusy(`rm-${userId}`);
+    setRemoveBusy(userId);
     try {
       await removeMember(userId, workspaceId);
       await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao remover");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao remover acesso");
     } finally {
-      setActionBusy(null);
+      setRemoveBusy(null);
     }
   }
 
   return (
-    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title={`Equipe · ${workspaceName}`}
+        title={`Gerenciar acessos · ${workspaceName}`}
         showClose
         className="flex max-h-[min(90dvh,720px)] w-[min(100vw-1rem,32rem)] max-w-lg flex-col overflow-hidden"
       >
         <p className="text-xs text-muted-foreground">
-          Usuários vinculados a este cliente. Quem entra pela agência aparece como &quot;via agência&quot; — papel da
-          própria agência, não editável aqui.
+          Vincule pessoas que já fazem parte da sua agência a este cliente. Quem só enxerga o cliente por
+          vínculo na agência aparece como &quot;via agência&quot;; remoção aqui vale para acesso direto ao
+          workspace.
         </p>
 
         {error ? (
@@ -223,99 +139,70 @@ export function ClientWorkspaceTeamDialog({ open, onOpenChange, workspaceId, wor
           </p>
         ) : null}
 
-        <form
-          onSubmit={submitRegister}
-          className="flex flex-col gap-2 rounded-lg border border-border/50 bg-muted/15 p-3"
-        >
-          <Label className="text-xs font-semibold">Cadastrar com senha</Label>
-          <div className="grid gap-2 sm:grid-cols-2">
+        {canManageAccess ? (
+          <div className="space-y-3 rounded-lg border border-border/50 bg-muted/15 p-3">
+            <Label className="text-xs font-semibold">Vincular membro da agência</Label>
             <Input
-              placeholder="Nome"
-              value={regName}
-              onChange={(e) => setRegName(e.target.value)}
+              placeholder="Buscar por nome, e-mail ou cargo…"
+              value={agencySearch}
+              onChange={(e) => setAgencySearch(e.target.value)}
               className="h-9 rounded-lg"
-              required
             />
-            <Input
-              type="email"
-              placeholder="E-mail"
-              value={regEmail}
-              onChange={(e) => setRegEmail(e.target.value)}
-              className="h-9 rounded-lg"
-              required
-            />
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-            <Input
-              type="password"
-              placeholder="Senha (mín. 8)"
-              value={regPassword}
-              onChange={(e) => setRegPassword(e.target.value)}
-              className="h-9 flex-1 rounded-lg"
-              autoComplete="new-password"
-              required
-              minLength={8}
-            />
-            <Input
-              type="password"
-              placeholder="Confirmar"
-              value={regPassword2}
-              onChange={(e) => setRegPassword2(e.target.value)}
-              className="h-9 flex-1 rounded-lg"
-              autoComplete="new-password"
-              required
-              minLength={8}
-            />
-            <Select value={regRole} onValueChange={(v) => setRegRole(v as (typeof INVITE_ROLES)[number])}>
-              <SelectTrigger className="h-9 w-full rounded-lg sm:w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {INVITE_ROLES.map((r) => (
-                  <SelectItem key={r} value={r}>
-                    {membershipRoleLabelPt(r)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button type="submit" size="sm" className="h-9 shrink-0" disabled={regBusy}>
-              {regBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Cadastrar"}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-[10px] uppercase text-muted-foreground">Membro</Label>
+                <Select value={selectedUserId || undefined} onValueChange={setSelectedUserId}>
+                  <SelectTrigger className="h-9 rounded-lg">
+                    <SelectValue placeholder="Selecione…" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[240px]">
+                    {filteredAgencyOptions.length === 0 ? (
+                      <div className="px-2 py-2 text-xs text-muted-foreground">Nenhum resultado.</div>
+                    ) : (
+                      filteredAgencyOptions.map((m) => (
+                        <SelectItem key={m.userId} value={m.userId}>
+                          {(m.name || m.email) + " · " + jobTitleLabelPt(m.jobTitle)}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] uppercase text-muted-foreground">Papel neste cliente</Label>
+                <Select
+                  value={clientAccessLevel}
+                  onValueChange={(v) => setClientAccessLevel(v as "ADMIN" | "OPERADOR" | "VIEWER")}
+                >
+                  <SelectTrigger className="h-9 rounded-lg">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TEAM_ACCESS_LEVEL_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <Button
+              type="button"
+              className="w-full rounded-lg sm:w-auto"
+              disabled={assignBusy || !selectedUserId}
+              onClick={() => void onAssign()}
+            >
+              {assignBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Vincular usuário
             </Button>
           </div>
-        </form>
-
-        <form onSubmit={submitInvite} className="flex flex-col gap-2 rounded-lg border border-border/50 bg-muted/20 p-3">
-          <Label className="text-xs font-semibold">Novo convite (e-mail)</Label>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-            <Input
-              type="email"
-              placeholder="email@empresa.com"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              className="h-9 flex-1 rounded-lg"
-            />
-            <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as (typeof INVITE_ROLES)[number])}>
-              <SelectTrigger className="h-9 w-full rounded-lg sm:w-[160px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {INVITE_ROLES.map((r) => (
-                  <SelectItem key={r} value={r}>
-                    {membershipRoleLabelPt(r)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button type="submit" size="sm" className="h-9 shrink-0" disabled={inviteBusy || !inviteEmail.trim()}>
-              {inviteBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Convidar"}
-            </Button>
-          </div>
-          {inviteLink ? (
-            <p className="break-all text-[11px] text-muted-foreground">
-              Link: <span className="font-mono text-foreground">{inviteLink}</span>
-            </p>
-          ) : null}
-        </form>
+        ) : (
+          <p className="rounded-lg border border-border/40 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
+            Apenas administradores da agência podem vincular ou revogar acessos. Você pode ver quem tem
+            entrada neste cliente abaixo.
+          </p>
+        )}
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {loading ? (
@@ -324,128 +211,71 @@ export function ClientWorkspaceTeamDialog({ open, onOpenChange, workspaceId, wor
               Carregando…
             </div>
           ) : (
-            <div className="space-y-4 py-2">
-              {invites.length > 0 ? (
-                <div>
-                  <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                    Convites pendentes
-                  </p>
-                  <ul className="space-y-1.5 text-sm">
-                    {invites.map((inv) => (
+            <div className="space-y-2 py-2">
+              <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                <Users2 className="h-3.5 w-3.5" aria-hidden />
+                Quem tem acesso ({childMembers.length})
+              </p>
+              {childMembers.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Ninguém listado ainda.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {childMembers.map((m) => {
+                    const direct = m.source !== "agency";
+                    const level = accessLevelFromSystemRole(m.role);
+                    const busyRm = removeBusy === m.userId;
+                    const canRevoke =
+                      canManageAccess &&
+                      direct &&
+                      currentUserId &&
+                      m.userId !== currentUserId &&
+                      !isProtectedOwnerRole(m.role);
+                    return (
                       <li
-                        key={inv.id}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/40 px-2 py-1.5"
+                        key={`${m.userId}-${m.membershipId}`}
+                        className="rounded-lg border border-border/40 px-3 py-2.5 text-sm"
                       >
-                        <span className="truncate">{inv.email}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">{membershipRoleLabelPt(inv.role)}</span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs"
-                            disabled={actionBusy === `inv-${inv.id}`}
-                            onClick={() => void onRevokeInvite(inv.id)}
-                          >
-                            Revogar
-                          </Button>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{m.name || m.email}</p>
+                            <p className="truncate text-xs text-muted-foreground">{m.email}</p>
+                            <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                              <span>
+                                Cargo:{" "}
+                                <span className="font-medium text-foreground">{jobTitleLabelPt(m.jobTitle)}</span>
+                              </span>
+                              <span>
+                                Papel:{" "}
+                                <span className="font-medium text-foreground">
+                                  {accessLevelLabelPt(level)}
+                                </span>
+                              </span>
+                            </div>
+                            {!direct ? (
+                              <p className="mt-1 text-[10px] text-muted-foreground">Acesso via agência</p>
+                            ) : null}
+                            {m.suspended ? (
+                              <p className="mt-0.5 text-[10px] font-medium text-destructive">Conta bloqueada</p>
+                            ) : null}
+                          </div>
+                          {canRevoke ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 shrink-0 text-xs text-destructive hover:text-destructive"
+                              disabled={busyRm}
+                              onClick={() => void onRevokeAccess(m.userId)}
+                            >
+                              {busyRm ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Remover acesso"}
+                            </Button>
+                          ) : null}
                         </div>
                       </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              <div>
-                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                  <Users2 className="h-3.5 w-3.5" aria-hidden />
-                  Membros ({members.length})
-                </p>
-                {members.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nenhum membro direto ainda.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {members.map((m) => {
-                      const direct = m.source !== "agency";
-                      const busy =
-                        actionBusy === `role-${m.userId}` || actionBusy === `rm-${m.userId}`;
-                      return (
-                        <li
-                          key={`${m.userId}-${m.membershipId}`}
-                          className="rounded-md border border-border/40 px-2 py-2 text-sm"
-                        >
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="min-w-0">
-                              <p className="truncate font-medium">{m.name || m.email}</p>
-                              <p className="truncate text-xs text-muted-foreground">{m.email}</p>
-                              {m.source === "agency" ? (
-                                <p className="mt-0.5 text-[10px] text-muted-foreground">Acesso via agência (somente leitura)</p>
-                              ) : null}
-                              {m.suspended ? (
-                                <p className="mt-0.5 text-[10px] font-medium text-destructive">Bloqueado</p>
-                              ) : null}
-                            </div>
-                            {direct ? (
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-xs text-muted-foreground">
-                                  Papel: <span className="font-medium text-foreground">{membershipRoleLabelPt(m.role)}</span>
-                                </span>
-                                {m.role !== "owner" && m.role !== "workspace_owner" ? (
-                                  <Select
-                                    onValueChange={(v) => void onChangeRole(m.userId, v)}
-                                    disabled={busy}
-                                  >
-                                    <SelectTrigger className="h-8 w-[148px] text-xs">
-                                      <SelectValue placeholder="Alterar para…" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {INVITE_ROLES.map((r) => (
-                                        <SelectItem key={r} value={r}>
-                                          {membershipRoleLabelPt(r)}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                ) : null}
-                                {currentUserId && m.userId !== currentUserId ? (
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-8 text-xs"
-                                    disabled={busy}
-                                    onClick={() => setDetailMember(m)}
-                                  >
-                                    Gerenciar
-                                  </Button>
-                                ) : null}
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 text-xs text-destructive hover:text-destructive"
-                                  disabled={
-                                    busy ||
-                                    m.userId === currentUserId ||
-                                    m.role === "owner" ||
-                                    m.role === "workspace_owner" ||
-                                    m.role === "agency_owner"
-                                  }
-                                  onClick={() => void onRemove(m.userId)}
-                                >
-                                  Remover
-                                </Button>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">{membershipRoleLabelPt(m.role)}</span>
-                            )}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
+                    );
+                  })}
+                </ul>
+              )}
             </div>
           )}
         </div>
@@ -457,19 +287,5 @@ export function ClientWorkspaceTeamDialog({ open, onOpenChange, workspaceId, wor
         </DialogFooter>
       </DialogContent>
     </Dialog>
-
-    <MemberDetailDialog
-      open={!!detailMember}
-      onOpenChange={(v) => {
-        if (!v) setDetailMember(null);
-      }}
-      member={detailMember}
-      linkedClientsCount={null}
-      formatDate={formatMemberDate}
-      currentUserId={currentUserId}
-      organizationId={workspaceId}
-      onMemberUpdated={() => load()}
-    />
-    </>
   );
 }

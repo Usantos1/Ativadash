@@ -5,7 +5,9 @@ import { getOrganizationRootId, getRootResellerPartnerFlag } from "../utils/org-
 import { computeMatrizNavEligible } from "../utils/matriz-nav-eligible.js";
 import { isPlatformAdminEmail } from "../utils/platform-admin.js";
 import { slugifyOrganizationName, uniqueOrganizationSlug } from "../utils/org-slug.js";
-import { assertDirectOrgAdmin, canManageOrganization } from "./auth.service.js";
+import { assertDirectOrgAdmin, assertOrgAdminOrParentAgency, canManageOrganization } from "./auth.service.js";
+import { isResellerMatrixAdminRole, isWorkspaceAdminRole } from "../constants/roles.js";
+import { teamAccessLevelToRole } from "../constants/team-job-titles.js";
 import { userHasEffectiveAccess } from "./tenancy-access.service.js";
 import {
   assertCanAddChildOrganization,
@@ -164,9 +166,10 @@ export async function updateOrganizationName(organizationId: string, userId: str
 }
 
 export async function listChildOrganizations(organizationId: string, userId: string) {
-  await assertDirectOrgAdmin(userId, organizationId);
+  const { visibleIds } = await resolveVisibleChildOrganizationIds(organizationId, userId);
+  if (visibleIds.length === 0) return [];
   return prisma.organization.findMany({
-    where: { parentOrganizationId: organizationId, deletedAt: null },
+    where: { id: { in: visibleIds }, deletedAt: null },
     select: { id: true, name: true, slug: true, createdAt: true },
     orderBy: { name: "asc" },
   });
@@ -352,6 +355,50 @@ export async function collectDescendantOrganizationIds(matrixId: string): Promis
     }
   }
   return [...seen];
+}
+
+/** Admin da agência (contexto JWT = parent): vê e gere todos os workspaces na subárvore. */
+export async function isParentAgencyAdminUser(userId: string, parentOrganizationId: string): Promise<boolean> {
+  const m = await prisma.membership.findUnique({
+    where: { userId_organizationId: { userId, organizationId: parentOrganizationId } },
+  });
+  if (!m) return false;
+  return isResellerMatrixAdminRole(m.role) || isWorkspaceAdminRole(m.role);
+}
+
+export async function assertCanViewAgencyChildrenDashboard(
+  userId: string,
+  parentOrganizationId: string
+): Promise<void> {
+  const allowed = await userHasEffectiveAccess(userId, parentOrganizationId);
+  if (!allowed) {
+    throw new Error("Sem acesso a esta empresa");
+  }
+}
+
+/**
+ * Descendentes do parent visíveis ao utilizador: admin vê toda a subárvore;
+ * Operador/Viewer só workspaces onde tem `Membership` ativa.
+ */
+export async function resolveVisibleChildOrganizationIds(
+  parentOrganizationId: string,
+  userId: string
+): Promise<{ visibleIds: string[]; isAgencyAdmin: boolean }> {
+  await assertCanViewAgencyChildrenDashboard(userId, parentOrganizationId);
+  const subtree = await collectDescendantOrganizationIds(parentOrganizationId);
+  const candidateIds = subtree.filter((id) => id !== parentOrganizationId);
+  const isAgencyAdmin = await isParentAgencyAdminUser(userId, parentOrganizationId);
+  if (isAgencyAdmin) {
+    return { visibleIds: candidateIds, isAgencyAdmin: true };
+  }
+  const mem = await prisma.membership.findMany({
+    where: { userId, organizationId: { in: candidateIds } },
+    select: { organizationId: true },
+  });
+  return {
+    visibleIds: [...new Set(mem.map((x) => x.organizationId))],
+    isAgencyAdmin: false,
+  };
 }
 
 /**
@@ -624,6 +671,53 @@ function maxDate(...dates: (Date | null | undefined)[]): Date | null {
 const STALE_ACTIVITY_DAYS = 14;
 const NEVER_USED_DAYS = 7;
 
+/** Alerta CPL (30d) vs meta — alinhado ao portfolio dashboard. */
+export type AgencyPortfolioAlertLevel = "CRITICAL" | "WARNING" | "HEALTHY" | "PENDING" | "NO_METRICS";
+
+function fmtBrlPortfolio(n: number): string {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
+}
+
+/**
+ * Compara CPL atual (rollup 30d) com meta em MarketingSettings.targetCpaBrl.
+ */
+export function computeAgencyPortfolioCplAlert(
+  targetCpaBrl: number | null,
+  cpl: number | null
+): { alertLevel: AgencyPortfolioAlertLevel; alertDetail: string | null } {
+  if (targetCpaBrl == null || targetCpaBrl <= 0 || !Number.isFinite(targetCpaBrl)) {
+    return {
+      alertLevel: "PENDING",
+      alertDetail:
+        "Defina a meta de CPL (CPA alvo) em Configurações → Marketing do workspace do cliente para ativar alertas.",
+    };
+  }
+  const target = targetCpaBrl;
+  if (cpl == null || !Number.isFinite(cpl)) {
+    return {
+      alertLevel: "NO_METRICS",
+      alertDetail: `Meta ${fmtBrlPortfolio(target)} — sem CPL nos últimos 30 dias (sem leads ou sem dados de mídia agregados).`,
+    };
+  }
+  if (cpl <= target) {
+    return {
+      alertLevel: "HEALTHY",
+      alertDetail: `CPL ${fmtBrlPortfolio(cpl)} está na meta ou abaixo (meta ${fmtBrlPortfolio(target)}).`,
+    };
+  }
+  const pctAbove = ((cpl - target) / target) * 100;
+  if (cpl > target * 1.2) {
+    return {
+      alertLevel: "CRITICAL",
+      alertDetail: `CPL ${fmtBrlPortfolio(cpl)} está ${pctAbove.toFixed(0)}% acima da meta de ${fmtBrlPortfolio(target)} (limite crítico: +20%).`,
+    };
+  }
+  return {
+    alertLevel: "WARNING",
+    alertDetail: `CPL ${fmtBrlPortfolio(cpl)} está ${pctAbove.toFixed(0)}% acima da meta de ${fmtBrlPortfolio(target)} (faixa de atenção: até +20%).`,
+  };
+}
+
 export type ChildOrganizationOperationsAlert = {
   type: string;
   severity: "info" | "warning" | "critical";
@@ -689,7 +783,15 @@ export async function listChildOrganizationsOperationsDashboard(
     projectCount: number;
     launchCount: number;
     activeLaunchCount: number;
+    targetCpaBrl: number | null;
+    cplAlertLevel: AgencyPortfolioAlertLevel;
+    cplAlertDetail: string | null;
   }>;
+  capabilities: {
+    canCreateChildWorkspaces: boolean;
+    canManageChildWorkspaceMembers: boolean;
+    canPatchChildWorkspace: boolean;
+  };
   summary: {
     totalWorkspaces: number;
     activeWorkspaces: number;
@@ -709,18 +811,17 @@ export async function listChildOrganizationsOperationsDashboard(
   };
   alerts: ChildOrganizationOperationsAlert[];
 }> {
-  await assertDirectOrgAdmin(userId, parentOrganizationId);
+  const { visibleIds, isAgencyAdmin } = await resolveVisibleChildOrganizationIds(
+    parentOrganizationId,
+    userId
+  );
   const planContext = await getOrganizationPlanContext(parentOrganizationId);
 
-  const descendantIds = (await collectDescendantOrganizationIds(parentOrganizationId)).filter(
-    (id) => id !== parentOrganizationId
-  );
-
   const children =
-    descendantIds.length === 0
+    visibleIds.length === 0
       ? []
       : await prisma.organization.findMany({
-          where: { id: { in: descendantIds }, deletedAt: null },
+          where: { id: { in: visibleIds }, deletedAt: null },
           select: {
             id: true,
             name: true,
@@ -775,6 +876,11 @@ export async function listChildOrganizationsOperationsDashboard(
         usage: planContext.usage,
       },
       organizations: [],
+      capabilities: {
+        canCreateChildWorkspaces: isAgencyAdmin,
+        canManageChildWorkspaceMembers: isAgencyAdmin,
+        canPatchChildWorkspace: isAgencyAdmin,
+      },
       summary: {
         totalWorkspaces: 0,
         activeWorkspaces: 0,
@@ -1040,10 +1146,28 @@ export async function listChildOrganizationsOperationsDashboard(
       googleAdsConnected: o.googleAdsConnected,
     }))
   );
-  const organizationsOut = organizations.map((o) => ({
+  const organizationsOutRaw = organizations.map((o) => ({
     ...o,
     marketing30d: rollupMap.get(o.id) ?? null,
   }));
+  const settingsForCpl = await prisma.marketingSettings.findMany({
+    where: { organizationId: { in: organizationsOutRaw.map((x) => x.id) } },
+    select: { organizationId: true, targetCpaBrl: true },
+  });
+  const targetCpaMap = new Map(
+    settingsForCpl.map((s) => [s.organizationId, s.targetCpaBrl != null ? Number(s.targetCpaBrl) : null])
+  );
+  const organizationsOut = organizationsOutRaw.map((o) => {
+    const target = targetCpaMap.get(o.id) ?? null;
+    const cpl = o.marketing30d?.cpl ?? null;
+    const { alertLevel, alertDetail } = computeAgencyPortfolioCplAlert(target, cpl);
+    return {
+      ...o,
+      targetCpaBrl: target,
+      cplAlertLevel: alertLevel,
+      cplAlertDetail: alertDetail,
+    };
+  });
 
   const maxChild = planContext.limits.maxChildOrganizations;
   const usedChild = planContext.usage.childOrganizations;
@@ -1094,13 +1218,15 @@ export async function listChildOrganizationsOperationsDashboard(
       usage: planContext.usage,
     },
     organizations: organizationsOut,
+    capabilities: {
+      canCreateChildWorkspaces: isAgencyAdmin,
+      canManageChildWorkspaceMembers: isAgencyAdmin,
+      canPatchChildWorkspace: isAgencyAdmin,
+    },
     summary,
     alerts,
   };
 }
-
-/** Alerta de CPL (30d) vs meta em MarketingSettings.targetCpaBrl — não confundir com falhas de integração. */
-export type AgencyPortfolioAlertLevel = "CRITICAL" | "WARNING" | "HEALTHY" | "PENDING" | "NO_METRICS";
 
 export type AgencyPortfolioChildRow = {
   id: string;
@@ -1137,74 +1263,28 @@ export type AgencyPortfolioResponse = {
   };
 };
 
-function fmtBrlPortfolio(n: number): string {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
-}
-
-/**
- * Compara CPL atual (rollup 30d) com meta.
- * - HEALTHY: CPL <= meta
- * - WARNING: meta < CPL <= meta * 1,2 (até 20% acima)
- * - CRITICAL: CPL > meta * 1,2
- * - PENDING: sem meta definida
- * - NO_METRICS: meta definida mas sem CPL calculável
- */
-export function computeAgencyPortfolioCplAlert(
-  targetCpaBrl: number | null,
-  cpl: number | null
-): { alertLevel: AgencyPortfolioAlertLevel; alertDetail: string | null } {
-  if (targetCpaBrl == null || targetCpaBrl <= 0 || !Number.isFinite(targetCpaBrl)) {
-    return {
-      alertLevel: "PENDING",
-      alertDetail:
-        "Defina a meta de CPL (CPA alvo) em Configurações → Marketing do workspace do cliente para ativar alertas.",
-    };
-  }
-  const target = targetCpaBrl;
-  if (cpl == null || !Number.isFinite(cpl)) {
-    return {
-      alertLevel: "NO_METRICS",
-      alertDetail: `Meta ${fmtBrlPortfolio(target)} — sem CPL nos últimos 30 dias (sem leads ou sem dados de mídia agregados).`,
-    };
-  }
-  if (cpl <= target) {
-    return {
-      alertLevel: "HEALTHY",
-      alertDetail: `CPL ${fmtBrlPortfolio(cpl)} está na meta ou abaixo (meta ${fmtBrlPortfolio(target)}).`,
-    };
-  }
-  const pctAbove = ((cpl - target) / target) * 100;
-  if (cpl > target * 1.2) {
-    return {
-      alertLevel: "CRITICAL",
-      alertDetail: `CPL ${fmtBrlPortfolio(cpl)} está ${pctAbove.toFixed(0)}% acima da meta de ${fmtBrlPortfolio(target)} (limite crítico: +20%).`,
-    };
-  }
-  return {
-    alertLevel: "WARNING",
-    alertDetail: `CPL ${fmtBrlPortfolio(cpl)} está ${pctAbove.toFixed(0)}% acima da meta de ${fmtBrlPortfolio(target)} (faixa de atenção: até +20%).`,
-  };
-}
-
 const INTEGRATION_STALE_MS = 72 * 3600 * 1000;
 
 export async function listChildOrganizationsPortfolio(
   parentOrganizationId: string,
   userId: string
 ): Promise<AgencyPortfolioResponse> {
-  await assertDirectOrgAdmin(userId, parentOrganizationId);
-  const children = await prisma.organization.findMany({
-    where: { parentOrganizationId, deletedAt: null },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      createdAt: true,
-      inheritPlanFromParent: true,
-      workspaceStatus: true,
-    },
-    orderBy: { name: "asc" },
-  });
+  const { visibleIds } = await resolveVisibleChildOrganizationIds(parentOrganizationId, userId);
+  const children =
+    visibleIds.length === 0
+      ? []
+      : await prisma.organization.findMany({
+          where: { id: { in: visibleIds }, deletedAt: null },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            createdAt: true,
+            inheritPlanFromParent: true,
+            workspaceStatus: true,
+          },
+          orderBy: { name: "asc" },
+        });
 
   const childIds = children.map((c) => c.id);
   if (childIds.length === 0) {
@@ -1340,4 +1420,45 @@ export async function listChildOrganizationsPortfolio(
       clientsWithIntegrationAttention,
     },
   };
+}
+
+/** Vincula membro existente da agência (`parentOrganizationId`) ao workspace cliente. */
+export async function assignParentAgencyMemberToChildWorkspace(
+  parentOrganizationId: string,
+  actorUserId: string,
+  childOrganizationId: string,
+  targetUserId: string,
+  clientAccessLevel: "ADMIN" | "OPERADOR" | "VIEWER"
+): Promise<{ ok: true }> {
+  await assertManagedDescendantOrganization(parentOrganizationId, childOrganizationId);
+  await assertDirectOrgAdmin(actorUserId, parentOrganizationId);
+
+  const parentMem = await prisma.membership.findUnique({
+    where: { userId_organizationId: { userId: targetUserId, organizationId: parentOrganizationId } },
+  });
+  if (!parentMem) {
+    throw new Error("O usuário precisa ser membro da agência para ser vinculado a este cliente.");
+  }
+
+  const role = teamAccessLevelToRole(clientAccessLevel);
+  const jobTitle = parentMem.jobTitle ?? "traffic_manager";
+  const existing = await prisma.membership.findUnique({
+    where: { userId_organizationId: { userId: targetUserId, organizationId: childOrganizationId } },
+  });
+  if (existing) {
+    await prisma.membership.update({
+      where: { id: existing.id },
+      data: { role, jobTitle },
+    });
+  } else {
+    await prisma.membership.create({
+      data: {
+        userId: targetUserId,
+        organizationId: childOrganizationId,
+        role,
+        jobTitle,
+      },
+    });
+  }
+  return { ok: true };
 }

@@ -26,3 +26,8 @@ export const organizationPlanSettingsSchema = z.object({
   inheritPlanFromParent: z.boolean().optional(),
   planId: z.string().min(1).optional().nullable(),
 });
+
+export const assignChildWorkspaceMemberSchema = z.object({
+  userId: z.string().min(1, "Usuário obrigatório"),
+  clientAccessLevel: z.enum(["ADMIN", "OPERADOR", "VIEWER"]),
+});

@@ -62,6 +62,12 @@ function displayClientStatus(row: ChildWorkspaceOperationsRow): {
       critical: row.workspaceStatus === "ARCHIVED",
     };
   }
+  if (row.memberCount === 0) {
+    return { label: "Crítico", tone: "disconnected", critical: true };
+  }
+  const cpl = row.cplAlertLevel;
+  if (cpl === "CRITICAL") return { label: "Crítico", tone: "disconnected", critical: true };
+  if (cpl === "WARNING") return { label: "Atenção", tone: "alert", critical: false };
   if (h === "CRITICO") return { label: "Crítico", tone: "disconnected", critical: true };
   if (h === "ATENCAO") return { label: "Atenção", tone: "alert", critical: false };
   if (h === "OK") {
@@ -133,6 +139,9 @@ export function ClientsPage() {
   const rows = dashboard?.organizations ?? [];
   const summary = dashboard?.summary;
   const parent = dashboard?.parent;
+  const canCreateChild = dashboard?.capabilities?.canCreateChildWorkspaces ?? false;
+  const canManageChildMembers = dashboard?.capabilities?.canManageChildWorkspaceMembers ?? false;
+  const canPatchChild = dashboard?.capabilities?.canPatchChildWorkspace ?? false;
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -146,6 +155,8 @@ export function ClientsPage() {
         (r) =>
           r.workspaceStatus !== "ACTIVE" ||
           r.needsAttention ||
+          r.cplAlertLevel === "CRITICAL" ||
+          r.cplAlertLevel === "WARNING" ||
           getWorkspaceHealth(r) === "CRITICO" ||
           getWorkspaceHealth(r) === "ATENCAO"
       ).length,
@@ -254,18 +265,20 @@ export function ClientsPage() {
                 className="h-9 rounded-lg border-border/60 pl-9"
               />
             </div>
-            <Button
-              className="h-9 rounded-lg"
-              onClick={() => {
-                setNewName("");
-                setOpenCreate(true);
-              }}
-              disabled={atChildLimit}
-              title={atChildLimit ? "Limite de workspaces do plano" : undefined}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Novo cliente
-            </Button>
+            {canCreateChild ? (
+              <Button
+                className="h-9 rounded-lg"
+                onClick={() => {
+                  setNewName("");
+                  setOpenCreate(true);
+                }}
+                disabled={atChildLimit}
+                title={atChildLimit ? "Limite de workspaces do plano" : undefined}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Novo cliente
+              </Button>
+            ) : null}
           </div>
         }
       />
@@ -461,35 +474,52 @@ export function ClientsPage() {
                         >
                           <DropdownMenu.Item
                             className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
-                            onSelect={() => setDetailRow(row)}
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              setDetailRow(row);
+                            }}
                           >
                             <Eye className="h-4 w-4 opacity-70" />
                             Ver detalhes
                           </DropdownMenu.Item>
                           <DropdownMenu.Item
                             className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
-                            onSelect={() => setTeamRow(row)}
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              setTeamRow(row);
+                            }}
                           >
                             <Users2 className="h-4 w-4 opacity-70" />
                             Equipe deste cliente
                           </DropdownMenu.Item>
                           <DropdownMenu.Item
                             className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
-                            onSelect={() => void switchToClient(row.id, "/usuarios")}
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              void switchToClient(row.id, "/usuarios");
+                            }}
                           >
                             <UserCog className="h-4 w-4 opacity-70" />
                             Entrar e abrir Usuários
                           </DropdownMenu.Item>
+                          {canPatchChild ? (
+                            <DropdownMenu.Item
+                              className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
+                              onSelect={(e) => {
+                                e.preventDefault();
+                                openEditWorkspace(row);
+                              }}
+                            >
+                              <Pencil className="h-4 w-4 opacity-70" />
+                              Editar conta
+                            </DropdownMenu.Item>
+                          ) : null}
                           <DropdownMenu.Item
                             className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
-                            onSelect={() => openEditWorkspace(row)}
-                          >
-                            <Pencil className="h-4 w-4 opacity-70" />
-                            Editar conta
-                          </DropdownMenu.Item>
-                          <DropdownMenu.Item
-                            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
-                            onSelect={() => void switchToClient(row.id, "/marketing/configuracoes")}
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              void switchToClient(row.id, "/marketing/configuracoes");
+                            }}
                           >
                             <Settings className="h-4 w-4 opacity-70" />
                             Integrações e ajustes
@@ -507,7 +537,13 @@ export function ClientsPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/40 bg-muted/10 px-4 py-3">
         <p className="text-xs text-muted-foreground">Papéis por workspace (evolução)</p>
-        <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setRolesOpen(true)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 text-xs"
+          type="button"
+          onClick={() => setRolesOpen(true)}
+        >
           Ver papéis
         </Button>
       </div>
@@ -566,6 +602,7 @@ export function ClientsPage() {
           }}
           workspaceId={teamRow.id}
           workspaceName={teamRow.name}
+          canManageAccess={canManageChildMembers}
         />
       ) : null}
 

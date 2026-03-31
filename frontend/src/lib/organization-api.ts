@@ -232,6 +232,9 @@ export type ChildWorkspaceOperationsRow = {
   projectCount?: number;
   launchCount?: number;
   activeLaunchCount?: number;
+  targetCpaBrl?: number | null;
+  cplAlertLevel?: AgencyPortfolioAlertLevel;
+  cplAlertDetail?: string | null;
 };
 
 export type ChildOperationsAlert = {
@@ -249,6 +252,11 @@ export type ChildrenOperationsDashboard = {
     limits: PlanLimits;
     limitsHaveOverrides: boolean;
     usage: PlanUsage;
+  };
+  capabilities: {
+    canCreateChildWorkspaces: boolean;
+    canManageChildWorkspaceMembers: boolean;
+    canPatchChildWorkspace: boolean;
   };
   organizations: ChildWorkspaceOperationsRow[];
   summary: {
@@ -273,6 +281,16 @@ export type ChildrenOperationsDashboard = {
 
 export async function fetchChildrenOperationsDashboard(): Promise<ChildrenOperationsDashboard> {
   return api.get<ChildrenOperationsDashboard>("/organization/children/operations");
+}
+
+export async function assignChildWorkspaceMember(
+  childId: string,
+  body: { userId: string; clientAccessLevel: "ADMIN" | "OPERADOR" | "VIEWER" }
+): Promise<{ ok: true }> {
+  return api.post<{ ok: true }>(
+    `/organization/children/${encodeURIComponent(childId)}/members/assign`,
+    body
+  );
 }
 
 export async function patchChildWorkspace(
