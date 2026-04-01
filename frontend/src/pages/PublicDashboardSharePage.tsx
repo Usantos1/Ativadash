@@ -9,7 +9,12 @@ import { Link } from "react-router-dom";
 import type { ChartDayPoint } from "@/lib/marketing-capture-aggregate";
 import { chartLeadExtrema } from "@/lib/marketing-strategic-insights";
 import { CaptureTrendComposedChart } from "@/components/marketing/CaptureTrendComposedChart";
-import { MarketingFunnelStrip, type FunnelStripStep } from "@/components/marketing/MarketingCockpit";
+import {
+  CockpitSectionTitle,
+  MarketingFunnelStrip,
+  type FunnelStripStep,
+} from "@/components/marketing/MarketingCockpit";
+
 
 const PAGE_LABEL: Record<string, string> = {
   painel: "Painel ADS",
@@ -136,6 +141,9 @@ export function PublicDashboardSharePage() {
   }
 
   const { sections, organizationName, periodLabel, totals, topCampaigns, googleError, metaError } = snap;
+  const metaCh = snap.metaChannelTotals;
+  const googleCh = snap.googleChannelTotals;
+  const hasChannelData = Boolean(metaCh || googleCh);
 
   return (
     <div className="min-h-dvh bg-gradient-to-b from-muted/30 to-background">
@@ -159,7 +167,7 @@ export function PublicDashboardSharePage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-8">
+      <main className="mx-auto max-w-6xl space-y-5 px-4 py-8 sm:px-8">
         {(googleError || metaError) && (
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.08] px-4 py-3 text-sm text-foreground">
             <p className="font-medium">Avisos de sincronização</p>
@@ -168,9 +176,82 @@ export function PublicDashboardSharePage() {
           </div>
         )}
 
+        {/* ── Status bar (espelha MarketingCockpitStatus) ───────────── */}
         {sections.kpis ? (
-          <section>
-            <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-muted-foreground">Indicadores</h2>
+          <div className="relative overflow-hidden rounded-2xl border-2 border-emerald-500/50 bg-emerald-500/[0.12] p-4 shadow-[0_0_0_1px_rgba(16,185,129,0.15)] sm:p-5">
+            <span className="absolute right-4 top-4 h-3 w-3 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.7)] sm:right-5 sm:top-5" />
+            <div className="grid gap-4 sm:grid-cols-12 sm:items-center">
+              <div className="sm:col-span-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Conta</p>
+                <p className="mt-1 text-2xl font-black tracking-tight text-foreground sm:text-3xl">Resumo</p>
+                <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">
+                  {periodLabel}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:col-span-9 sm:grid-cols-4">
+                <MiniKpi label="Leads" value={formatNumber(Math.round(totals.leads))} />
+                <MiniKpi
+                  label="CPL"
+                  value={totals.cpl != null ? formatSpend(totals.cpl) : "—"}
+                />
+                <MiniKpi
+                  label="Investimento"
+                  value={formatSpend(totals.spend)}
+                />
+                {totals.roas != null ? (
+                  <MiniKpi label="ROAS" value={`${totals.roas.toFixed(2)}x`} />
+                ) : totals.revenue > 0 ? (
+                  <MiniKpi label="Receita" value={formatSpend(totals.revenue)} />
+                ) : (
+                  <MiniKpi
+                    label="CTR"
+                    value={totals.ctr != null ? `${totals.ctr.toFixed(2)}%` : "—"}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* ── Canais (espelha MarketingChannelPanel) ────────────────── */}
+        {sections.channels !== false && hasChannelData ? (
+          <div>
+            <CockpitSectionTitle kicker="Canais">Meta · Google</CockpitSectionTitle>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {metaCh ? (
+                <ChannelCard
+                  name="Meta"
+                  leads={metaCh.leads}
+                  cpl={metaCh.cpl}
+                  spend={metaCh.spend}
+                  mixPct={totals.spend > 0 ? (metaCh.spend / totals.spend) * 100 : null}
+                />
+              ) : (
+                <div className="rounded-2xl border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">
+                  Meta — sem dados
+                </div>
+              )}
+              {googleCh ? (
+                <ChannelCard
+                  name="Google"
+                  leads={googleCh.leads}
+                  cpl={googleCh.cpl}
+                  spend={googleCh.spend}
+                  mixPct={totals.spend > 0 ? (googleCh.spend / totals.spend) * 100 : null}
+                />
+              ) : (
+                <div className="rounded-2xl border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">
+                  Google — sem dados
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        {/* ── KPIs detalhados (grid 3×3) ───────────────────────────── */}
+        {sections.kpis ? (
+          <div>
+            <CockpitSectionTitle kicker="Indicadores">Consolidado</CockpitSectionTitle>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Kpi label="Investimento" value={formatSpend(totals.spend)} />
               <Kpi label="Impressões" value={formatNumber(Math.round(totals.impressions))} />
@@ -182,45 +263,37 @@ export function PublicDashboardSharePage() {
               <Kpi label="Receita atrib." value={totals.revenue > 0 ? formatSpend(totals.revenue) : "—"} />
               <Kpi label="ROAS" value={totals.roas != null ? `${totals.roas.toFixed(2)}x` : "—"} />
             </div>
-          </section>
+          </div>
         ) : null}
 
+        {/* ── Funil (mesmo componente do dashboard) ────────────────── */}
         {(sections.kpis || sections.chart) && (snap.hasGoogle || snap.hasMeta) ? (
-          <section className="rounded-xl border border-border/60 bg-card/50 p-4 shadow-sm">
-            <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-muted-foreground">Funil</h2>
-            <p className="mb-3 text-xs text-muted-foreground">
-              Mesma lógica do Painel ADS: impressões → cliques (CTR) → visualizações de LP (Meta) → leads.
-            </p>
+          <div>
+            <CockpitSectionTitle kicker="Funil">Etapas</CockpitSectionTitle>
             <MarketingFunnelStrip steps={funnelBlock.steps} worstKey={funnelBlock.worstKey} />
-          </section>
+          </div>
         ) : null}
 
+        {/* ── Gráfico de tendência (mesmo componente do dashboard) ── */}
         {sections.chart && (snap.hasGoogle || snap.hasMeta) ? (
-          <section className="overflow-hidden rounded-xl border border-border/50 bg-card/40 p-3 shadow-sm sm:p-4">
-            <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-muted-foreground">Tendência no período</h2>
-            <p className="mb-3 text-xs text-muted-foreground">
-              Gasto diário, CPA e leads — alinhado ao período fixado neste link.
-            </p>
+          <div className="overflow-hidden rounded-2xl border border-border/50 bg-card/40 shadow-[var(--shadow-surface-sm)]">
             <CaptureTrendComposedChart
               embedded
-              title="Valor gasto, CPA e leads (por dia)"
               data={chartData}
+              description=""
               barHighlight={{
                 bestIndex: chartExtrema.best?.index ?? null,
                 worstIndex: chartExtrema.worst?.index ?? null,
               }}
+              footer={null}
             />
-          </section>
+          </div>
         ) : null}
 
+        {/* ── Tabela de campanhas ───────────────────────────────────── */}
         {sections.table && topCampaigns.length > 0 ? (
-          <section>
-            <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-muted-foreground">
-              Campanhas (top gasto)
-            </h2>
-            <p className="mb-2 text-xs text-muted-foreground">
-              O nome da campanha liga ao gestor da Meta ou do Google (é preciso sessão nessa rede). Métricas por campanha no mesmo período do link.
-            </p>
+          <div>
+            <CockpitSectionTitle kicker="Operação">Campanhas (top gasto)</CockpitSectionTitle>
             <div className="overflow-x-auto rounded-xl border border-border/60">
               <table className="w-full min-w-[980px] text-sm">
                 <thead>
@@ -256,7 +329,7 @@ export function PublicDashboardSharePage() {
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex max-w-full items-center gap-1 font-medium text-primary hover:underline"
-                              title="Abrir campanha no gestor de anúncios (Meta ou Google)"
+                              title="Abrir campanha no gestor de anúncios"
                             >
                               <span className="truncate">{r.name}</span>
                               <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
@@ -295,7 +368,7 @@ export function PublicDashboardSharePage() {
                 </tbody>
               </table>
             </div>
-          </section>
+          </div>
         ) : null}
 
         {!sections.kpis && !sections.table ? (
@@ -305,18 +378,64 @@ export function PublicDashboardSharePage() {
         ) : null}
 
         <p className="text-center text-xs text-muted-foreground">
-          Os dados refletem o período fixado no link, não o dia de hoje. O Ativa Dash não permite ações nesta página.
+          Dados fixados no período do link. Ativa Dash — somente leitura.
         </p>
       </main>
     </div>
   );
 }
 
+/* ── Componentes internos (espelham o cockpit do dashboard) ──────── */
+
+function MiniKpi({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-border/50 bg-background/60 px-3 py-2.5 backdrop-blur-sm">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-0.5 text-xl font-bold tabular-nums text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function ChannelCard({
+  name,
+  leads,
+  cpl,
+  spend,
+  mixPct,
+}: {
+  name: string;
+  leads: number;
+  cpl: number | null;
+  spend: number;
+  mixPct: number | null;
+}) {
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card/80 p-4 ring-2 ring-amber-500/35 backdrop-blur-sm">
+      <p className="text-xs font-black uppercase tracking-[0.15em] text-foreground">{name}</p>
+      <p className="mt-3 text-3xl font-black tabular-nums text-foreground">{formatNumber(Math.round(leads))}</p>
+      <p className="text-[10px] font-semibold uppercase text-muted-foreground">leads / conv.</p>
+      <div className="mt-3 flex items-end justify-between gap-2 border-t border-border/40 pt-3">
+        <div>
+          <p className="text-[10px] font-bold text-muted-foreground">CPL</p>
+          <p className="text-lg font-bold tabular-nums">{cpl != null ? formatSpend(cpl) : "—"}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] font-bold text-muted-foreground">Gasto</p>
+          <p className="text-lg font-bold tabular-nums">{formatSpend(spend)}</p>
+          {mixPct != null ? (
+            <p className="text-[10px] font-semibold tabular-nums text-muted-foreground">{mixPct.toFixed(0)}% mix</p>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Kpi({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-border/50 bg-card px-4 py-3 shadow-sm">
-      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-1 text-lg font-bold tabular-nums text-foreground">{value}</p>
+    <div className="rounded-xl border border-border/50 bg-background/60 px-3 py-2.5 backdrop-blur-sm sm:px-4 sm:py-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1 text-xl font-black tabular-nums tracking-tight text-foreground sm:text-2xl">{value}</p>
     </div>
   );
 }

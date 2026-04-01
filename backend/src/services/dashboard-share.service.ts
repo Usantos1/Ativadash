@@ -303,6 +303,38 @@ export async function buildShareSnapshot(organizationId: string, range: MetricsR
 
   const metaLandingPageViews = mOkData?.summary.landingPageViews ?? 0;
 
+  const metaChannelTotals = mOkData
+    ? (() => {
+        const s = mOkData.summary;
+        const ld = s.leads + (s.messagingConversationsStarted ?? 0);
+        return {
+          spend: s.spend,
+          impressions: s.impressions,
+          clicks: s.clicks,
+          leads: ld,
+          revenue: s.purchaseValue ?? 0,
+          cpl: ld > 0 ? s.spend / ld : null,
+          roas: s.spend > 0 && (s.purchaseValue ?? 0) > 0 ? (s.purchaseValue ?? 0) / s.spend : null,
+        };
+      })()
+    : null;
+
+  const googleChannelTotals = gOkData
+    ? (() => {
+        const s = gOkData.summary;
+        const sp = s.costMicros / 1_000_000;
+        return {
+          spend: sp,
+          impressions: s.impressions,
+          clicks: s.clicks,
+          leads: s.conversions,
+          revenue: s.conversionsValue,
+          cpl: s.conversions > 0 ? sp / s.conversions : null,
+          roas: sp > 0 && s.conversionsValue > 0 ? s.conversionsValue / sp : null,
+        };
+      })()
+    : null;
+
   return {
     hasGoogle: gOk,
     hasMeta: mOk,
@@ -319,6 +351,8 @@ export async function buildShareSnapshot(organizationId: string, range: MetricsR
       cpl,
       roas,
     },
+    metaChannelTotals,
+    googleChannelTotals,
     topCampaigns,
     chartSeries,
     metaLandingPageViews,

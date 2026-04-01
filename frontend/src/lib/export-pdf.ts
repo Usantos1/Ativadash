@@ -26,15 +26,23 @@ export function downloadTextPdf(title: string, lines: string[], filename: string
 
 export type PainelAdsKpiRow = { label: string; value: string };
 
-/** Etapas do funil (volumes numéricos para largura das barras; rótulos já formatados). */
+/** Etapas do funil (cartões como no painel; `key` alinha com `funnelWorstKey` para “Maior perda”). */
 export type PainelAdsFunnelStep = {
+  /** Opcional: mesmo `key` do `FunnelStripStep` no app (ex.: impr, clk, lpv, lead). */
+  key?: string;
   title: string;
   volume: number;
   volumeLabel: string;
   rateLabel: string | null;
 };
 
-export type PainelAdsTrendPoint = { label: string; gasto: number; leads: number };
+export type PainelAdsTrendPoint = {
+  label: string;
+  gasto: number;
+  leads: number;
+  /** yyyy-MM-dd — rótulos do eixo em dd/mm (evita colagem tipo 31/mar + 1/abr). */
+  isoDate?: string;
+};
 
 export type PainelAdsCampaignPdfRow = {
   channel: string;
@@ -59,6 +67,8 @@ export type PainelAdsReportPdfInput = {
   googleSection?: { title: string; rows: PainelAdsKpiRow[] };
   footnote?: string;
   funnelSteps?: PainelAdsFunnelStep[];
+  /** Destaque “Maior perda” no mesmo cartão que o funil do dashboard. */
+  funnelWorstKey?: string | null;
   /** Série diária (gasto + leads) — até ~45 pontos recomendado. */
   trend?: PainelAdsTrendPoint[];
   /** Top campanhas por gasto, já formatadas para células. */
@@ -70,6 +80,12 @@ const TEXT_MUTED: [number, number, number] = [100, 116, 139];
 const TEXT_BODY: [number, number, number] = [31, 41, 55];
 const LINE: [number, number, number] = [226, 232, 240];
 const HEADER_FILL: [number, number, number] = [241, 245, 249];
+
+function trendAxisLabel(isoDate: string | undefined, fallback: string): string {
+  if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return fallback;
+  const [, mo, d] = isoDate.split("-");
+  return `${d}/${mo}`;
+}
 
 type PdfContext = {
   doc: jsPDF;
@@ -113,45 +129,68 @@ function drawKpiTable(ctx: PdfContext, startY: number, title: string, rows: Pain
   const colL = m;
   const colR = pageW - m;
   const mid = m + (pageW - 2 * m) * 0.52;
-  const rowH = 16;
+  const minRowH = 22;
+  const headerRowH = 22;
 
-  y = ctx.ensureSpace(y, rowH + 4);
+  y = ctx.ensureSpace(y, headerRowH + 4);
+  const headerTop = y;
   doc.setFillColor(HEADER_FILL[0], HEADER_FILL[1], HEADER_FILL[2]);
-  doc.rect(colL, y - 10, colR - colL, rowH, "F");
+  doc.rect(colL, headerTop, colR - colL, headerRowH, "F");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
+  doc.setFontSize(9);
   doc.setTextColor(TEXT_MUTED[0], TEXT_MUTED[1], TEXT_MUTED[2]);
-  doc.text("INDICADOR", colL + 4, y);
-  doc.text("VALOR", colR - 4, y, { align: "right" });
-  doc.rect(colL, y - 10, colR - colL, rowH, "S");
-  y += rowH;
+  doc.text("INDICADOR", colL + 6, headerTop + 15);
+  doc.text("VALOR", colR - 6, headerTop + 15, { align: "right" });
+  doc.setDrawColor(LINE[0], LINE[1], LINE[2]);
+  doc.setLineWidth(0.5);
+  doc.rect(colL, headerTop, colR - colL, headerRowH, "S");
+  y = headerTop + headerRowH;
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    y = ctx.ensureSpace(y, rowH + 2);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    const lab = doc.splitTextToSize(row.label, mid - colL - 12);
+    doc.setFont("helvetica", "bold");
+    const valLines = doc.splitTextToSize(row.value, colR - mid - 12);
+    const lineCount = Math.max(lab.length, valLines.length, 1);
+    const cellH = Math.max(minRowH, 10 + lineCount * 11);
+    y = ctx.ensureSpace(y, cellH + 2);
+    const rowTop = y;
     if (i % 2 === 1) {
       doc.setFillColor(252, 252, 253);
-      doc.rect(colL, y - 10, colR - colL, rowH, "F");
+      doc.rect(colL, rowTop, colR - colL, cellH, "F");
     }
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
+    doc.setFontSize(9.5);
     doc.setTextColor(TEXT_BODY[0], TEXT_BODY[1], TEXT_BODY[2]);
-    const lab = doc.splitTextToSize(row.label, mid - colL - 8);
-    doc.text(lab, colL + 4, y);
+    doc.text(lab, colL + 6, rowTop + 14);
     doc.setFont("helvetica", "bold");
-    doc.text(row.value, colR - 4, y, { align: "right" });
-    doc.rect(colL, y - 10, colR - colL, rowH, "S");
-    doc.line(mid, y - 10, mid, y - 10 + rowH);
-    y += rowH;
+    doc.text(valLines, colR - 6, rowTop + 14, { align: "right" });
+    doc.setDrawColor(LINE[0], LINE[1], LINE[2]);
+    doc.rect(colL, rowTop, colR - colL, cellH, "S");
+    doc.line(mid, rowTop, mid, rowTop + cellH);
+    y = rowTop + cellH;
   }
   return y + 8;
 }
 
-/** Funil em barras horizontais (largura proporcional ao volume). */
-function drawFunnelSection(ctx: PdfContext, startY: number, steps: PainelAdsFunnelStep[]): number {
+/** Funil em faixa de cartões — espelha `MarketingFunnelStrip` do painel. */
+function drawFunnelSection(
+  ctx: PdfContext,
+  startY: number,
+  steps: PainelAdsFunnelStep[],
+  worstKey: string | null | undefined
+): number {
   if (!steps.length) return startY;
   const { doc, pageW, m } = ctx;
-  const blockH = 28 + steps.length * 44;
+  const gap = 6;
+  const innerW = pageW - 2 * m;
+  const n = steps.length;
+  const cardW = (innerW - (n - 1) * gap) / n;
+  const anyWorst = Boolean(worstKey && steps.some((s) => s.key === worstKey));
+  const cardH = anyWorst ? 78 : 64;
+  const blockH = 28 + cardH + 8;
   let y = ctx.ensureSpace(startY, blockH);
 
   doc.setFont("helvetica", "bold");
@@ -161,42 +200,69 @@ function drawFunnelSection(ctx: PdfContext, startY: number, steps: PainelAdsFunn
   y += 10;
   doc.setDrawColor(LINE[0], LINE[1], LINE[2]);
   doc.line(m, y, pageW - m, y);
-  y += 16;
+  y += 14;
 
-  const maxV = Math.max(...steps.map((s) => s.volume), 1);
-  const maxBarW = pageW - 2 * m - 8;
-  const cx = pageW / 2;
+  const rowTop = y;
+  for (let i = 0; i < n; i++) {
+    const s = steps[i];
+    const worst = Boolean(worstKey && s.key && s.key === worstKey);
+    const x = m + i * (cardW + gap);
 
-  for (const s of steps) {
-    y = ctx.ensureSpace(y, 42);
-    const frac = Math.max(0.14, s.volume / maxV);
-    const bw = maxBarW * frac;
-    doc.setFillColor(238, 242, 255);
-    doc.setDrawColor(BRAND_TOP.r, BRAND_TOP.g, BRAND_TOP.b);
-    doc.setLineWidth(0.55);
-    doc.roundedRect(cx - bw / 2, y, bw, 18, 2, 2, "FD");
+    if (worst) {
+      doc.setFillColor(255, 241, 242);
+      doc.setDrawColor(244, 63, 94);
+      doc.setLineWidth(1.1);
+    } else {
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+    }
+    doc.roundedRect(x, rowTop, cardW, cardH, 4, 4, "FD");
+
+    const pad = 6;
+    const cx = x + pad;
+    const maxTxt = cardW - 2 * pad;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7);
+    doc.setTextColor(TEXT_MUTED[0], TEXT_MUTED[1], TEXT_MUTED[2]);
+    const titleU = s.title.toUpperCase();
+    const titleLines = doc.splitTextToSize(titleU, maxTxt).slice(0, 2);
+    const titleH = 8 + (titleLines.length - 1) * 9;
+    doc.text(titleLines, cx, rowTop + 10);
+
+    const volY = rowTop + 10 + titleH + 12;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.setTextColor(TEXT_BODY[0], TEXT_BODY[1], TEXT_BODY[2]);
+    doc.text(s.volumeLabel, cx, volY);
+
+    const rateY = volY + 14;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.setTextColor(TEXT_BODY[0], TEXT_BODY[1], TEXT_BODY[2]);
-    doc.text(s.title, cx, y + 12, { align: "center" });
-    y += 22;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(TEXT_MUTED[0], TEXT_MUTED[1], TEXT_MUTED[2]);
-    const rate = s.rateLabel ? ` · ${s.rateLabel}` : "";
-    doc.text(`${s.volumeLabel}${rate}`, cx, y, { align: "center" });
-    y += 14;
+    doc.setTextColor(55, 65, 81);
+    const rateTxt = s.rateLabel ?? "—";
+    doc.text(rateTxt, cx, rateY);
+
+    if (worst) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6.5);
+      doc.setTextColor(190, 18, 60);
+      doc.text("MAIOR PERDA", cx, rateY + 12);
+    }
   }
-  return y + 6;
+
+  return rowTop + cardH + 14;
 }
 
 /** Gráfico de linhas: gasto (índigo) e leads (verde). */
 function drawTrendChart(ctx: PdfContext, startY: number, points: PainelAdsTrendPoint[]): number {
   if (points.length < 2) return startY;
   const { doc, pageW, m } = ctx;
-  const chartH = 100;
+  const chartH = 150;
+  const axisPadBottom = 34;
   const chartTopPad = 36;
-  const need = chartH + chartTopPad + 24;
+  const need = chartH + chartTopPad + axisPadBottom + 20;
   let y = ctx.ensureSpace(startY, need);
 
   doc.setFont("helvetica", "bold");
@@ -211,49 +277,66 @@ function drawTrendChart(ctx: PdfContext, startY: number, points: PainelAdsTrendP
   const x0 = m;
   const x1 = pageW - m;
   const y0 = y + chartH;
-  const yTop = y;
+  const yTop = y + 4;
+  const innerH = chartH - 4;
   const w = x1 - x0;
   const maxG = Math.max(...points.map((p) => p.gasto), 1e-6);
   const maxL = Math.max(...points.map((p) => p.leads), 1e-6);
   const n = points.length;
 
+  doc.setDrawColor(241, 245, 249);
+  doc.setLineWidth(0.35);
+  for (let g = 1; g <= 3; g++) {
+    const yy = y0 - (g / 4) * (innerH - 10);
+    doc.line(x0, yy, x1, yy);
+  }
+
   doc.setDrawColor(LINE[0], LINE[1], LINE[2]);
-  doc.setLineWidth(0.4);
-  doc.rect(x0, yTop, w, chartH, "S");
+  doc.setLineWidth(0.5);
+  doc.rect(x0, yTop, w, innerH, "S");
 
   const gx = (i: number) => x0 + (n <= 1 ? w / 2 : (i / (n - 1)) * w);
-  const gyG = (g: number) => y0 - (g / maxG) * (chartH - 8);
-  const gyL = (l: number) => y0 - (l / maxL) * (chartH - 8);
+  const gyG = (g: number) => y0 - (g / maxG) * (innerH - 12);
+  const gyL = (l: number) => y0 - (l / maxL) * (innerH - 12);
 
   doc.setDrawColor(BRAND_TOP.r, BRAND_TOP.g, BRAND_TOP.b);
-  doc.setLineWidth(1);
+  doc.setLineWidth(1.15);
   for (let i = 0; i < n - 1; i++) {
     doc.line(gx(i), gyG(points[i].gasto), gx(i + 1), gyG(points[i + 1].gasto));
   }
   doc.setDrawColor(22, 163, 74);
-  doc.setLineWidth(0.9);
+  doc.setLineWidth(1);
   for (let i = 0; i < n - 1; i++) {
     doc.line(gx(i), gyL(points[i].leads), gx(i + 1), gyL(points[i + 1].leads));
   }
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
+  doc.setFontSize(8);
   doc.setTextColor(TEXT_MUTED[0], TEXT_MUTED[1], TEXT_MUTED[2]);
-  const step = n > 12 ? Math.ceil(n / 10) : 1;
+  const maxTicks = n > 18 ? 8 : n > 12 ? 10 : n;
+  const step = Math.max(1, Math.ceil(n / maxTicks));
+  const labelY = y0 + 12;
+  const tickW = 22;
   for (let i = 0; i < n; i += step) {
-    doc.text(points[i].label, gx(i), y0 + 10, { align: "center", maxWidth: 28 });
+    const lb = trendAxisLabel(points[i].isoDate, points[i].label);
+    doc.text(lb, gx(i), labelY, { align: "center", maxWidth: tickW });
   }
   if ((n - 1) % step !== 0) {
-    doc.text(points[n - 1].label, gx(n - 1), y0 + 10, { align: "center", maxWidth: 28 });
+    const lb = trendAxisLabel(points[n - 1].isoDate, points[n - 1].label);
+    doc.text(lb, gx(n - 1), labelY, { align: "center", maxWidth: tickW });
   }
 
-  y = y0 + 22;
   doc.setFontSize(7);
+  doc.text(`Máx. gasto: ${maxG.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`, x1, yTop - 2, { align: "right" });
+  doc.text(`Máx. leads: ${maxL.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`, x1, yTop + 8, { align: "right" });
+
+  y = y0 + axisPadBottom;
+  doc.setFontSize(8);
   doc.setTextColor(BRAND_TOP.r, BRAND_TOP.g, BRAND_TOP.b);
   doc.text("— Gasto (R$)", m, y);
   doc.setTextColor(22, 163, 74);
-  doc.text("— Leads", m + 72, y);
-  return y + 12;
+  doc.text("— Leads", m + 88, y);
+  return y + 14;
 }
 
 /** Tabela campanhas: várias colunas com borda. */
@@ -264,8 +347,8 @@ function drawCampaignsTable(ctx: PdfContext, startY: number, rows: PainelAdsCamp
   const colWeights = [0.08, 0.34, 0.11, 0.09, 0.09, 0.07, 0.1, 0.12];
   const innerW = pageW - 2 * m;
   const cols = colWeights.map((w) => innerW * w);
-  const rowH = 14;
-  const headerH = 16;
+  const rowH = 17;
+  const headerH = 18;
 
   let y = ctx.ensureSpace(startY, headerH + 8);
   doc.setFont("helvetica", "bold");
@@ -289,7 +372,7 @@ function drawCampaignsTable(ctx: PdfContext, startY: number, rows: PainelAdsCamp
       const cw = cols[c] ?? 40;
       doc.rect(x, yy - 9, cw, rowH, "S");
       doc.setFont("helvetica", bold ? "bold" : "normal");
-      doc.setFontSize(c === 1 ? 7 : 7);
+      doc.setFontSize(c === 1 ? 7.5 : 8);
       doc.setTextColor(TEXT_BODY[0], TEXT_BODY[1], TEXT_BODY[2]);
       const txt = cells[c] ?? "";
       const lines = doc.splitTextToSize(txt, cw - 4);
@@ -334,32 +417,43 @@ export function downloadPainelAdsReportPdf(input: PainelAdsReportPdfInput): void
 
   const ctx: PdfContext = { doc, pageW, pageH, m, bottomSafe, ensureSpace };
 
+  const titleY = 40;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  const wsLines = doc.splitTextToSize(input.workspaceName.trim() || "Workspace", pageW - 2 * m - 4);
+  const wsStartY = titleY + 22;
+  const wsLinePitch = 13;
+  const headerBarH = Math.max(82, wsStartY + wsLines.length * wsLinePitch + 14);
+
   doc.setFillColor(BRAND_TOP.r, BRAND_TOP.g, BRAND_TOP.b);
-  doc.rect(0, 0, pageW, 78, "F");
+  doc.rect(0, 0, pageW, headerBarH, "F");
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(22);
-  doc.text("Painel ADS", m, 44);
+  doc.text("Painel ADS", m, titleY);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  const wsLines = doc.splitTextToSize(input.workspaceName, pageW - 2 * m - 160);
-  doc.text(wsLines, m, 62);
-  doc.setFontSize(9);
-  doc.setTextColor(226, 232, 240);
-  doc.text(input.periodLabel, pageW - m, 36, { align: "right" });
-  doc.text(`${input.startDate}  \u2192  ${input.endDate}`, pageW - m, 50, { align: "right" });
   doc.setFontSize(8);
-  doc.text("Ativa Dash", pageW - m, 66, { align: "right" });
+  doc.setTextColor(226, 232, 240);
+  doc.text("Ativa Dash", pageW - m, 28, { align: "right" });
+  doc.setFontSize(11);
+  doc.setTextColor(255, 255, 255);
+  doc.text(wsLines, m, wsStartY);
 
-  let y = 98;
+  let y = headerBarH + 14;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(TEXT_MUTED[0], TEXT_MUTED[1], TEXT_MUTED[2]);
+  const periodBlock = `${input.periodLabel} — ${input.startDate} a ${input.endDate}`;
+  const periodLines = doc.splitTextToSize(periodBlock, pageW - 2 * m);
+  doc.text(periodLines, m, y);
+  y += periodLines.length * 12 + 10;
+
+  doc.setFontSize(9);
   doc.text(`Objetivo da conta: ${input.objectiveLabel}`, m, y);
-  y += 22;
+  y += 20;
 
   if (input.funnelSteps?.length) {
-    y = drawFunnelSection(ctx, y, input.funnelSteps);
+    y = drawFunnelSection(ctx, y, input.funnelSteps, input.funnelWorstKey ?? null);
   }
   if (input.trend?.length && input.trend.length >= 2) {
     y = drawTrendChart(ctx, y, input.trend);
@@ -391,6 +485,85 @@ export function downloadPainelAdsReportPdf(input: PainelAdsReportPdfInput): void
 
   const name = input.filename.endsWith(".pdf") ? input.filename : `${input.filename}.pdf`;
   doc.save(name);
+}
+
+/** High-fidelity: captura o DOM node como imagem multi-página A4.
+ *  Esconde botões de ação durante a captura via CSS class. */
+export async function downloadScreenshotPdf(
+  element: HTMLElement,
+  filename: string
+): Promise<void> {
+  const hideClass = "__pdf-hide-actions";
+  element.classList.add(hideClass);
+
+  const style = document.createElement("style");
+  style.textContent = `
+    .${hideClass} button,
+    .${hideClass} [data-pdf-hide],
+    .${hideClass} .h-9.rounded-lg {
+      visibility: hidden !important;
+      height: 0 !important;
+      overflow: hidden !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+  `;
+  document.head.appendChild(style);
+
+  try {
+    const canvas = await html2canvas(element, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      windowWidth: element.scrollWidth,
+      backgroundColor: "#ffffff",
+    });
+
+    const pdf = new jsPDF({ unit: "pt", format: "a4", orientation: "portrait" });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const margin = 24;
+    const usableW = pageW - margin * 2;
+    const ratio = canvas.height / canvas.width;
+    const imgH = usableW * ratio;
+    const usableH = pageH - margin * 2;
+
+    let yOffset = 0;
+    let page = 0;
+    while (yOffset < imgH) {
+      if (page > 0) pdf.addPage();
+      const srcY = (yOffset / imgH) * canvas.height;
+      const sliceH = Math.min(usableH, imgH - yOffset);
+      const srcSliceH = (sliceH / imgH) * canvas.height;
+
+      const sliceCanvas = document.createElement("canvas");
+      sliceCanvas.width = canvas.width;
+      sliceCanvas.height = Math.ceil(srcSliceH);
+      const ctx = sliceCanvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(canvas, 0, srcY, canvas.width, srcSliceH, 0, 0, canvas.width, srcSliceH);
+      }
+      const sliceImg = sliceCanvas.toDataURL("image/png");
+      pdf.addImage(sliceImg, "PNG", margin, margin, usableW, sliceH);
+      yOffset += usableH;
+      page++;
+    }
+
+    const totalPages = pdf.getNumberOfPages();
+    const now = new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+    for (let i = 1; i <= totalPages; i++) {
+      pdf.setPage(i);
+      pdf.setFontSize(7);
+      pdf.setTextColor(160, 160, 160);
+      pdf.text(`Ativa Dash · Gerado em ${now}`, margin, pageH - 12);
+      pdf.text(`${i} / ${totalPages}`, pageW - margin, pageH - 12, { align: "right" });
+    }
+
+    pdf.save(filename.endsWith(".pdf") ? filename : `${filename}.pdf`);
+  } finally {
+    element.classList.remove(hideClass);
+    style.remove();
+  }
 }
 
 /** Captura um elemento DOM como imagem no PDF (logo visual). */

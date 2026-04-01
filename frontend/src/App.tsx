@@ -12,8 +12,6 @@ import { MetaAdsIntegrationPage } from "@/pages/integrations/MetaAdsIntegrationP
 import { WhatsAppIntegrationPage } from "@/pages/integrations/WhatsAppIntegrationPage";
 import { WebhooksIntegrationPage } from "@/pages/integrations/WebhooksIntegrationPage";
 import { IntegrationComingSoonPage } from "@/pages/integrations/IntegrationComingSoonPage";
-import { MarketingSettings } from "@/pages/MarketingSettings";
-import { MarketingAdsOperationalPage } from "@/pages/MarketingAdsOperationalPage";
 import { MetasAlertasPage } from "@/pages/MetasAlertasPage";
 import { MarketingFunnelPage } from "@/pages/MarketingFunnelPage";
 import { ClientsPage } from "@/pages/ClientsPage";
@@ -67,9 +65,9 @@ export default function App() {
           <Route path="marketing/integracoes/whatsapp" element={<WhatsAppIntegrationPage />} />
           <Route path="marketing/integracoes/webhook" element={<WebhooksIntegrationPage />} />
           <Route path="marketing/integracoes/:slug" element={<IntegrationComingSoonPage />} />
-          <Route path="marketing/configuracoes" element={<MarketingSettings />} />
+          <Route path="marketing/configuracoes" element={<Navigate to="/ads/metas-alertas" replace />} />
           <Route path="ads/metas-alertas" element={<MetasAlertasPage />} />
-          <Route path="ads/metas-operacao" element={<MarketingAdsOperationalPage />} />
+          <Route path="ads/metas-operacao" element={<Navigate to="/ads/metas-alertas" replace />} />
           <Route path="clientes" element={<ClientsPage />} />
           <Route path="projetos" element={<ProjectsPage />} />
           <Route path="lancamentos" element={<LaunchesPage />} />

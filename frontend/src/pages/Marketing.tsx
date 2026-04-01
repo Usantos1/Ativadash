@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { differenceInDays, parseISO } from "date-fns";
 import { BarChart3, FileDown, Mail, RefreshCw, Share2, CalendarRange, Loader2 } from "lucide-react";
@@ -56,7 +56,7 @@ import {
   patchMarketingMetaCampaignStatus,
 } from "@/lib/marketing-contract-api";
 import { appendCampaignActionLog } from "@/lib/campaign-local-actions";
-import { downloadPainelAdsReportPdf } from "@/lib/export-pdf";
+import { downloadScreenshotPdf } from "@/lib/export-pdf";
 import { openMailtoWithReportNote } from "@/lib/export-csv";
 import { canUserMutateMarketingAds } from "@/lib/marketing-ads-permissions";
 import {
@@ -68,7 +68,6 @@ import {
   filterMetaCampaigns,
 } from "@/lib/marketing-capture-aggregate";
 import { chartLeadExtrema, deriveAccountHealth } from "@/lib/marketing-strategic-insights";
-import { formatNumber, formatSpend } from "@/lib/metrics-format";
 import { generateInsights } from "@/lib/marketing-insights-engine";
 import { isNonDefaultPeriod } from "@/lib/marketing-period-storage";
 import type { OsCampaignRow } from "@/lib/marketing-campaign-os";
@@ -77,6 +76,8 @@ export function Marketing() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const ws = user?.organization?.name?.trim();
+  const pdfAreaRef = useRef<HTMLDivElement>(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
   usePageTitle(formatPageTitle(ws ? ["Painel ADS", ws] : ["Painel ADS"]));
   const {
     dateRange,
@@ -684,6 +685,7 @@ export function Marketing() {
 
   return (
     <AppMainRouteBody className="space-y-6">
+      <div ref={pdfAreaRef} id="pdf-export-area">
       <PageHeaderPremium
         eyebrow="ADS"
         title="Painel ADS"
@@ -771,191 +773,22 @@ export function Marketing() {
                   variant="outline"
                   size="sm"
                   className="h-9 rounded-lg border-border/70 bg-background/80 shadow-sm"
-                  disabled={!dataHealthy}
+                  disabled={!dataHealthy || pdfBusy}
                   onClick={() => {
-                    const objectiveLabel =
-                      goalMode === "LEADS" ? "Leads" : goalMode === "SALES" ? "ROAS / vendas" : "Híbrido";
-                    const cpl =
-                      leadsReais > 0 && filteredSpend > 0 ? formatSpend(filteredSpend / leadsReais) : "—";
-                    const metaLeads = aggM.leads + aggM.messagingConversationsStarted;
-                    const metaCtr =
-                      aggM.impressions > 0
-                        ? `${((aggM.clicks / aggM.impressions) * 100).toFixed(2)}%`
-                        : "—";
-                    const googleCtr =
-                      aggG.impressions > 0
-                        ? `${((aggG.clicks / aggG.impressions) * 100).toFixed(2)}%`
-                        : "—";
-
-                    const funnelSteps = funnelStripSteps.map((s) => ({
-                      title: s.title,
-                      volume: s.volume,
-                      volumeLabel: formatNumber(Math.round(s.volume)),
-                      rateLabel: s.ratePct != null ? `${s.ratePct.toFixed(2)}%` : null,
-                    }));
-
-                    const maxTrendPts = 42;
-                    let trendPts = mergedChartData.map((p) => ({
-                      label: p.date,
-                      gasto: p.gasto,
-                      leads: p.leads,
-                    }));
-                    if (trendPts.length > maxTrendPts) {
-                      const step = Math.ceil(trendPts.length / maxTrendPts);
-                      const samp: typeof trendPts = [];
-                      for (let i = 0; i < trendPts.length; i += step) samp.push(trendPts[i]);
-                      const last = trendPts[trendPts.length - 1];
-                      if (samp.length === 0 || samp[samp.length - 1]?.label !== last.label) samp.push(last);
-                      trendPts = samp;
-                    }
-
-                    const topCampaignsRaw = [
-                      ...googleCampaignsFiltered.map((r) => {
-                        const sp = r.costMicros / 1_000_000;
-                        const ctr =
-                          r.impressions > 0
-                            ? `${((r.clicks / r.impressions) * 100).toFixed(2)}%`
-                            : "—";
-                        const cpc = r.clicks > 0 ? formatSpend(sp / r.clicks) : "—";
-                        const nm =
-                          r.campaignName.length > 52 ? `${r.campaignName.slice(0, 49)}…` : r.campaignName;
-                        return {
-                          sort: sp,
-                          channel: "Google",
-                          name: nm,
-                          gasto: formatSpend(sp),
-                          leads: formatNumber(Math.round(r.conversions)),
-                          impressoes: formatNumber(Math.round(r.impressions)),
-                          cliques: formatNumber(Math.round(r.clicks)),
-                          ctr,
-                          cpc,
-                        };
-                      }),
-                      ...metaCampaignsFiltered.map((r) => {
-                        const ld = r.leads + (r.messagingConversationsStarted ?? 0);
-                        const ctr =
-                          r.impressions > 0
-                            ? `${((r.clicks / r.impressions) * 100).toFixed(2)}%`
-                            : "—";
-                        const cpc = r.clicks > 0 ? formatSpend(r.spend / r.clicks) : "—";
-                        const nm =
-                          r.campaignName.length > 52 ? `${r.campaignName.slice(0, 49)}…` : r.campaignName;
-                        return {
-                          sort: r.spend,
-                          channel: "Meta",
-                          name: nm,
-                          gasto: formatSpend(r.spend),
-                          leads: formatNumber(Math.round(ld)),
-                          impressoes: formatNumber(Math.round(r.impressions)),
-                          cliques: formatNumber(Math.round(r.clicks)),
-                          ctr,
-                          cpc,
-                        };
-                      }),
-                    ]
-                      .sort((a, b) => b.sort - a.sort)
-                      .slice(0, 15);
-                    const topCampaigns = topCampaignsRaw.map(({ sort, ...row }) => {
-                      void sort;
-                      return row;
-                    });
-
-                    downloadPainelAdsReportPdf({
-                      filename: `painel-ads-${dateRange.startDate}.pdf`,
-                      workspaceName: ws?.trim() || user?.organization?.name?.trim() || "Workspace",
-                      periodLabel: dateRangeLabel,
-                      startDate: dateRange.startDate,
-                      endDate: dateRange.endDate,
-                      objectiveLabel,
-                      funnelSteps,
-                      trend: trendPts.length >= 2 ? trendPts : undefined,
-                      topCampaigns: topCampaigns.length ? topCampaigns : undefined,
-                      consolidated: [
-                        {
-                          label: "Investimento (filtro do painel)",
-                          value: formatSpend(filteredSpend),
-                        },
-                        {
-                          label: "Leads e conversões reais (Meta + Google, filtrado)",
-                          value: formatNumber(Math.round(leadsReais)),
-                        },
-                        {
-                          label: "Receita atribuída (valor de conversão)",
-                          value: attributedRevenue > 0 ? formatSpend(attributedRevenue) : "—",
-                        },
-                        {
-                          label: "ROAS (receita ÷ investimento filtrado)",
-                          value: roasBlend != null ? `${roasBlend.toFixed(2)}×` : "—",
-                        },
-                        {
-                          label: "CPL médio (investimento ÷ conversões)",
-                          value: cpl,
-                        },
-                        {
-                          label: "Impressões (total)",
-                          value: formatNumber(Math.round(impressionsT)),
-                        },
-                        {
-                          label: "Cliques (total)",
-                          value: formatNumber(Math.round(clicksT)),
-                        },
-                        {
-                          label: "CTR combinado (estimativa)",
-                          value: ctrT != null ? `${ctrT.toFixed(2)}%` : "—",
-                        },
-                      ],
-                      metaSection: hasMeta
-                        ? {
-                            title: "Meta Ads (mesmo filtro)",
-                            rows: [
-                              { label: "Investimento", value: formatSpend(aggM.spend) },
-                              {
-                                label: "Leads + conversas iniciadas",
-                                value: formatNumber(Math.round(metaLeads)),
-                              },
-                              { label: "Impressões", value: formatNumber(Math.round(aggM.impressions)) },
-                              { label: "Cliques", value: formatNumber(Math.round(aggM.clicks)) },
-                              { label: "CTR", value: metaCtr },
-                              {
-                                label: "Valor de compras (atrib.)",
-                                value: aggM.purchaseValue > 0 ? formatSpend(aggM.purchaseValue) : "—",
-                              },
-                            ],
-                          }
-                        : undefined,
-                      googleSection: hasGoogle
-                        ? {
-                            title: "Google Ads (mesmo filtro)",
-                            rows: [
-                              {
-                                label: "Investimento",
-                                value: formatSpend(aggG.costMicros / 1_000_000),
-                              },
-                              {
-                                label: "Conversões",
-                                value: formatNumber(Math.round(aggG.conversions)),
-                              },
-                              {
-                                label: "Impressões",
-                                value: formatNumber(Math.round(aggG.impressions)),
-                              },
-                              { label: "Cliques", value: formatNumber(Math.round(aggG.clicks)) },
-                              { label: "CTR", value: googleCtr },
-                              {
-                                label: "Valor de conversão",
-                                value:
-                                  aggG.conversionsValue > 0 ? formatSpend(aggG.conversionsValue) : "—",
-                              },
-                            ],
-                          }
-                        : undefined,
-                      footnote:
-                        "Valores alinhados ao período e aos filtros das tabelas do painel. Sem dados no período: zeros ou traço.",
-                    });
+                    if (!pdfAreaRef.current) return;
+                    setPdfBusy(true);
+                    void downloadScreenshotPdf(
+                      pdfAreaRef.current,
+                      `painel-ads-${dateRange.startDate}.pdf`
+                    ).finally(() => setPdfBusy(false));
                   }}
                 >
-                  <FileDown className="mr-1.5 h-3.5 w-3.5" />
-                  Exportar PDF
+                  {pdfBusy ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <FileDown className="mr-1.5 h-3.5 w-3.5" />
+                  )}
+                  {pdfBusy ? "Gerando…" : "Exportar PDF"}
                 </Button>
                 <Button
                   type="button"
@@ -976,7 +809,7 @@ export function Marketing() {
                   Enviar
                 </Button>
                 <Button variant="default" size="sm" className="h-9 rounded-lg shadow-sm" asChild>
-                  <Link to="/marketing/configuracoes">Metas e canais</Link>
+                  <Link to="/ads/metas-alertas">Automação e Metas</Link>
                 </Button>
               </div>
             </div>
@@ -1248,6 +1081,7 @@ export function Marketing() {
             )}
         </div>
       )}
+      </div>{/* /pdf-export-area */}
 
       <Dialog
         open={budgetDialogOpen}

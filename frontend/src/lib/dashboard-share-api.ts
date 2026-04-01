@@ -73,6 +73,26 @@ export type PublicShareSnapshot = PublicShareMeta & {
     cpc?: number | null;
     cpl?: number | null;
   }[];
+  /** Totais do canal Meta (se disponível). */
+  metaChannelTotals?: {
+    spend: number;
+    impressions: number;
+    clicks: number;
+    leads: number;
+    revenue: number;
+    cpl: number | null;
+    roas: number | null;
+  } | null;
+  /** Totais do canal Google (se disponível). */
+  googleChannelTotals?: {
+    spend: number;
+    impressions: number;
+    clicks: number;
+    leads: number;
+    revenue: number;
+    cpl: number | null;
+    roas: number | null;
+  } | null;
   /** Série diária (gasto Google+Meta, leads) para o gráfico público. */
   chartSeries?: {
     date: string;

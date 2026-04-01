@@ -20,7 +20,6 @@ import {
   X,
   Users2,
   Layers,
-  SlidersHorizontal,
   Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -66,8 +65,7 @@ const FULL_NAV_GROUPS: NavGroup[] = [
     label: "Conexões",
     items: [
       { to: "/marketing/integracoes", label: "Integrações", icon: Plug },
-      { to: "/ads/metas-alertas", label: "Metas e alertas", icon: Bell },
-      { to: "/marketing/configuracoes", label: "Metas e canais", icon: SlidersHorizontal },
+      { to: "/ads/metas-alertas", label: "Automação e Metas", icon: Bell },
     ],
   },
   {
@@ -118,8 +116,7 @@ function buildNavGroups(
       label: "Conexões",
       items: [
         { to: "/marketing/integracoes", label: "Integrações", icon: Plug },
-        { to: "/ads/metas-alertas", label: "Metas e alertas", icon: Bell },
-        { to: "/marketing/configuracoes", label: "Metas e canais", icon: SlidersHorizontal },
+        { to: "/ads/metas-alertas", label: "Automação e Metas", icon: Bell },
       ],
     };
     if (isAgencyBranchExpandedOpsEnabled()) {

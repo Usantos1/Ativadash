@@ -4,10 +4,8 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   Bell,
-  ChevronRight,
   Loader2,
   MessageCircle,
-  PauseCircle,
   Plus,
   Save,
   ScrollText,
@@ -34,6 +32,7 @@ import {
   dispatchMarketingSettingsRefresh,
   fetchMarketingSettings,
   saveMarketingSettings,
+  type BusinessGoalMode,
 } from "@/lib/marketing-settings-api";
 import {
   createAlertRule,
@@ -524,6 +523,7 @@ export function MetasAlertasPage() {
 
   const [performanceAlerts, setPerformanceAlerts] = useState(false);
   const [members, setMembers] = useState<MemberRow[]>([]);
+  const [businessGoalMode, setBusinessGoalMode] = useState<BusinessGoalMode>("HYBRID");
 
   const emptyChannelFields = () => ({
     cplAlvo: "",
@@ -575,6 +575,7 @@ export function MetasAlertasPage() {
       ]);
       setPerformanceAlerts(pack.performanceAlerts);
       setMembers(team);
+      setBusinessGoalMode(settings.businessGoalMode);
       const gm = settings.goalsMeta;
       const gg = settings.goalsGoogle;
       const fill = (g: typeof gm) => ({
@@ -661,6 +662,7 @@ export function MetasAlertasPage() {
     setSaving(true);
     try {
       await saveMarketingSettings({
+        businessGoalMode,
         targetCpaBrl: meta.t,
         maxCpaBrl: meta.m,
         targetRoas: meta.ro,
@@ -751,26 +753,11 @@ export function MetasAlertasPage() {
 
   return (
     <div className="w-full space-y-6 pb-28">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="ghost" size="sm" className="h-9 gap-1.5 text-muted-foreground" asChild>
-          <Link to="/marketing">
-            <ChevronRight className="h-4 w-4 rotate-180" />
-            Painel ADS
-          </Link>
-        </Button>
-        <Button variant="ghost" size="sm" className="h-9 text-muted-foreground" asChild>
-          <Link to="/ads/metas-operacao">Operação por canal</Link>
-        </Button>
-        <Button variant="outline" size="sm" className="h-9 text-xs sm:text-sm" asChild>
-          <Link to="/marketing/configuracoes">Metas numéricas por canal</Link>
-        </Button>
-      </div>
-
       <PageHeaderPremium
         eyebrow="Automação"
-        breadcrumbs={[{ label: "Painel ADS", href: "/marketing" }, { label: "Metas e alertas" }]}
-        title="Metas e alertas"
-        subtitle="Fonte única para regras personalizadas, motor autónomo (Meta/Google) e histórico. CPL/ROAS por canal ficam em Metas numéricas por canal."
+        breadcrumbs={[{ label: "Painel ADS", href: "/marketing" }, { label: "Automação e Metas" }]}
+        title="Automação e Metas"
+        subtitle="Metas globais, regras de automação e histórico de execuções — tudo num só lugar."
         meta={
           <span className="inline-flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span className="rounded-md border border-border/50 bg-muted/30 px-2 py-1">Fuso: {tz}</span>
@@ -805,20 +792,45 @@ export function MetasAlertasPage() {
           <TabsTrigger value="regras" className="rounded-lg text-xs sm:text-sm">
             Motor de automações
           </TabsTrigger>
-          <TabsTrigger value="historico" className="rounded-lg px-2 text-[10px] leading-tight sm:text-sm sm:leading-normal">
-            <span className="block sm:inline">Histórico de execuções</span>
-            <span className="block text-[9px] font-normal text-muted-foreground sm:ml-1 sm:inline sm:text-sm">
-              (transparência)
-            </span>
+          <TabsTrigger value="historico" className="rounded-lg text-xs sm:text-sm">
+            Histórico
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="metas" className="mt-6">
           <form onSubmit={handleSaveMetas} className="space-y-4">
-            <div className="rounded-xl border border-border/45 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
-              Metas separadas por canal. As colunas legadas do workspace (portfolio) usam os valores de{" "}
-              <strong className="text-foreground">Meta Ads</strong> como referência principal ao salvar.
-            </div>
+            <Card className="border-border/50 bg-card shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Configurações gerais</CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Define como o painel interpreta conversões e exibe métricas.
+                </p>
+              </CardHeader>
+              <CardContent className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Modo de negócio
+                  </Label>
+                  <Select
+                    value={businessGoalMode}
+                    disabled={!canEdit}
+                    onValueChange={(v) => setBusinessGoalMode(v as BusinessGoalMode)}
+                  >
+                    <SelectTrigger className="h-10 rounded-xl">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="LEADS">Leads (geração de contatos)</SelectItem>
+                      <SelectItem value="SALES">Vendas (e-commerce / ROAS)</SelectItem>
+                      <SelectItem value="HYBRID">Híbrido (leads + vendas)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground">
+                    Altera os indicadores em destaque no cockpit e nas automações.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
             <div className="grid gap-4 lg:grid-cols-2">
               {(
                 [
@@ -1591,14 +1603,6 @@ export function MetasAlertasPage() {
         </TabsContent>
       </Tabs>
 
-      <div className="rounded-xl border border-border/40 bg-muted/15 px-4 py-3 text-xs text-muted-foreground">
-        <PauseCircle className="mr-1 inline h-3.5 w-3.5 align-text-bottom" />
-        Ajustes finos por canal (Meta/Google), automações de orçamento e silêncio por horário legado continuam em{" "}
-        <Link to="/marketing/configuracoes" className="font-medium text-primary underline-offset-4 hover:underline">
-          Configurações de marketing
-        </Link>{" "}
-        e no fluxo operacional completo.
-      </div>
     </div>
   );
 }
