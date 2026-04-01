@@ -43,13 +43,11 @@ export function resolveTopbarCrumbs(pathname: string): TopbarCrumb[] {
       { label: item?.name ?? slug },
     ];
   }
-  if (p === "/marketing/configuracoes" || p === "/ads/metas-alertas" || p === "/ads/metas-operacao") {
+  if (p === "/ads/metas-alertas" || p === "/ads/metas-operacao") {
     const leaf =
       p === "/ads/metas-operacao"
         ? "Operação por canal"
-        : p === "/marketing/configuracoes"
-          ? "Metas e canais"
-          : "Metas e alertas";
+        : "Metas e alertas";
     return [{ label: "Marketing", href: "/marketing" }, { label: leaf }];
   }
 

@@ -90,7 +90,7 @@ export function DashboardHeader({
           </Button>
         ) : null}
         <Button variant="ghost" size="sm" className="h-9 rounded-xl text-muted-foreground" asChild>
-          <Link to="/marketing/configuracoes">Metas e canais</Link>
+          <Link to="/ads/metas-alertas">Automação e Metas</Link>
         </Button>
       </div>
     </div>

@@ -473,7 +473,7 @@ export function SettingsHubPage() {
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   <Button size="sm" className="h-8 text-xs" asChild>
-                    <Link to="/marketing/configuracoes">Editar metas e automações</Link>
+                    <Link to="/ads/metas-alertas">Editar metas e automações</Link>
                   </Button>
                   {!agencySlimHub ? (
                     <Button variant="outline" size="sm" className="h-8 text-xs" asChild>

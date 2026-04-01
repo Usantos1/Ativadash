@@ -28,10 +28,10 @@ export function DashboardAttributionPanel({
         <h2 className="text-sm font-semibold tracking-tight text-foreground">Receita · Meta</h2>
         {revenueMuted ? (
           <Link
-            to="/marketing/configuracoes"
+            to="/ads/metas-alertas"
             className="text-[10px] font-medium text-primary underline-offset-2 hover:underline"
           >
-            Metas e canais
+            Automação e Metas
           </Link>
         ) : null}
       </div>

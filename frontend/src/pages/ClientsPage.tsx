@@ -548,7 +548,7 @@ export function ClientsPage() {
                             className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
                             onSelect={(e) => {
                               e.preventDefault();
-                              void switchToClient(row.id, "/marketing/configuracoes");
+                              void switchToClient(row.id, "/ads/metas-alertas");
                             }}
                           >
                             <Settings className="h-4 w-4 opacity-70" />

@@ -52,6 +52,7 @@ import { isAgencyClientPortalUser } from "@/lib/navigation-mode";
 import { fetchIntegrations, type IntegrationFromApi } from "@/lib/integrations-api";
 import { isNonDefaultPeriod } from "@/lib/marketing-period-storage";
 import type { DashboardSharePage } from "@/lib/dashboard-share-api";
+import { fetchManualRevenues } from "@/lib/manual-revenue-api";
 
 export type FunnelVariant = "captacao" | "conversao" | "receita";
 
@@ -238,6 +239,20 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
   const [budgetStep, setBudgetStep] = useState<"input" | "confirm">("input");
   const [budgetSaving, setBudgetSaving] = useState(false);
   const [integrationsList, setIntegrationsList] = useState<IntegrationFromApi[]>([]);
+  const [manualRevMap, setManualRevMap] = useState<Map<string, number>>(new Map());
+  const reloadManualRevenues = useCallback(() => {
+    fetchManualRevenues()
+      .then((rows) => {
+        const m = new Map<string, number>();
+        for (const r of rows) m.set(r.campaignId, r.manualRevenue);
+        setManualRevMap(m);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    reloadManualRevenues();
+  }, [reloadManualRevenues]);
 
   useEffect(() => {
     if (variant !== "receita") return;
@@ -534,8 +549,8 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
   const chartDayInsights = useMemo(() => chartLeadExtrema(mergedChartData), [mergedChartData]);
 
   const osRows = useMemo(
-    () => buildCombinedCampaignOsRows(metaCampaignsFiltered, googleCampaignsFiltered),
-    [metaCampaignsFiltered, googleCampaignsFiltered]
+    () => buildCombinedCampaignOsRows(metaCampaignsFiltered, googleCampaignsFiltered, manualRevMap),
+    [metaCampaignsFiltered, googleCampaignsFiltered, manualRevMap]
   );
 
   const runMetaStatus = useCallback(
@@ -749,7 +764,7 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                 ) : null}
                 {!isClientPortalUser ? (
                   <Button variant="default" size="sm" className="h-9 rounded-lg shadow-sm" asChild>
-                    <Link to="/marketing/configuracoes">Metas e canais</Link>
+                    <Link to="/ads/metas-alertas">Automação e Metas</Link>
                   </Button>
                 ) : null}
               </div>
@@ -1348,6 +1363,8 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                   combinedCampaignMode
                   hasMeta={hasMeta}
                   hasGoogle={hasGoogle}
+                  onManualRevenueChange={reloadManualRevenues}
+                  forceShowRevenue={variant === "receita"}
                 />
               ) : (
                 <p className="py-8 text-center text-sm text-muted-foreground">Sem linhas no período.</p>

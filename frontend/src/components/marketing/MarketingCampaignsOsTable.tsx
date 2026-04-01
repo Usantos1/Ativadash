@@ -187,6 +187,7 @@ export function MarketingCampaignsOsTable({
   hasGoogle,
   combinedCampaignMode,
   onManualRevenueChange,
+  forceShowRevenue,
 }: {
   rows: OsCampaignRow[];
   goalMode: AccountObjective;
@@ -210,6 +211,8 @@ export function MarketingCampaignsOsTable({
   combinedCampaignMode?: boolean;
   /** Callback disparado quando uma receita manual é salva/removida. */
   onManualRevenueChange?: () => void;
+  /** Forçar exibição das colunas ROAS/Receita mesmo em goalMode LEADS (ex.: página /receita). */
+  forceShowRevenue?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -970,7 +973,7 @@ export function MarketingCampaignsOsTable({
                 <p className="mb-2 text-[10px] font-bold uppercase text-muted-foreground">Métricas visíveis</p>
                 <ul className="max-h-56 space-y-1.5 overflow-y-auto">
                   {OS_COL_DEFS.filter(
-                    (c) => goalMode !== "LEADS" || (c.key !== "roas" && c.key !== "revenue")
+                    (c) => forceShowRevenue || goalMode !== "LEADS" || (c.key !== "roas" && c.key !== "revenue")
                   ).map((c) => (
                     <li key={c.key}>
                       <label className="flex cursor-pointer items-center gap-2 text-xs">
@@ -1044,7 +1047,7 @@ export function MarketingCampaignsOsTable({
               ) : null}
               {colVis.perda ? <th className="text-right">Perda est.</th> : null}
               {colVis.insight ? <th className="text-right">Insight</th> : null}
-              {goalMode !== "LEADS" ? (
+              {forceShowRevenue || goalMode !== "LEADS" ? (
                 <>
                   {colVis.roas ? <th className="text-right">ROAS</th> : null}
                   {colVis.revenue ? <th className="text-right">Receita</th> : null}
@@ -1173,7 +1176,7 @@ export function MarketingCampaignsOsTable({
                       {sig.upliftHint ?? "—"}
                     </td>
                   ) : null}
-                  {goalMode !== "LEADS" ? (
+                  {forceShowRevenue || goalMode !== "LEADS" ? (
                     <>
                       {colVis.roas ? (
                         <td className="text-right align-middle text-sm font-bold tabular-nums">
@@ -1352,8 +1355,8 @@ export function MarketingCampaignsOsTable({
           Integrações
         </Link>
         {" · "}
-        <Link to="/marketing/configuracoes" className="font-semibold text-primary underline-offset-4 hover:underline">
-          Metas e canais
+        <Link to="/ads/metas-alertas" className="font-semibold text-primary underline-offset-4 hover:underline">
+          Automação e Metas
         </Link>
       </p>
       </div>

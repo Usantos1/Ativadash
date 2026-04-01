@@ -28,7 +28,7 @@ export function isSidebarPathEnabledByPlan(to: string, f: EnabledFeatures): bool
     return f.integrations;
   }
 
-  if (path === "/marketing/configuracoes" || path === "/ads/metas-operacao") {
+  if (path === "/ads/metas-operacao") {
     return f.marketing && f.automacoes;
   }
 
@@ -82,7 +82,6 @@ export function firstAllowedPathForPlanAndNav(
     "/marketing/receita",
     "/clientes",
     "/marketing/integracoes",
-    "/marketing/configuracoes",
     "/ads/metas-alertas",
     "/ads/metas-operacao",
     "/projetos",

@@ -440,8 +440,8 @@ export function RevendaTenantsPage({ kind }: Props) {
     if (
       !window.confirm(
         `Desvincular "${row.name}" da matriz?\n\n` +
-          "A empresa fica independente, com painel próprio, some desta lista e deixa de seguir plano e regras da matriz. " +
-          "Quem acessava só pela matriz deixa de ver esta empresa; quem é membro direto mantém o login. " +
+          "Esta empresa fica independente e sai desta lista; as outras agências e clientes da matriz continuam visíveis aqui. " +
+          "Deixa de seguir plano e regras da matriz. Quem só enxergava ela pela matriz perde o acesso; quem é membro direto mantém o login. " +
           "Não pode haver filiais vinculadas a ela."
       )
     ) {
@@ -451,6 +451,18 @@ export function RevendaTenantsPage({ kind }: Props) {
     setActionError(null);
     try {
       await resellerDetachChildAsStandalone(row.id);
+      const matrixId = matrixOrg?.id;
+      if (matrixId && currentOrgId === row.id) {
+        try {
+          const r = await switchWorkspaceOrganization(matrixId);
+          setAuth(r.user, r.accessToken, r.refreshToken, {
+            memberships: r.memberships,
+            managedOrganizations: r.managedOrganizations,
+          });
+        } catch {
+          /* contexto já pode ser a matriz */
+        }
+      }
       await load();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Falha ao desvincular.");
