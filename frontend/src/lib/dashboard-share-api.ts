@@ -60,7 +60,29 @@ export type PublicShareSnapshot = PublicShareMeta & {
     cpl: number | null;
     roas: number | null;
   };
-  topCampaigns: { name: string; channel: string; spend: number; leads: number; revenue: number }[];
+  topCampaigns: {
+    name: string;
+    channel: string;
+    campaignId?: string;
+    spend: number;
+    leads: number;
+    revenue: number;
+    impressions?: number;
+    clicks?: number;
+    ctr?: number | null;
+    cpc?: number | null;
+    cpl?: number | null;
+  }[];
+  /** Série diária (gasto Google+Meta, leads) para o gráfico público. */
+  chartSeries?: {
+    date: string;
+    isoDate: string;
+    gasto: number;
+    leads: number;
+    cpa: number;
+  }[];
+  /** LPV agregado Meta (landing page views) — etapa do funil. */
+  metaLandingPageViews?: number;
 };
 
 export async function fetchPublicShareSnapshot(token: string): Promise<PublicShareSnapshot> {

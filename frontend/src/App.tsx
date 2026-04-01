@@ -52,6 +52,7 @@ export default function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/share/d/:token" element={<PublicDashboardSharePage />} />
+        <Route path="/s/:token" element={<PublicDashboardSharePage />} />
         <Route path="/" element={<ProtectedLayout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />

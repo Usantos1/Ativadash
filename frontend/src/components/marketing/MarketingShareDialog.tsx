@@ -53,7 +53,7 @@ export function MarketingShareDialog({
     kpis: true,
     channels: true,
     chart: true,
-    table: false,
+    table: true,
     insights: true,
   });
   const [expiration, setExpiration] = useState<ShareExpirationOption>("30d");
@@ -95,7 +95,7 @@ export function MarketingShareDialog({
         periodLabel,
         expiration,
       });
-      const url = `${window.location.origin}/share/d/${encodeURIComponent(token)}`;
+      const url = `${window.location.origin}/s/${encodeURIComponent(token)}`;
       setShareUrl(url);
     } catch (e) {
       setError(getApiErrorMessage(e, "Não foi possível gerar o link."));
@@ -166,10 +166,16 @@ export function MarketingShareDialog({
 
           {publicPath ? (
             <div className="space-y-2 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] p-3">
-              <p className="text-xs font-semibold text-emerald-900 dark:text-emerald-200">Link gerado</p>
+              <p className="text-xs font-semibold text-emerald-900 dark:text-emerald-200">Link curto</p>
+              <p className="text-[11px] text-muted-foreground">
+                Endereço mais curto que o formato antigo (<span className="font-mono">/share/d/…</span>). Os dois abrem a mesma página.
+              </p>
               <div className="break-all rounded-lg bg-background/80 px-2 py-1.5 font-mono text-[11px] text-foreground">
                 {publicPath}
               </div>
+              <p className="text-[11px] text-muted-foreground">
+                <span className="font-medium text-foreground">Sugestão:</span> {PAGE_TITLE[page]} — {periodLabel}
+              </p>
               <Button type="button" size="sm" variant="secondary" className="w-full rounded-lg" onClick={() => void handleCopy()}>
                 {copied ? "Copiado!" : <><Copy className="mr-2 h-3.5 w-3.5" /> Copiar link</>}
               </Button>

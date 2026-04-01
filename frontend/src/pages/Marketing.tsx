@@ -56,7 +56,7 @@ import {
   patchMarketingMetaCampaignStatus,
 } from "@/lib/marketing-contract-api";
 import { appendCampaignActionLog } from "@/lib/campaign-local-actions";
-import { downloadTextPdf } from "@/lib/export-pdf";
+import { downloadPainelAdsReportPdf } from "@/lib/export-pdf";
 import { openMailtoWithReportNote } from "@/lib/export-csv";
 import { canUserMutateMarketingAds } from "@/lib/marketing-ads-permissions";
 import {
@@ -773,16 +773,185 @@ export function Marketing() {
                   className="h-9 rounded-lg border-border/70 bg-background/80 shadow-sm"
                   disabled={!dataHealthy}
                   onClick={() => {
-                    downloadTextPdf(
-                      `Painel ADS · ${dateRangeLabel}`,
-                      [
-                        `Período: ${dateRange.startDate} a ${dateRange.endDate}`,
-                        `Investimento (filtro): ${formatSpend(filteredSpend)}`,
-                        `Leads / conv. reais: ${formatNumber(Math.round(leadsReais))}`,
-                        roasBlend != null ? `ROAS (blend): ${roasBlend.toFixed(2)}x` : "ROAS: —",
+                    const objectiveLabel =
+                      goalMode === "LEADS" ? "Leads" : goalMode === "SALES" ? "ROAS / vendas" : "Híbrido";
+                    const cpl =
+                      leadsReais > 0 && filteredSpend > 0 ? formatSpend(filteredSpend / leadsReais) : "—";
+                    const metaLeads = aggM.leads + aggM.messagingConversationsStarted;
+                    const metaCtr =
+                      aggM.impressions > 0
+                        ? `${((aggM.clicks / aggM.impressions) * 100).toFixed(2)}%`
+                        : "—";
+                    const googleCtr =
+                      aggG.impressions > 0
+                        ? `${((aggG.clicks / aggG.impressions) * 100).toFixed(2)}%`
+                        : "—";
+
+                    const funnelSteps = funnelStripSteps.map((s) => ({
+                      title: s.title,
+                      volume: s.volume,
+                      volumeLabel: formatNumber(Math.round(s.volume)),
+                      rateLabel: s.ratePct != null ? `${s.ratePct.toFixed(2)}%` : null,
+                    }));
+
+                    const maxTrendPts = 42;
+                    let trendPts = mergedChartData.map((p) => ({
+                      label: p.date,
+                      gasto: p.gasto,
+                      leads: p.leads,
+                    }));
+                    if (trendPts.length > maxTrendPts) {
+                      const step = Math.ceil(trendPts.length / maxTrendPts);
+                      const samp: typeof trendPts = [];
+                      for (let i = 0; i < trendPts.length; i += step) samp.push(trendPts[i]);
+                      const last = trendPts[trendPts.length - 1];
+                      if (samp.length === 0 || samp[samp.length - 1]?.label !== last.label) samp.push(last);
+                      trendPts = samp;
+                    }
+
+                    const topCampaignsRaw = [
+                      ...googleCampaignsFiltered.map((r) => {
+                        const sp = r.costMicros / 1_000_000;
+                        const ctr =
+                          r.impressions > 0
+                            ? `${((r.clicks / r.impressions) * 100).toFixed(2)}%`
+                            : "—";
+                        const cpc = r.clicks > 0 ? formatSpend(sp / r.clicks) : "—";
+                        const nm =
+                          r.campaignName.length > 52 ? `${r.campaignName.slice(0, 49)}…` : r.campaignName;
+                        return {
+                          sort: sp,
+                          channel: "Google",
+                          name: nm,
+                          gasto: formatSpend(sp),
+                          leads: formatNumber(Math.round(r.conversions)),
+                          impressoes: formatNumber(Math.round(r.impressions)),
+                          cliques: formatNumber(Math.round(r.clicks)),
+                          ctr,
+                          cpc,
+                        };
+                      }),
+                      ...metaCampaignsFiltered.map((r) => {
+                        const ld = r.leads + (r.messagingConversationsStarted ?? 0);
+                        const ctr =
+                          r.impressions > 0
+                            ? `${((r.clicks / r.impressions) * 100).toFixed(2)}%`
+                            : "—";
+                        const cpc = r.clicks > 0 ? formatSpend(r.spend / r.clicks) : "—";
+                        const nm =
+                          r.campaignName.length > 52 ? `${r.campaignName.slice(0, 49)}…` : r.campaignName;
+                        return {
+                          sort: r.spend,
+                          channel: "Meta",
+                          name: nm,
+                          gasto: formatSpend(r.spend),
+                          leads: formatNumber(Math.round(ld)),
+                          impressoes: formatNumber(Math.round(r.impressions)),
+                          cliques: formatNumber(Math.round(r.clicks)),
+                          ctr,
+                          cpc,
+                        };
+                      }),
+                    ]
+                      .sort((a, b) => b.sort - a.sort)
+                      .slice(0, 15);
+                    const topCampaigns = topCampaignsRaw.map(({ sort, ...row }) => {
+                      void sort;
+                      return row;
+                    });
+
+                    downloadPainelAdsReportPdf({
+                      filename: `painel-ads-${dateRange.startDate}.pdf`,
+                      workspaceName: ws?.trim() || user?.organization?.name?.trim() || "Workspace",
+                      periodLabel: dateRangeLabel,
+                      startDate: dateRange.startDate,
+                      endDate: dateRange.endDate,
+                      objectiveLabel,
+                      funnelSteps,
+                      trend: trendPts.length >= 2 ? trendPts : undefined,
+                      topCampaigns: topCampaigns.length ? topCampaigns : undefined,
+                      consolidated: [
+                        {
+                          label: "Investimento (filtro do painel)",
+                          value: formatSpend(filteredSpend),
+                        },
+                        {
+                          label: "Leads e conversões reais (Meta + Google, filtrado)",
+                          value: formatNumber(Math.round(leadsReais)),
+                        },
+                        {
+                          label: "Receita atribuída (valor de conversão)",
+                          value: attributedRevenue > 0 ? formatSpend(attributedRevenue) : "—",
+                        },
+                        {
+                          label: "ROAS (receita ÷ investimento filtrado)",
+                          value: roasBlend != null ? `${roasBlend.toFixed(2)}×` : "—",
+                        },
+                        {
+                          label: "CPL médio (investimento ÷ conversões)",
+                          value: cpl,
+                        },
+                        {
+                          label: "Impressões (total)",
+                          value: formatNumber(Math.round(impressionsT)),
+                        },
+                        {
+                          label: "Cliques (total)",
+                          value: formatNumber(Math.round(clicksT)),
+                        },
+                        {
+                          label: "CTR combinado (estimativa)",
+                          value: ctrT != null ? `${ctrT.toFixed(2)}%` : "—",
+                        },
                       ],
-                      `painel-ads-${dateRange.startDate}.pdf`
-                    );
+                      metaSection: hasMeta
+                        ? {
+                            title: "Meta Ads (mesmo filtro)",
+                            rows: [
+                              { label: "Investimento", value: formatSpend(aggM.spend) },
+                              {
+                                label: "Leads + conversas iniciadas",
+                                value: formatNumber(Math.round(metaLeads)),
+                              },
+                              { label: "Impressões", value: formatNumber(Math.round(aggM.impressions)) },
+                              { label: "Cliques", value: formatNumber(Math.round(aggM.clicks)) },
+                              { label: "CTR", value: metaCtr },
+                              {
+                                label: "Valor de compras (atrib.)",
+                                value: aggM.purchaseValue > 0 ? formatSpend(aggM.purchaseValue) : "—",
+                              },
+                            ],
+                          }
+                        : undefined,
+                      googleSection: hasGoogle
+                        ? {
+                            title: "Google Ads (mesmo filtro)",
+                            rows: [
+                              {
+                                label: "Investimento",
+                                value: formatSpend(aggG.costMicros / 1_000_000),
+                              },
+                              {
+                                label: "Conversões",
+                                value: formatNumber(Math.round(aggG.conversions)),
+                              },
+                              {
+                                label: "Impressões",
+                                value: formatNumber(Math.round(aggG.impressions)),
+                              },
+                              { label: "Cliques", value: formatNumber(Math.round(aggG.clicks)) },
+                              { label: "CTR", value: googleCtr },
+                              {
+                                label: "Valor de conversão",
+                                value:
+                                  aggG.conversionsValue > 0 ? formatSpend(aggG.conversionsValue) : "—",
+                              },
+                            ],
+                          }
+                        : undefined,
+                      footnote:
+                        "Valores alinhados ao período e aos filtros das tabelas do painel. Sem dados no período: zeros ou traço.",
+                    });
                   }}
                 >
                   <FileDown className="mr-1.5 h-3.5 w-3.5" />
