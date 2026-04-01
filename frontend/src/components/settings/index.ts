@@ -7,6 +7,7 @@ export {
   settingsHubPanelClass,
   SettingsHubSection,
   SettingsHubIntegrationRow,
+  SettingsQuickNavCard,
   HubStat,
   HubRow,
 } from "./settings-hub-blocks";

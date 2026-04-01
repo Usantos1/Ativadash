@@ -14,8 +14,8 @@ export function SettingsHeader({
     <PageHeaderPremium
       variant="dense"
       eyebrow="Configurações"
-      title="Conta e atalhos"
-      subtitle="Aceda rápido ao que precisa — dados da empresa, equipe, integrações e plano."
+      title="Conta e serviços"
+      subtitle="Estado do workspace, quotas, ligações a canais e ajustes de sessão. Editar dados da empresa e metas nas respetivas páginas."
       meta={
         organizationName ? (
           <span className="text-muted-foreground">
