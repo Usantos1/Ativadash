@@ -58,6 +58,7 @@ import {
 import { appendCampaignActionLog } from "@/lib/campaign-local-actions";
 import { downloadScreenshotPdf } from "@/lib/export-pdf";
 import { openMailtoWithReportNote } from "@/lib/export-csv";
+import { fetchManualRevenues } from "@/lib/manual-revenue-api";
 import { canUserMutateMarketingAds } from "@/lib/marketing-ads-permissions";
 import {
   aggregateGoogle,
@@ -121,6 +122,16 @@ export function Marketing() {
   const [budgetStep, setBudgetStep] = useState<"input" | "confirm">("input");
   const [budgetSaving, setBudgetSaving] = useState(false);
   const [orgCtx, setOrgCtx] = useState<OrganizationContext | null>(null);
+  const [manualRevMap, setManualRevMap] = useState<Map<string, number>>(new Map());
+  const reloadManualRevenues = useCallback(() => {
+    fetchManualRevenues()
+      .then((rows) => {
+        const m = new Map<string, number>();
+        for (const r of rows) m.set(r.campaignId, r.manualRevenue);
+        setManualRevMap(m);
+      })
+      .catch(() => {});
+  }, []);
 
   const membershipRole = useMemo(() => {
     if (!user?.organizationId) return null;
@@ -155,6 +166,10 @@ export function Marketing() {
       c = true;
     };
   }, []);
+
+  useEffect(() => {
+    reloadManualRevenues();
+  }, [reloadManualRevenues]);
 
   useEffect(() => {
     let c = false;
@@ -401,23 +416,29 @@ export function Marketing() {
   }, [osPlatform, osLevel, dateRange.startDate, dateRange.endDate, hasMeta, hasGoogle, metrics?.ok]);
 
   const osRows: OsCampaignRow[] = useMemo(() => {
+    const mrv = (campaignId?: string) => campaignId ? manualRevMap.get(campaignId) : undefined;
     if (osPlatform === "meta") {
       if (!metaMetrics?.ok) return [];
       if (osLevel === "campaign") {
-        return metaCampaignsFiltered.map((r, i) => ({
-          id: `meta-camp-${r.campaignId ?? i}`,
-          channel: "Meta",
-          level: "campaign",
-          name: r.campaignName,
-          externalId: r.campaignId,
-          effectiveStatus: r.entityStatus ?? null,
-          spend: r.spend,
-          impressions: r.impressions,
-          clicks: r.clicks,
-          leads: r.leads + (r.messagingConversationsStarted ?? 0),
-          sales: r.purchases ?? 0,
-          revenue: r.purchaseValue ?? 0,
-        }));
+        return metaCampaignsFiltered.map((r, i) => {
+          const mr = mrv(r.campaignId);
+          const apiRev = r.purchaseValue ?? 0;
+          return {
+            id: `meta-camp-${r.campaignId ?? i}`,
+            channel: "Meta" as const,
+            level: "campaign" as const,
+            name: r.campaignName,
+            externalId: r.campaignId,
+            effectiveStatus: r.entityStatus ?? null,
+            spend: r.spend,
+            impressions: r.impressions,
+            clicks: r.clicks,
+            leads: r.leads + (r.messagingConversationsStarted ?? 0),
+            sales: r.purchases ?? 0,
+            revenue: apiRev + (mr ?? 0),
+            manualRevenue: mr,
+          };
+        });
       }
       if (osLevel === "adset") {
         return metaAdsetRows.map((r, i) => ({
@@ -452,20 +473,25 @@ export function Marketing() {
     }
     if (osPlatform === "google" && metrics?.ok) {
       if (osLevel === "campaign") {
-        return googleCampaignsFiltered.map((r, i) => ({
-          id: `gg-camp-${r.campaignId ?? i}`,
-          channel: "Google",
-          level: "campaign",
-          name: r.campaignName,
-          externalId: r.campaignId,
-          effectiveStatus: r.entityStatus ?? null,
-          spend: r.costMicros / 1_000_000,
-          impressions: r.impressions,
-          clicks: r.clicks,
-          leads: r.conversions,
-          sales: r.conversions,
-          revenue: r.conversionsValue ?? 0,
-        }));
+        return googleCampaignsFiltered.map((r, i) => {
+          const mr = mrv(r.campaignId);
+          const apiRev = r.conversionsValue ?? 0;
+          return {
+            id: `gg-camp-${r.campaignId ?? i}`,
+            channel: "Google" as const,
+            level: "campaign" as const,
+            name: r.campaignName,
+            externalId: r.campaignId,
+            effectiveStatus: r.entityStatus ?? null,
+            spend: r.costMicros / 1_000_000,
+            impressions: r.impressions,
+            clicks: r.clicks,
+            leads: r.conversions,
+            sales: r.conversions,
+            revenue: apiRev + (mr ?? 0),
+            manualRevenue: mr,
+          };
+        });
       }
       if (osLevel === "adset") {
         return googleAdGroupRowsOs.map((r, i) => ({
@@ -510,6 +536,7 @@ export function Marketing() {
     metaAdRows,
     googleAdGroupRowsOs,
     googleAdRowsOs,
+    manualRevMap,
   ]);
 
   const cpaTrafego = leadsReais > 0 ? filteredSpend / leadsReais : 0;
@@ -1055,6 +1082,7 @@ export function Marketing() {
                   onLevelChange={setOsLevel}
                   hasMeta={hasMeta}
                   hasGoogle={hasGoogle}
+                  onManualRevenueChange={reloadManualRevenues}
                 />
               ) : (
                 <p className="py-10 text-center text-sm text-muted-foreground">

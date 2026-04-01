@@ -47,6 +47,7 @@ import {
   getMetricsSnapshotLatestHandler,
 } from "../controllers/marketing.controller.js";
 import { postDashboardShareHandler } from "../controllers/dashboard-share.controller.js";
+import { putManualRevenueHandler, getManualRevenuesHandler } from "../controllers/manual-revenue.controller.js";
 
 const router = Router();
 
@@ -99,5 +100,8 @@ router.post("/metrics-snapshot", ...authCtx, postMetricsSnapshotHandler);
 router.get("/metrics-snapshot/latest", ...authCtx, getMetricsSnapshotLatestHandler);
 
 router.post("/dashboard-shares", ...authCtx, postDashboardShareHandler);
+
+router.put("/manual-revenue", ...authCtx, putManualRevenueHandler);
+router.get("/manual-revenue", ...authCtx, getManualRevenuesHandler);
 
 export default router;

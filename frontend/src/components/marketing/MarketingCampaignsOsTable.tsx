@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
   Columns2,
   FileDown,
   Loader2,
   Pause,
+  Pencil,
   Play,
   SlidersHorizontal,
   Wallet,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -38,6 +41,7 @@ import {
 import { appendCampaignActionLog } from "@/lib/campaign-local-actions";
 import { downloadCsv } from "@/lib/export-csv";
 import { CampaignOsDetailSheet } from "@/components/marketing/CampaignOsDetailSheet";
+import { upsertManualRevenue } from "@/lib/manual-revenue-api";
 
 const OS_TABLE_COLS_KEY = "ativadash:os-table-cols";
 
@@ -182,6 +186,7 @@ export function MarketingCampaignsOsTable({
   hasMeta,
   hasGoogle,
   combinedCampaignMode,
+  onManualRevenueChange,
 }: {
   rows: OsCampaignRow[];
   goalMode: AccountObjective;
@@ -203,6 +208,8 @@ export function MarketingCampaignsOsTable({
   hasGoogle?: boolean;
   /** Meta + Google na mesma lista — oculta alternância de plataforma/nível. */
   combinedCampaignMode?: boolean;
+  /** Callback disparado quando uma receita manual é salva/removida. */
+  onManualRevenueChange?: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -226,6 +233,11 @@ export function MarketingCampaignsOsTable({
   const [detailRow, setDetailRow] = useState<OsCampaignRow | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const pageSearchRef = useRef<HTMLInputElement>(null);
+  const [editingRevId, setEditingRevId] = useState<string | null>(null);
+  const [editingRevVal, setEditingRevVal] = useState("");
+  const [revSaving, setRevSaving] = useState(false);
+  const [revToast, setRevToast] = useState<string | null>(null);
+  const revInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const focusSearch = () => {
@@ -237,6 +249,50 @@ export function MarketingCampaignsOsTable({
     window.addEventListener("ativadash:focus-page-search", focusSearch);
     return () => window.removeEventListener("ativadash:focus-page-search", focusSearch);
   }, []);
+
+  useEffect(() => {
+    if (editingRevId && revInputRef.current) {
+      revInputRef.current.focus();
+      revInputRef.current.select();
+    }
+  }, [editingRevId]);
+
+  useEffect(() => {
+    if (!revToast) return;
+    const t = window.setTimeout(() => setRevToast(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [revToast]);
+
+  const openRevenueEdit = (rowId: string, currentRevenue: number) => {
+    setEditingRevId(rowId);
+    setEditingRevVal(currentRevenue > 0 ? String(currentRevenue) : "");
+  };
+
+  const cancelRevenueEdit = () => {
+    setEditingRevId(null);
+    setEditingRevVal("");
+  };
+
+  const saveManualRevenue = async (row: OsCampaignRow) => {
+    const val = parseFloat(editingRevVal.replace(",", "."));
+    if (!Number.isFinite(val) || val < 0) {
+      cancelRevenueEdit();
+      return;
+    }
+    if (!row.externalId) return;
+    setRevSaving(true);
+    try {
+      await upsertManualRevenue(row.externalId, row.channel, val);
+      setRevToast("Receita offline atribuída com sucesso. ROAS recalculado.");
+      onManualRevenueChange?.();
+    } catch {
+      setRevToast("Erro ao salvar receita manual.");
+    } finally {
+      setRevSaving(false);
+      setEditingRevId(null);
+      setEditingRevVal("");
+    }
+  };
 
   useEffect(() => {
     if (!undoState) return;
@@ -1125,7 +1181,62 @@ export function MarketingCampaignsOsTable({
                         </td>
                       ) : null}
                       {colVis.revenue ? (
-                        <td className="text-right align-middle text-sm tabular-nums">{formatSpend(row.revenue)}</td>
+                        <td className="text-right align-middle text-sm tabular-nums">
+                          {editingRevId === row.id ? (
+                            <form
+                              className="inline-flex items-center gap-1"
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                void saveManualRevenue(row);
+                              }}
+                            >
+                              <input
+                                ref={revInputRef}
+                                type="text"
+                                inputMode="decimal"
+                                className="h-7 w-24 rounded-md border border-primary/40 bg-background px-2 text-right text-sm tabular-nums outline-none ring-1 ring-primary/20 focus:ring-2 focus:ring-primary"
+                                value={editingRevVal}
+                                onChange={(e) => setEditingRevVal(e.target.value)}
+                                disabled={revSaving}
+                                onKeyDown={(e) => e.key === "Escape" && cancelRevenueEdit()}
+                              />
+                              <button
+                                type="submit"
+                                disabled={revSaving}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                                title="Salvar"
+                              >
+                                {revSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                              </button>
+                              <button
+                                type="button"
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+                                title="Cancelar"
+                                onClick={cancelRevenueEdit}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </form>
+                          ) : (
+                            <span
+                              className="group inline-flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-muted/60"
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => row.level === "campaign" && row.externalId && openRevenueEdit(row.id, row.manualRevenue ?? 0)}
+                              onKeyDown={(e) => e.key === "Enter" && row.level === "campaign" && row.externalId && openRevenueEdit(row.id, row.manualRevenue ?? 0)}
+                            >
+                              {row.revenue > 0 ? formatSpend(row.revenue) : "—"}
+                              {row.manualRevenue != null && row.manualRevenue > 0 ? (
+                                <span className="inline-block rounded border border-primary/30 bg-primary/10 px-1 py-px text-[9px] font-bold uppercase text-primary">
+                                  Manual
+                                </span>
+                              ) : null}
+                              {row.level === "campaign" && row.externalId ? (
+                                <Pencil className="hidden h-3 w-3 text-muted-foreground group-hover:inline-block" />
+                              ) : null}
+                            </span>
+                          )}
+                        </td>
                       ) : null}
                     </>
                   ) : null}
@@ -1326,6 +1437,12 @@ export function MarketingCampaignsOsTable({
           <Button type="button" size="sm" variant="secondary" className="rounded-lg" onClick={() => void handleUndo()}>
             Desfazer
           </Button>
+        </div>
+      ) : null}
+
+      {revToast ? (
+        <div className="fixed bottom-6 left-1/2 z-[100] -translate-x-1/2 animate-[slideUp_0.3s_ease-out] rounded-xl border border-emerald-500/40 bg-emerald-500/[0.12] px-5 py-3 text-sm font-medium text-emerald-900 shadow-lg backdrop-blur-md dark:text-emerald-100">
+          {revToast}
         </div>
       ) : null}
     </TooltipProvider>

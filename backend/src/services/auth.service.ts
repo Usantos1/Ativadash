@@ -392,6 +392,44 @@ export async function login(data: LoginInput) {
   };
 }
 
+/**
+ * Quando o `organizationId` embutido no refresh deixa de ter acesso efetivo (ex.: empresa desvinculada
+ * da matriz, arquivamento, remoção de vínculo), escolhe outra organização onde o utilizador ainda entra.
+ */
+export async function resolveFallbackActiveOrganizationIdForSession(userId: string): Promise<string | null> {
+  const rows = await prisma.membership.findMany({
+    where: { userId },
+    include: {
+      organization: {
+        select: {
+          id: true,
+          deletedAt: true,
+          organizationKind: true,
+          parentOrganizationId: true,
+        },
+      },
+    },
+  });
+  const eligible = rows.filter((r) => !r.organization.deletedAt);
+  const scored = await Promise.all(
+    eligible.map(async (r) => {
+      const o = r.organization;
+      const rank =
+        o.organizationKind === "MATRIX" && o.parentOrganizationId === null
+          ? 0
+          : o.organizationKind === "MATRIX"
+            ? 1
+            : o.parentOrganizationId === null
+              ? 2
+              : 3;
+      const ok = await userHasEffectiveAccess(userId, o.id);
+      return { id: o.id, rank, ok };
+    })
+  );
+  scored.sort((a, b) => a.rank - b.rank);
+  return scored.find((s) => s.ok)?.id ?? null;
+}
+
 export async function refreshAccessToken(refreshTokenStr: string) {
   let decoded: { userId?: string; type?: string; organizationId?: string };
   try {
@@ -427,7 +465,14 @@ export async function refreshAccessToken(refreshTokenStr: string) {
     throw new Error("Usuário sem organização");
   }
 
-  const allowed = await userHasEffectiveAccess(stored.userId, orgId);
+  let allowed = await userHasEffectiveAccess(stored.userId, orgId);
+  if (!allowed) {
+    const fallbackOrgId = await resolveFallbackActiveOrganizationIdForSession(stored.userId);
+    if (fallbackOrgId) {
+      orgId = fallbackOrgId;
+      allowed = true;
+    }
+  }
   if (!allowed) {
     throw new Error("Sem acesso a esta empresa");
   }

@@ -134,6 +134,7 @@ model Organization {
   alertRules                 AlertRule[]
   automationExecutionLogs    AutomationExecutionLog[]
   dashboardShareLinks DashboardShareLink[]
+  manualCampaignRevenues ManualCampaignRevenue[]
 
   matrixGrantsAsMatrix   MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantMatrix")
   matrixGrantsAsWorkspace MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantWorkspace")
@@ -421,6 +422,21 @@ model AlertOccurrence {
   acknowledgedAt DateTime?
 
   @@index([organizationId, createdAt])
+}
+
+/// Receita manual por campanha (Offline Conversions / Atribuição Manual)
+model ManualCampaignRevenue {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  workspace      Organization @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaignId     String
+  channel        String   @db.VarChar(16)
+  manualRevenue  Float
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+
+  @@unique([workspaceId, campaignId])
+  @@index([workspaceId])
 }
 
 /// Link público somente leitura (token opaco) para compartilhar visão do painel ADS / funil

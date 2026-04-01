@@ -15,6 +15,8 @@ export type OsCampaignRow = {
   leads: number;
   sales: number;
   revenue: number;
+  /** Receita manual (offline) atribuída pelo gestor de tráfego */
+  manualRevenue?: number;
   /** Quando a API expõe (ex.: Meta no futuro) */
   effectiveStatus?: "ACTIVE" | "PAUSED" | "ARCHIVED" | "UNKNOWN" | null;
 };
