@@ -171,6 +171,17 @@ export const resellerAuditQuerySchema = z.object({
   to: z.string().datetime().optional(),
 });
 
+/** Atividade registada nos workspaces da rede (AuditLog + execuções de automação). */
+export const resellerNetworkActivityQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).optional().default(80),
+  organizationId: z.string().min(1).optional(),
+  actorUserId: z.string().min(1).optional(),
+  action: z.string().max(120).optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  source: z.enum(["all", "user", "automation"]).optional().default("all"),
+});
+
 const planFeaturesJson = z.record(z.union([z.boolean(), z.string(), z.number()])).optional();
 
 export const resellerPlanCreateSchema = z.object({

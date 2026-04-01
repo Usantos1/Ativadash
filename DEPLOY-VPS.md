@@ -192,6 +192,14 @@ API_BASE_URL=https://api.ativadash.com
 GOOGLE_CLIENT_ID=seu_client_id_google
 GOOGLE_CLIENT_SECRET=seu_client_secret_google
 GOOGLE_ADS_DEVELOPER_TOKEN=seu_developer_token_google_ads
+
+# --- Motor de automação (Metas / alertas) — opcional ---
+# Com segredo definido, a rota POST /api/internal/automation-tick fica ativa (header X-Automation-Secret).
+# Use cron na VPS em vez do worker embutido, se preferir um único processo PM2:
+# AUTOMATION_INTERNAL_SECRET=gere-um-segredo-longo-igual-ao-cron
+# Worker no mesmo processo da API (alternativa ao cron):
+# AUTOMATION_WORKER_ENABLED=true
+# AUTOMATION_WORKER_INTERVAL_MS=3600000
 ```
 
 Salve (Ctrl+O, Enter, Ctrl+X no nano).
@@ -217,6 +225,20 @@ curl http://127.0.0.1:3000/api/health
 ```
 
 Deve retornar algo como `{"status":"ok","service":"ativa-dash-api"}`.
+
+### Motor de automação (cron opcional)
+
+Se definiste `AUTOMATION_INTERNAL_SECRET` no `.env`, podes disparar o motor de regras (Meta/Google) por **cron** sem segundo processo, por exemplo a cada hora (ajusta URL e o segredo):
+
+```bash
+crontab -e
+```
+
+```cron
+0 * * * * curl -fsS -X POST -H "X-Automation-Secret: O_MESMO_VALOR_DO_ENV" https://api.ativadash.com/api/internal/automation-tick >/dev/null
+```
+
+A resposta JSON inclui `organizationsScanned`, `actionsExecuted` e `durationMs`. Se o segredo estiver vazio, a rota responde **404** (não existe). Se preferires o worker dentro do Node, usa `AUTOMATION_WORKER_ENABLED=true` em vez do cron.
 
 ---
 

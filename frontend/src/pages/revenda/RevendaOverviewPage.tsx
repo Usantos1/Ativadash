@@ -136,6 +136,15 @@ export function RevendaOverviewPage() {
     return sortRowsByLastActivity(dash.organizations, "desc").slice(0, 6);
   }, [dash]);
 
+  /** IDs de agências filiais na lista — clientes com esse pai aparecem em /revenda/agencias. */
+  const agencyChildIds = useMemo(
+    () =>
+      new Set(
+        (dash?.organizations ?? []).filter((o) => o.resellerOrgKind === "AGENCY").map((o) => o.id)
+      ),
+    [dash]
+  );
+
   if (loading && !dash) {
     return (
       <div className="space-y-8 animate-in fade-in-0 duration-200">
@@ -293,7 +302,12 @@ export function RevendaOverviewPage() {
                 </div>
                 <div className="flex flex-wrap gap-x-3 gap-y-1">
                   <Link
-                    to={o.resellerOrgKind === "AGENCY" ? "/revenda/agencias" : "/revenda/empresas"}
+                    to={
+                      o.resellerOrgKind === "AGENCY" ||
+                      (o.parentOrganizationId != null && agencyChildIds.has(o.parentOrganizationId))
+                        ? "/revenda/agencias"
+                        : "/revenda/empresas"
+                    }
                     className="text-xs font-semibold text-primary underline-offset-4 hover:underline"
                   >
                     Lista

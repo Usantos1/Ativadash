@@ -66,8 +66,8 @@ const FULL_NAV_GROUPS: NavGroup[] = [
     label: "Conexões",
     items: [
       { to: "/marketing/integracoes", label: "Integrações", icon: Plug },
-      { to: "/ads/metas-alertas", label: "Alertas e regras", icon: Bell },
-      { to: "/marketing/configuracoes", label: "Metas por canal", icon: SlidersHorizontal },
+      { to: "/ads/metas-alertas", label: "Metas e alertas", icon: Bell },
+      { to: "/marketing/configuracoes", label: "Metas e canais", icon: SlidersHorizontal },
     ],
   },
   {
@@ -118,8 +118,8 @@ function buildNavGroups(
       label: "Conexões",
       items: [
         { to: "/marketing/integracoes", label: "Integrações", icon: Plug },
-        { to: "/ads/metas-alertas", label: "Alertas e regras", icon: Bell },
-        { to: "/marketing/configuracoes", label: "Metas por canal", icon: SlidersHorizontal },
+        { to: "/ads/metas-alertas", label: "Metas e alertas", icon: Bell },
+        { to: "/marketing/configuracoes", label: "Metas e canais", icon: SlidersHorizontal },
       ],
     };
     if (isAgencyBranchExpandedOpsEnabled()) {

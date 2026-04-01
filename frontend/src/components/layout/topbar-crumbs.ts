@@ -44,12 +44,13 @@ export function resolveTopbarCrumbs(pathname: string): TopbarCrumb[] {
     ];
   }
   if (p === "/marketing/configuracoes" || p === "/ads/metas-alertas" || p === "/ads/metas-operacao") {
-    return [
-      { label: "Marketing", href: "/marketing" },
-      {
-        label: p === "/ads/metas-operacao" ? "Operação por canal" : "Metas e alertas",
-      },
-    ];
+    const leaf =
+      p === "/ads/metas-operacao"
+        ? "Operação por canal"
+        : p === "/marketing/configuracoes"
+          ? "Metas e canais"
+          : "Metas e alertas";
+    return [{ label: "Marketing", href: "/marketing" }, { label: leaf }];
   }
 
   if (p === "/clientes") return [{ label: "Clientes" }];
@@ -78,7 +79,7 @@ export function resolveTopbarCrumbs(pathname: string): TopbarCrumb[] {
     "/revenda/agencias": "Agências",
     "/revenda/usuarios": "Usuários",
     "/revenda/planos": "Planos",
-    "/revenda/modulos": "Limites",
+    "/revenda/modulos": "Módulos",
     "/revenda/saude": "Saúde",
     "/revenda/auditoria": "Auditoria",
   };

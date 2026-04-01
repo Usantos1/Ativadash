@@ -762,7 +762,7 @@ export function MetasAlertasPage() {
           <Link to="/ads/metas-operacao">Operação por canal</Link>
         </Button>
         <Button variant="outline" size="sm" className="h-9 text-xs sm:text-sm" asChild>
-          <Link to="/marketing/configuracoes">Metas por canal (automações)</Link>
+          <Link to="/marketing/configuracoes">Metas numéricas por canal</Link>
         </Button>
       </div>
 
@@ -770,7 +770,7 @@ export function MetasAlertasPage() {
         eyebrow="Automação"
         breadcrumbs={[{ label: "Painel ADS", href: "/marketing" }, { label: "Metas e alertas" }]}
         title="Metas e alertas"
-        subtitle="Metas globais, motor de regras e roteamento WhatsApp alinhado à equipe."
+        subtitle="Fonte única para regras personalizadas, motor autónomo (Meta/Google) e histórico. CPL/ROAS por canal ficam em Metas numéricas por canal."
         meta={
           <span className="inline-flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span className="rounded-md border border-border/50 bg-muted/30 px-2 py-1">Fuso: {tz}</span>
@@ -1212,6 +1212,21 @@ export function MetasAlertasPage() {
                           </SelectContent>
                         </Select>
                       </p>
+                      {automationChannel === "google" && r.evaluationLevel === "ad" ? (
+                        <p className="text-[10px] leading-snug text-muted-foreground">
+                          Google Ads: no nível <span className="font-medium text-foreground">Anúncio</span>, a pausa
+                          atinge o criativo no conjunto. Ações <span className="font-medium">±20% de orçamento</span>{" "}
+                          aplicam-se à <span className="font-medium">campanha</span> associada (o anúncio não tem
+                          orçamento próprio).
+                        </p>
+                      ) : null}
+                      {automationChannel === "google" && r.evaluationLevel === "ad_set" ? (
+                        <p className="text-[10px] leading-snug text-muted-foreground">
+                          Google Ads: no nível <span className="font-medium text-foreground">Conjunto</span>, a pausa
+                          atinge o conjunto de anúncios. <span className="font-medium">±20% de orçamento</span> também
+                          ajustam a campanha pai.
+                        </p>
+                      ) : null}
                       <p className="flex flex-wrap items-center gap-x-1 gap-y-2 text-[11px] leading-relaxed text-muted-foreground">
                         <Select
                           value={r.operator}

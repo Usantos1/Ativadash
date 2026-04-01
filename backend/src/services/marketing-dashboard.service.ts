@@ -657,7 +657,7 @@ export async function fetchMarketingDashboardPayload(
     for (const account of accounts) {
       const accountId = account.id.replace("act_", "");
 
-      const [part, accInsightRes, campRows, adsetRows, ads] = await Promise.all([
+      const [part, accInsightRes, campRows, adsetRows, ads, campaignListMeta] = await Promise.all([
         fetchDailyForAccount(accountId, accessToken, appSecret, timeRange),
         metaGraphGet<{ data: AccInsight[] }>(
           `/act_${accountId}/insights?fields=impressions,reach,frequency&time_range=${encodeURIComponent(timeRange)}&level=account`,
@@ -670,6 +670,10 @@ export async function fetchMarketingDashboardPayload(
         fetchCampaignRows(accountId, accessToken, appSecret, timeRange),
         fetchAdsetRowsForDashboard(accountId, accessToken, appSecret, timeRange),
         fetchAdRowsForDashboard(accountId, accessToken, appSecret, timeRange),
+        fetchAllCampaignsForAccount(accountId, accessToken, appSecret).catch((e) => {
+          console.warn(`[Meta dashboard] campaign list act_${accountId}:`, e instanceof Error ? e.message : e);
+          return [] as CampaignMetaRow[];
+        }),
       ]);
 
       for (const [d, v] of part) {
@@ -748,7 +752,6 @@ export async function fetchMarketingDashboardPayload(
         }
       }
 
-      const campaignListMeta = await fetchAllCampaignsForAccount(accountId, accessToken, appSecret);
       for (const cm of campaignListMeta) {
         if (!allCampaignMetaById.has(cm.id)) allCampaignMetaById.set(cm.id, cm);
       }
@@ -756,12 +759,13 @@ export async function fetchMarketingDashboardPayload(
       const adsetIdsForStatus = adsetRows
         .map((x) => (x.adset_id != null ? String(x.adset_id) : ""))
         .filter(Boolean);
-      const adsetStatusMap = await fetchAdsetEffectiveStatusMap(
-        accountId,
-        adsetIdsForStatus,
-        accessToken,
-        appSecret
-      );
+      const adIdsForStatus = ads
+        .map((x) => (x.ad_id != null ? String(x.ad_id) : ""))
+        .filter(Boolean);
+      const [adsetStatusMap, adStatusMap] = await Promise.all([
+        fetchAdsetEffectiveStatusMap(accountId, adsetIdsForStatus, accessToken, appSecret),
+        fetchAdEffectiveStatusMap(accountId, adIdsForStatus, accessToken, appSecret),
+      ]);
 
       for (const r of adsetRows) {
         const imp = parseInt(r.impressions ?? "0", 10) || 0;
@@ -794,16 +798,6 @@ export async function fetchMarketingDashboardPayload(
           )
         );
       }
-
-      const adIdsForStatus = ads
-        .map((x) => (x.ad_id != null ? String(x.ad_id) : ""))
-        .filter(Boolean);
-      const adStatusMap = await fetchAdEffectiveStatusMap(
-        accountId,
-        adIdsForStatus,
-        accessToken,
-        appSecret
-      );
 
       for (const r of ads) {
         const imp = parseInt(r.impressions ?? "0", 10) || 0;

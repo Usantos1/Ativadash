@@ -21,6 +21,7 @@ router.get("/ecosystem/users", resellerController.resellerEcosystemUsers);
 router.post("/ecosystem/users", resellerController.resellerCreateUserHandler);
 router.post("/ecosystem/invitations", resellerController.resellerCreateInvitationHandler);
 router.get("/audit", resellerController.resellerAuditHandler);
+router.get("/network-activity", resellerController.resellerNetworkActivityHandler);
 
 router.post("/children", resellerController.resellerCreateChildHandler);
 router.post("/children/:childId/detach", resellerController.resellerDetachChildHandler);

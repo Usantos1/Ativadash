@@ -521,9 +521,12 @@ export function MetaAdsIntegrationPage() {
         )}
 
         <p className="text-xs text-muted-foreground">
-          Metas e alertas:{" "}
           <Link to="/marketing/configuracoes" className="text-primary underline-offset-4 hover:underline">
-            Metas e alertas
+            Metas e canais
+          </Link>
+          {" · "}
+          <Link to="/ads/metas-alertas" className="text-primary underline-offset-4 hover:underline">
+            Regras e motor
           </Link>
         </p>
     </IntegrationDetailPageShell>

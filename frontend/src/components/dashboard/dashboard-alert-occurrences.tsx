@@ -73,10 +73,10 @@ export function DashboardAlertOccurrences({
       <p className={cn("mt-3 text-xs leading-relaxed text-muted-foreground", className)}>
         Nenhum disparo recente de regras personalizadas.{" "}
         <Link
-          to="/marketing/configuracoes"
+          to="/ads/metas-alertas"
           className="font-medium text-primary underline-offset-4 hover:underline"
         >
-          Configurar alertas
+          Configurar regras
         </Link>
       </p>
     );
@@ -90,7 +90,7 @@ export function DashboardAlertOccurrences({
           Regras personalizadas (recentes)
         </span>
         <Link
-          to="/marketing/configuracoes"
+          to="/ads/metas-alertas"
           className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-primary hover:underline"
         >
           Ver tudo

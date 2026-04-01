@@ -711,6 +711,154 @@ export async function resellerListAuditLogs(
   }));
 }
 
+export type NetworkActivityItem = {
+  id: string;
+  source: "user" | "automation";
+  createdAt: string;
+  organizationId: string | null;
+  organizationName: string | null;
+  actorUserId: string | null;
+  actorEmail: string | null;
+  actorName: string | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  metadata: unknown;
+};
+
+/**
+ * Linha do tempo de operações nos workspaces do ecossistema (ações humanas + automação),
+ * para a matriz acompanhar alterações em campanhas, regras, etc.
+ */
+export async function resellerListNetworkActivity(
+  activeOrganizationId: string,
+  userId: string,
+  opts: {
+    limit: number;
+    organizationId?: string;
+    actorUserId?: string;
+    action?: string;
+    from?: Date;
+    to?: Date;
+    source: "all" | "user" | "automation";
+  }
+): Promise<NetworkActivityItem[]> {
+  const matrixId = await resolveResellerMatrixOrganizationId(userId, activeOrganizationId);
+  const allowedOrgIds = await ecosystemOrganizationIds(matrixId);
+  const allowed = new Set(allowedOrgIds);
+  if (opts.organizationId && !allowed.has(opts.organizationId)) {
+    throw new Error("Organização fora do ecossistema");
+  }
+  const targetOrgIds = opts.organizationId ? [opts.organizationId] : [...allowedOrgIds];
+
+  const cap = Math.min(200, Math.max(1, opts.limit));
+  const perSource = Math.min(150, Math.max(cap * 2, cap));
+  const skipAutomation = Boolean(opts.actorUserId) || opts.source === "user";
+  const skipUser = opts.source === "automation";
+
+  const items: NetworkActivityItem[] = [];
+
+  if (!skipUser) {
+    const where: Prisma.AuditLogWhereInput = {
+      organizationId: { in: targetOrgIds },
+    };
+    if (opts.actorUserId) where.actorUserId = opts.actorUserId;
+    if (opts.action) where.action = opts.action;
+    if (opts.from || opts.to) {
+      where.createdAt = {};
+      if (opts.from) where.createdAt.gte = opts.from;
+      if (opts.to) where.createdAt.lte = opts.to;
+    }
+    const logs = await prisma.auditLog.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: perSource,
+    });
+    const userIds = [...new Set(logs.map((l) => l.actorUserId))];
+    const oids = [...new Set(logs.map((l) => l.organizationId).filter((x): x is string => x != null))];
+    const [users, orgs] = await Promise.all([
+      userIds.length
+        ? prisma.user.findMany({
+            where: { id: { in: userIds }, deletedAt: null },
+            select: { id: true, email: true, name: true },
+          })
+        : Promise.resolve([]),
+      oids.length
+        ? prisma.organization.findMany({
+            where: { id: { in: oids }, deletedAt: null },
+            select: { id: true, name: true },
+          })
+        : Promise.resolve([]),
+    ]);
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    const orgMap = new Map(orgs.map((o) => [o.id, o]));
+    for (const l of logs) {
+      const u = userMap.get(l.actorUserId);
+      const o = l.organizationId ? orgMap.get(l.organizationId) : null;
+      items.push({
+        id: `audit:${l.id}`,
+        source: "user",
+        createdAt: l.createdAt.toISOString(),
+        organizationId: l.organizationId,
+        organizationName: o?.name ?? null,
+        actorUserId: l.actorUserId,
+        actorEmail: u?.email ?? null,
+        actorName: u?.name ?? null,
+        action: l.action,
+        entityType: l.entityType,
+        entityId: l.entityId,
+        metadata: l.metadata,
+      });
+    }
+  }
+
+  if (!skipAutomation) {
+    const where: Prisma.AutomationExecutionLogWhereInput = {
+      organizationId: { in: targetOrgIds },
+    };
+    if (opts.action) where.actionTaken = opts.action;
+    if (opts.from || opts.to) {
+      where.executedAt = {};
+      if (opts.from) where.executedAt.gte = opts.from;
+      if (opts.to) where.executedAt.lte = opts.to;
+    }
+    const rows = await prisma.automationExecutionLog.findMany({
+      where,
+      orderBy: { executedAt: "desc" },
+      take: perSource,
+      include: {
+        organization: { select: { name: true } },
+        rule: { select: { name: true } },
+      },
+    });
+    for (const r of rows) {
+      items.push({
+        id: `auto:${r.id}`,
+        source: "automation",
+        createdAt: r.executedAt.toISOString(),
+        organizationId: r.organizationId,
+        organizationName: r.organization.name,
+        actorUserId: null,
+        actorEmail: null,
+        actorName: null,
+        action: r.actionTaken,
+        entityType: "AutomationExecution",
+        entityId: r.assetId,
+        metadata: {
+          ruleId: r.ruleId,
+          ruleName: r.rule.name,
+          assetLabel: r.assetLabel,
+          previousValue: r.previousValue,
+          newValue: r.newValue,
+        },
+      });
+    }
+  }
+
+  items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return items.slice(0, cap);
+}
+
 export async function resellerListEcosystemOrganizations(activeOrganizationId: string, userId: string) {
   const matrixId = await resolveResellerMatrixOrganizationId(userId, activeOrganizationId);
   const ids = await ecosystemOrganizationIds(matrixId);

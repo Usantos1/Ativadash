@@ -28,12 +28,15 @@ import {
 import {
   fetchGoogleAdsMetrics,
   fetchGoogleAdsAdGroupMetrics,
+  fetchGoogleAdsAdMetrics,
   mutateGoogleCampaignStatus,
   mutateGoogleCampaignDailyBudget,
   mutateGoogleAdGroupStatus,
+  mutateGoogleAdGroupAdStatus,
   fetchGoogleCampaignBudgetMicros,
   type GoogleAdsCampaignRow,
   type GoogleAdsAdGroupRow,
+  type GoogleAdsAdRow,
 } from "./google-ads-metrics.service.js";
 import type { InsightAlert } from "../types/marketing-insight.types.js";
 
@@ -124,6 +127,17 @@ function googleCampaignToEntity(row: GoogleAdsCampaignRow): AutomationEntityMetr
 }
 
 function googleAdGroupToEntity(row: GoogleAdsAdGroupRow): AutomationEntityMetricInput {
+  const costBrl = row.costMicros / 1_000_000;
+  return {
+    spendBrl: costBrl,
+    resultsForCpa: Math.max(0, row.conversions),
+    purchaseValueBrl: row.conversionsValue,
+    impressions: row.impressions,
+    clicks: row.clicks,
+  };
+}
+
+function googleAdsAdRowToEntity(row: GoogleAdsAdRow): AutomationEntityMetricInput {
   const costBrl = row.costMicros / 1_000_000;
   return {
     spendBrl: costBrl,
@@ -341,10 +355,41 @@ async function executeGoogleForRule(
   const level = (rule.evaluationLevel ?? "campaign").trim() || "campaign";
 
   if (level === "ad") {
-    console.info(
-      `[automation] Google: regra ${rule.id} nível "anúncio" — mutação ainda não suportada (use campanha ou conjunto).`
-    );
-    return 0;
+    let actions = 0;
+    const pack = await fetchGoogleAdsAdMetrics(organizationId, range, undefined);
+    if (!pack.ok) return 0;
+    const adMutationMetrics = { skippedBudgetMissingCampaign: 0 };
+    for (const row of pack.rows) {
+      const agId = row.adGroupId;
+      const adId = row.adId;
+      const campId = row.campaignId;
+      if (!agId || !adId) continue;
+      const assetKey = `${agId}~${adId}`;
+      const entity = googleAdsAdRowToEntity(row);
+      if (!entityMatchesAlertRule(rule, settingsRow, "google", PERIOD_KEY, entity)) continue;
+      if (await wasRecentlyExecuted(organizationId, rule.id, assetKey, rule.actionType)) continue;
+      const adLabel = row.adName?.trim() || adId;
+      const n = await runGoogleAdMutation(
+        organizationId,
+        rule,
+        agId,
+        adId,
+        assetKey,
+        adLabel,
+        row.adGroupName || agId,
+        campId,
+        row.campaignName || campId || "—",
+        row.entityStatus,
+        adMutationMetrics
+      );
+      actions += n;
+    }
+    if (adMutationMetrics.skippedBudgetMissingCampaign > 0) {
+      console.warn(
+        `[automation] Google regra ${rule.id} org ${organizationId}: ${adMutationMetrics.skippedBudgetMissingCampaign} gatilho(s) ±20% em nível anúncio ignorados (sem campaignId na métrica; o orçamento é ao nível da campanha).`
+      );
+    }
+    return actions;
   }
 
   if (level === "ad_set") {
@@ -446,6 +491,81 @@ async function runGoogleAdGroupMutation(
     });
     if (!log) return 0;
     const msg = `Orçamento diário da campanha *${campaignLabel}* (gatilho no conjunto *${adGroupLabel}*): ${formatMoney(prevMajor)} → ${formatMoney(nextMajor)}.`;
+    await persistOccurrence(organizationId, rule, msg);
+    await notifyAutomationWhatsApp(organizationId, rule, msg, "google");
+    return 1;
+  }
+
+  return 0;
+}
+
+async function runGoogleAdMutation(
+  organizationId: string,
+  rule: AlertRule,
+  adGroupId: string,
+  adId: string,
+  assetKey: string,
+  adLabel: string,
+  adGroupLabel: string,
+  campaignId: string | undefined,
+  campaignLabel: string,
+  entityStatus: string | undefined,
+  metrics?: { skippedBudgetMissingCampaign: number }
+): Promise<number> {
+  const action = rule.actionType;
+  const fullLabel = `${adLabel} · ${adGroupLabel} · ${campaignLabel}`;
+
+  if (action === "PAUSE_ASSET") {
+    if (entityStatus === "PAUSED") return 0;
+    const out = await mutateGoogleAdGroupAdStatus(organizationId, adGroupId, adId, false, undefined);
+    if (!out.ok) {
+      console.warn(`[automation] Google pause ad ${adGroupId}~${adId}:`, out.message);
+      return 0;
+    }
+    const log = await appendAutomationExecutionLog(organizationId, {
+      ruleId: rule.id,
+      assetId: assetKey,
+      assetLabel: fullLabel,
+      actionTaken: "PAUSE_ASSET",
+      previousValue: entityStatus ?? "ACTIVE",
+      newValue: "PAUSED",
+    });
+    if (!log) return 0;
+    const msg = `Pausa automática (Google) no anúncio *${adLabel}* (conjunto *${adGroupLabel}*, campanha *${campaignLabel}*).`;
+    await persistOccurrence(organizationId, rule, msg);
+    await notifyAutomationWhatsApp(organizationId, rule, msg, "google");
+    return 1;
+  }
+
+  if (action === "INCREASE_BUDGET_20" || action === "DECREASE_BUDGET_20") {
+    if (!campaignId) {
+      if (metrics) metrics.skippedBudgetMissingCampaign += 1;
+      return 0;
+    }
+    if (entityStatus === "PAUSED") return 0;
+    const mult = action === "INCREASE_BUDGET_20" ? 1.2 : 0.8;
+    const cur = await fetchGoogleCampaignBudgetMicros(organizationId, campaignId, undefined);
+    if (!cur.ok) {
+      console.warn(`[automation] Google orçamento (campanha pai, gatilho anúncio) ${campaignId}:`, cur.message);
+      return 0;
+    }
+    const prevMajor = cur.amountMicros / 1_000_000;
+    const nextMajor = Math.max(1, Math.round(prevMajor * mult * 100) / 100);
+    const out = await mutateGoogleCampaignDailyBudget(organizationId, campaignId, nextMajor, undefined);
+    if (!out.ok) {
+      console.warn(`[automation] Google budget campanha ${campaignId} (gatilho anúncio):`, out.message);
+      return 0;
+    }
+    const log = await appendAutomationExecutionLog(organizationId, {
+      ruleId: rule.id,
+      assetId: assetKey,
+      assetLabel: `${fullLabel} → camp.`,
+      actionTaken: String(action),
+      previousValue: formatMoney(prevMajor),
+      newValue: formatMoney(nextMajor),
+    });
+    if (!log) return 0;
+    const msg = `Orçamento diário da campanha *${campaignLabel}* (gatilho no anúncio *${adLabel}*): ${formatMoney(prevMajor)} → ${formatMoney(nextMajor)}.`;
     await persistOccurrence(organizationId, rule, msg);
     await notifyAutomationWhatsApp(organizationId, rule, msg, "google");
     return 1;
@@ -564,7 +684,9 @@ export async function runAutomationForOrganization(organizationId: string): Prom
 export async function runAutomationExecutionTick(): Promise<{
   organizationsScanned: number;
   actionsExecuted: number;
+  durationMs: number;
 }> {
+  const t0 = Date.now();
   const orgs = await prisma.organization.findMany({
     where: { deletedAt: null },
     select: { id: true },
@@ -574,5 +696,9 @@ export async function runAutomationExecutionTick(): Promise<{
     const n = await runAutomationForOrganization(id);
     actionsExecuted += n;
   }
-  return { organizationsScanned: orgs.length, actionsExecuted };
+  return {
+    organizationsScanned: orgs.length,
+    actionsExecuted,
+    durationMs: Date.now() - t0,
+  };
 }

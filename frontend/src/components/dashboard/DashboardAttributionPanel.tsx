@@ -31,7 +31,7 @@ export function DashboardAttributionPanel({
             to="/marketing/configuracoes"
             className="text-[10px] font-medium text-primary underline-offset-2 hover:underline"
           >
-            Ativar no Metas
+            Metas e canais
           </Link>
         ) : null}
       </div>

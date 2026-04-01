@@ -14,13 +14,65 @@ export type ChildMarketingRollup30d = {
   cpl: number | null;
 };
 
+/** Meta + Google em paralelo; sem consultar integrações (use quando já souber os flags). */
+async function fetchMarketingRollupLast30d(
+  organizationId: string,
+  hasMeta: boolean,
+  hasGoogle: boolean
+): Promise<ChildMarketingRollup30d | null> {
+  if (!hasMeta && !hasGoogle) return null;
+  const range = rangeLast30d();
+
+  const metaP = hasMeta
+    ? fetchMetaAdsMetrics(organizationId, range)
+        .then((m) =>
+          m.ok
+            ? {
+                spend: m.summary.spend,
+                leads: m.summary.leads + (m.summary.messagingConversationsStarted ?? 0),
+              }
+            : null
+        )
+        .catch(() => null)
+    : Promise.resolve(null);
+
+  const googleP = hasGoogle
+    ? fetchGoogleAdsMetrics(organizationId, range)
+        .then((g) =>
+          g.ok ? { spend: g.summary.costMicros / 1_000_000, leads: g.summary.conversions } : null
+        )
+        .catch(() => null)
+    : Promise.resolve(null);
+
+  const [metaR, googleR] = await Promise.all([metaP, googleP]);
+
+  let spend = 0;
+  let leads = 0;
+  let ok = false;
+  if (metaR) {
+    ok = true;
+    spend += metaR.spend;
+    leads += metaR.leads;
+  }
+  if (googleR) {
+    ok = true;
+    spend += googleR.spend;
+    leads += googleR.leads;
+  }
+  if (!ok) return null;
+  return {
+    spend,
+    leads,
+    cpl: leads > 0 ? spend / leads : null,
+  };
+}
+
 /**
  * Gasto + leads (últimos 30 dias) para um workspace filho — mesma composição Meta + Google do painel ADS.
  */
 export async function rollupMarketingLast30DaysForChild(
   organizationId: string
 ): Promise<ChildMarketingRollup30d | null> {
-  const range = rangeLast30d();
   const [metaInt, googleInt] = await Promise.all([
     prisma.integration.findUnique({
       where: { organizationId_slug: { organizationId, slug: "meta" } },
@@ -33,43 +85,7 @@ export async function rollupMarketingLast30DaysForChild(
   ]);
   const hasMeta = metaInt?.status === "connected";
   const hasGoogle = googleInt?.status === "connected";
-  if (!hasMeta && !hasGoogle) return null;
-
-  let spend = 0;
-  let leads = 0;
-  let ok = false;
-
-  if (hasMeta) {
-    try {
-      const m = await fetchMetaAdsMetrics(organizationId, range);
-      if (m.ok) {
-        ok = true;
-        spend += m.summary.spend;
-        leads += m.summary.leads + (m.summary.messagingConversationsStarted ?? 0);
-      }
-    } catch {
-      /* silencioso — painel matriz não deve falhar por um filho */
-    }
-  }
-  if (hasGoogle) {
-    try {
-      const g = await fetchGoogleAdsMetrics(organizationId, range);
-      if (g.ok) {
-        ok = true;
-        spend += g.summary.costMicros / 1_000_000;
-        leads += g.summary.conversions;
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-
-  if (!ok) return null;
-  return {
-    spend,
-    leads,
-    cpl: leads > 0 ? spend / leads : null,
-  };
+  return fetchMarketingRollupLast30d(organizationId, hasMeta, hasGoogle);
 }
 
 type RollupInput = {
@@ -93,7 +109,11 @@ export async function rollupMarketing30dForChildren(
     const results = await Promise.all(
       chunk.map(async (r) => {
         try {
-          const rollup = await rollupMarketingLast30DaysForChild(r.id);
+          const rollup = await fetchMarketingRollupLast30d(
+            r.id,
+            r.metaAdsConnected,
+            r.googleAdsConnected
+          );
           return [r.id, rollup] as const;
         } catch {
           return [r.id, null] as const;

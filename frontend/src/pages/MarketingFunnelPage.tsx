@@ -98,8 +98,13 @@ function ChannelTrafficPanel(props: {
   ctr: number | null;
   cpc: number | null;
   mixPct: number | null;
+  /** Captação: volume de conversões/leads no canal + custo médio */
+  conversionVolumeLabel?: string;
+  conversionCount?: number;
+  costPerConversion?: number | null;
 }) {
-  const { name, status, spend, clicks, ctr, cpc, mixPct } = props;
+  const { name, status, spend, clicks, ctr, cpc, mixPct, conversionVolumeLabel, conversionCount, costPerConversion } =
+    props;
   const ring =
     status === "good"
       ? "ring-2 ring-emerald-500/40"
@@ -135,6 +140,24 @@ function ChannelTrafficPanel(props: {
           </p>
         </div>
       </div>
+      {conversionVolumeLabel != null ? (
+        <div className="mt-3 border-t border-border/40 pt-3">
+          <p className="text-[10px] font-bold uppercase text-muted-foreground">{conversionVolumeLabel}</p>
+          <p className="mt-0.5 text-2xl font-black tabular-nums text-foreground">
+            {formatNumber(Math.round(conversionCount ?? 0))}
+          </p>
+          <div className="mt-2 flex items-end justify-between gap-2">
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground">Custo / conv.</p>
+              <p className="text-base font-bold tabular-nums">
+                {costPerConversion != null && Number.isFinite(costPerConversion)
+                  ? formatSpend(costPerConversion)
+                  : "—"}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -726,7 +749,7 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                 ) : null}
                 {!isClientPortalUser ? (
                   <Button variant="default" size="sm" className="h-9 rounded-lg shadow-sm" asChild>
-                    <Link to="/marketing/configuracoes">Metas e alertas</Link>
+                    <Link to="/marketing/configuracoes">Metas e canais</Link>
                   </Button>
                 ) : null}
               </div>
@@ -779,7 +802,14 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
         />
       ) : hasData ? (
         <div className="space-y-5">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div
+            className={cn(
+              "grid gap-3",
+              variant === "captacao"
+                ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7"
+                : "sm:grid-cols-2 lg:grid-cols-5"
+            )}
+          >
             {variant === "captacao" && (
               <>
                 <KpiCardPremium variant="primary" label="Investimento" value={formatSpend(filteredSpend)} hideSource loading={kpiLoading} />
@@ -796,6 +826,20 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                   variant="secondary"
                   label="CPC"
                   value={cpcT != null ? formatSpend(cpcT) : "—"}
+                  hideSource
+                  loading={kpiLoading}
+                />
+                <KpiCardPremium
+                  variant="secondary"
+                  label={leadLabel}
+                  value={formatNumber(Math.round(leadsReais))}
+                  hideSource
+                  loading={kpiLoading}
+                />
+                <KpiCardPremium
+                  variant="secondary"
+                  label="CPL (médio)"
+                  value={cplLeads != null ? formatSpend(cplLeads) : "—"}
                   hideSource
                   loading={kpiLoading}
                 />
@@ -924,6 +968,9 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                       ctr={metaCtr}
                       cpc={metaCpcCh}
                       mixPct={filteredSpend > 0 ? (aggM.spend / filteredSpend) * 100 : null}
+                      conversionVolumeLabel={leadLabel}
+                      conversionCount={metaLeadishAgg}
+                      costPerConversion={metaCplChannel}
                     />
                   ) : (
                     <div className="rounded-2xl border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">Meta</div>
@@ -937,6 +984,9 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                       ctr={googleCtr}
                       cpc={googleCpcCh}
                       mixPct={filteredSpend > 0 ? (googleSpendAgg / filteredSpend) * 100 : null}
+                      conversionVolumeLabel={leadLabel}
+                      conversionCount={aggG.conversions}
+                      costPerConversion={googleCplChannel}
                     />
                   ) : (
                     <div className="rounded-2xl border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">Google</div>

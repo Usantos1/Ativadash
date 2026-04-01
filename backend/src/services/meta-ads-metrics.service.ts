@@ -440,14 +440,46 @@ export async function fetchMetaAdsMetrics(
       return s;
     }
 
-    for (const account of accounts) {
-      const accountId = account.id.replace("act_", "");
-      const insightsPath = `/act_${accountId}/insights?fields=impressions,clicks,inline_link_clicks,spend,reach,frequency,actions,action_values&time_range=${encodeURIComponent(timeRange)}&level=account`;
-      const accountInsights = await graphGet<{ data: InsightRow[] }>(
-        insightsPath,
-        config.access_token,
-        appSecret
-      );
+    /** Por conta: insights + campanhas + série diária + status em paralelo; contas em paralelo entre si. */
+    const accountResults = await Promise.all(
+      accounts.map(async (account) => {
+        const accountId = account.id.replace("act_", "");
+        const insightsPath = `/act_${accountId}/insights?fields=impressions,clicks,inline_link_clicks,spend,reach,frequency,actions,action_values&time_range=${encodeURIComponent(timeRange)}&level=account`;
+        const campaignPath = `/act_${accountId}/insights?fields=campaign_id,campaign_name,impressions,clicks,inline_link_clicks,spend,reach,frequency,actions,action_values&time_range=${encodeURIComponent(timeRange)}&level=campaign&limit=500`;
+
+        const [accountInsights, campaigns, dailyPart, statusById] = await Promise.all([
+          graphGet<{ data: InsightRow[] }>(insightsPath, config.access_token, appSecret).catch((e) => {
+            console.warn(`[Meta Ads] account insights act_${accountId}:`, e instanceof Error ? e.message : e);
+            return { data: [] as InsightRow[] };
+          }),
+          graphGetAllPages<InsightRow & { campaign_id?: string }>(
+            campaignPath,
+            config.access_token,
+            appSecret
+          ).catch((e) => {
+            console.warn(`[Meta Ads] campaigns act_${accountId}:`, e instanceof Error ? e.message : e);
+            return [] as (InsightRow & { campaign_id?: string })[];
+          }),
+          fetchMetaDailyForAccount(accountId, config.access_token, appSecret, timeRange).catch((e) => {
+            console.error("[Meta Ads] daily series:", e instanceof Error ? e.message : e);
+            return new Map<string, DailyAcc>();
+          }),
+          fetchMetaCampaignStatusById(accountId, config.access_token, appSecret).catch((e) => {
+            console.warn(
+              `[Meta Ads] campaign effective_status act_${accountId}:`,
+              e instanceof Error ? e.message : e
+            );
+            return new Map<string, MetaEntityStatusUi>();
+          }),
+        ]);
+
+        return { accountId, accountInsights, campaigns, dailyPart, statusById };
+      })
+    );
+
+    const mergedDaily = new Map<string, DailyAcc>();
+
+    for (const { accountInsights, campaigns, dailyPart, statusById } of accountResults) {
       const row = accountInsights.data?.[0];
       if (row) {
         const imp = parseInt(row.impressions ?? "0", 10) || 0;
@@ -473,12 +505,6 @@ export async function fetchMetaAdsMetrics(
         totalMessagingConversationsStarted += messagingConversationsStarted;
       }
 
-      const campaignPath = `/act_${accountId}/insights?fields=campaign_id,campaign_name,impressions,clicks,inline_link_clicks,spend,reach,frequency,actions,action_values&time_range=${encodeURIComponent(timeRange)}&level=campaign&limit=500`;
-      const campaigns = await graphGetAllPages<InsightRow & { campaign_id?: string }>(
-        campaignPath,
-        config.access_token,
-        appSecret
-      );
       for (const c of campaigns) {
         const name = c.campaign_name ?? "—";
         const key = (c as { campaign_id?: string }).campaign_id ?? name;
@@ -529,50 +555,29 @@ export async function fetchMetaAdsMetrics(
         }
       }
 
-      try {
-        const statusById = await fetchMetaCampaignStatusById(
-          accountId,
-          config.access_token,
-          appSecret
-        );
-        for (const c of campaigns) {
-          const cid = (c as InsightRow & { campaign_id?: string }).campaign_id;
-          if (!cid) continue;
-          const st = statusById.get(String(cid));
-          if (st === undefined) continue;
-          const row = campaignMap.get(cid);
-          if (row) row.entityStatus = st;
-        }
-      } catch (e) {
-        console.warn(
-          `[Meta Ads] campaign effective_status act_${accountId}:`,
-          e instanceof Error ? e.message : e
-        );
+      for (const c of campaigns) {
+        const cid = (c as InsightRow & { campaign_id?: string }).campaign_id;
+        if (!cid) continue;
+        const st = statusById.get(String(cid));
+        if (st === undefined) continue;
+        const campRow = campaignMap.get(cid);
+        if (campRow) campRow.entityStatus = st;
       }
-    }
 
-    const mergedDaily = new Map<string, DailyAcc>();
-    for (const account of accounts) {
-      const accountId = account.id.replace("act_", "");
-      try {
-        const part = await fetchMetaDailyForAccount(accountId, config.access_token, appSecret, timeRange);
-        for (const [d, v] of part) {
-          const cur = mergedDaily.get(d);
-          if (cur) {
-            cur.impressions += v.impressions;
-            cur.clicks += v.clicks;
-            cur.linkClicks += v.linkClicks;
-            cur.spend += v.spend;
-            cur.leads += v.leads;
-            cur.purchases += v.purchases;
-            cur.messagingConversationsStarted += v.messagingConversationsStarted;
-            cur.landingPageViews += v.landingPageViews;
-          } else {
-            mergedDaily.set(d, { ...v });
-          }
+      for (const [d, v] of dailyPart) {
+        const cur = mergedDaily.get(d);
+        if (cur) {
+          cur.impressions += v.impressions;
+          cur.clicks += v.clicks;
+          cur.linkClicks += v.linkClicks;
+          cur.spend += v.spend;
+          cur.leads += v.leads;
+          cur.purchases += v.purchases;
+          cur.messagingConversationsStarted += v.messagingConversationsStarted;
+          cur.landingPageViews += v.landingPageViews;
+        } else {
+          mergedDaily.set(d, { ...v });
         }
-      } catch (e) {
-        console.error("[Meta Ads] daily series:", e instanceof Error ? e.message : e);
       }
     }
 
@@ -702,10 +707,14 @@ export async function fetchMetaAdsetMetrics(
       actions?: ActionEntry[];
       action_values?: ActionEntry[];
     };
-    for (const account of accounts) {
-      const accountId = account.id.replace("act_", "");
-      const path = `/act_${accountId}/insights?fields=adset_id,adset_name,campaign_name,impressions,clicks,spend,actions,action_values&time_range=${encodeURIComponent(timeRange)}&level=adset&limit=500`;
-      const rows = await graphGetAllPages<R>(path, config.access_token, appSecret);
+    const rowsPerAccount = await Promise.all(
+      accounts.map(async (account) => {
+        const accountId = account.id.replace("act_", "");
+        const path = `/act_${accountId}/insights?fields=adset_id,adset_name,campaign_name,impressions,clicks,spend,actions,action_values&time_range=${encodeURIComponent(timeRange)}&level=adset&limit=500`;
+        return graphGetAllPages<R>(path, config.access_token, appSecret).catch(() => [] as R[]);
+      })
+    );
+    for (const rows of rowsPerAccount) {
       for (const c of rows) {
         const key = c.adset_id ?? c.adset_name ?? Math.random().toString();
         const imp = parseInt(c.impressions ?? "0", 10) || 0;
@@ -775,10 +784,14 @@ export async function fetchMetaAdLevelMetrics(
       actions?: ActionEntry[];
       action_values?: ActionEntry[];
     };
-    for (const account of accounts) {
-      const accountId = account.id.replace("act_", "");
-      const path = `/act_${accountId}/insights?fields=ad_id,ad_name,adset_name,campaign_name,impressions,clicks,spend,actions,action_values&time_range=${encodeURIComponent(timeRange)}&level=ad&limit=500`;
-      const rows = await graphGetAllPages<R>(path, config.access_token, appSecret);
+    const rowsPerAccount = await Promise.all(
+      accounts.map(async (account) => {
+        const accountId = account.id.replace("act_", "");
+        const path = `/act_${accountId}/insights?fields=ad_id,ad_name,adset_name,campaign_name,impressions,clicks,spend,actions,action_values&time_range=${encodeURIComponent(timeRange)}&level=ad&limit=500`;
+        return graphGetAllPages<R>(path, config.access_token, appSecret).catch(() => [] as R[]);
+      })
+    );
+    for (const rows of rowsPerAccount) {
       for (const c of rows) {
         const key = c.ad_id ?? c.ad_name ?? Math.random().toString();
         const imp = parseInt(c.impressions ?? "0", 10) || 0;
@@ -845,10 +858,14 @@ export async function fetchMetaAgeGenderBreakdown(
       clicks?: string;
       spend?: string;
     };
-    for (const account of accounts) {
-      const accountId = account.id.replace("act_", "");
-      const path = `/act_${accountId}/insights?fields=impressions,clicks,spend&breakdowns=age,gender&time_range=${encodeURIComponent(timeRange)}&level=campaign&limit=500`;
-      const rows = await graphGetAllPages<R>(path, config.access_token, appSecret);
+    const rowsPerAccount = await Promise.all(
+      accounts.map(async (account) => {
+        const accountId = account.id.replace("act_", "");
+        const path = `/act_${accountId}/insights?fields=impressions,clicks,spend&breakdowns=age,gender&time_range=${encodeURIComponent(timeRange)}&level=campaign&limit=500`;
+        return graphGetAllPages<R>(path, config.access_token, appSecret).catch(() => [] as R[]);
+      })
+    );
+    for (const rows of rowsPerAccount) {
       for (const c of rows) {
         out.push({
           age: c.age,

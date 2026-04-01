@@ -583,7 +583,11 @@ export async function fetchGoogleAdsAdGroupMetrics(
 
 export type GoogleAdsAdRow = {
   campaignName: string;
+  campaignId?: string;
   adGroupName: string;
+  adGroupId?: string;
+  /** Rótulo amigável quando a API expõe nome do criativo. */
+  adName?: string;
   adId: string;
   entityStatus?: GoogleAdsEntityStatus;
   impressions: number;
@@ -604,9 +608,12 @@ export async function fetchGoogleAdsAdMetrics(
   const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN.trim();
   const query = `
     SELECT
+      campaign.id,
       campaign.name,
+      ad_group.id,
       ad_group.name,
       ad_group_ad.ad.id,
+      ad_group_ad.ad.name,
       ad_group_ad.status,
       metrics.impressions,
       metrics.clicks,
@@ -626,9 +633,9 @@ export async function fetchGoogleAdsAdMetrics(
       ctx.loginCustomerId
     );
     type Row = {
-      campaign?: { name?: string };
-      adGroup?: { name?: string };
-      adGroupAd?: { ad?: { id?: string | number }; status?: string };
+      campaign?: { id?: string | number; name?: string };
+      adGroup?: { id?: string | number; name?: string };
+      adGroupAd?: { ad?: { id?: string | number; name?: string }; status?: string };
       metrics?: Record<string, string | number | undefined>;
     };
     const byAd = new Map<string, GoogleAdsAdRow>();
@@ -637,7 +644,10 @@ export async function fetchGoogleAdsAdMetrics(
       const m = row.metrics ?? {};
       const idRaw = row.adGroupAd?.ad?.id;
       const adId = idRaw != null ? String(idRaw) : "";
-      const key = adId || `__:${row.campaign?.name ?? ""}:${row.adGroup?.name ?? ""}:${byAd.size}`;
+      const gid = row.adGroup?.id != null ? String(row.adGroup.id) : "";
+      const cid = row.campaign?.id != null ? String(row.campaign.id) : "";
+      const key =
+        gid && adId ? `${gid}~${adId}` : adId || `__:${row.campaign?.name ?? ""}:${row.adGroup?.name ?? ""}:${byAd.size}`;
       const impressions = Number(m.impressions ?? 0);
       const clicks = Number(m.clicks ?? 0);
       const costMicros = Number(m.costMicros ?? (m as Record<string, unknown>).cost_micros ?? 0);
@@ -648,6 +658,7 @@ export async function fetchGoogleAdsAdMetrics(
           0
       );
       const st = mapGoogleResourceStatus(row.adGroupAd?.status);
+      const adName = row.adGroupAd?.ad?.name?.trim() || undefined;
       const existing = byAd.get(key);
       if (existing) {
         existing.impressions += impressions;
@@ -661,7 +672,10 @@ export async function fetchGoogleAdsAdMetrics(
       } else {
         byAd.set(key, {
           campaignName: row.campaign?.name ?? "",
+          ...(cid ? { campaignId: cid } : {}),
           adGroupName: row.adGroup?.name ?? "",
+          ...(gid ? { adGroupId: gid } : {}),
+          ...(adName ? { adName } : {}),
           adId,
           entityStatus: st,
           impressions,
@@ -769,6 +783,27 @@ function resolveGoogleAdGroupResource(
     return {
       customerId: fallbackCustomerId,
       resourceName: `customers/${fallbackCustomerId}/adGroups/${t}`,
+    };
+  }
+  return null;
+}
+
+function resolveGoogleAdGroupAdResource(
+  adGroupExternalId: string,
+  adExternalId: string,
+  fallbackCustomerId: string
+): { customerId: string; resourceName: string } | null {
+  const ag = adGroupExternalId.trim();
+  const ad = adExternalId.trim();
+  if (!fallbackCustomerId) return null;
+  const full = /^customers\/(\d+)\/adGroupAds\/(\d+)~(\d+)$/i.exec(ag);
+  if (full) {
+    return { customerId: full[1], resourceName: ag };
+  }
+  if (/^\d+$/.test(ag) && /^\d+$/.test(ad)) {
+    return {
+      customerId: fallbackCustomerId,
+      resourceName: `customers/${fallbackCustomerId}/adGroupAds/${ag}~${ad}`,
     };
   }
   return null;
@@ -1059,6 +1094,82 @@ export async function mutateGoogleAdGroupStatus(
   const status = enabled ? "ENABLED" : "PAUSED";
   const mutateCid = normalizeGoogleAdsCustomerId(resolved.customerId);
   const url = `https://googleads.googleapis.com/${API_VERSION}/customers/${mutateCid}/adGroups:mutate`;
+
+  let loginForMutate = ctx.loginCustomerId;
+  if (normalizeGoogleAdsCustomerId(resolved.customerId) !== normalizeGoogleAdsCustomerId(ctx.customerId)) {
+    const acc = await prisma.googleAdsAccessibleCustomer.findUnique({
+      where: {
+        integrationId_customerId: {
+          integrationId: ctx.integrationId,
+          customerId: mutateCid,
+        },
+      },
+    });
+    loginForMutate = acc?.managerCustomerId ? normalizeGoogleAdsCustomerId(acc.managerCustomerId) : null;
+  }
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: buildGoogleAdsHeaders(ctx.accessToken, developerToken, loginForMutate),
+      body: JSON.stringify({
+        operations: [
+          {
+            update: {
+              resourceName: resolved.resourceName,
+              status,
+            },
+            updateMask: "status",
+          },
+        ],
+      }),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      const classified = classifyGoogleAdsError(text);
+      if (!classified.ok) {
+        return { ok: false, message: classified.message };
+      }
+      return { ok: false, message: text.length > 500 ? `${text.slice(0, 500)}…` : text };
+    }
+    return { ok: true };
+  } catch (e) {
+    const raw = e instanceof Error ? e.message : String(e);
+    const classified = classifyGoogleAdsError(raw);
+    if (!classified.ok) {
+      return { ok: false, message: classified.message };
+    }
+    return { ok: false, message: raw };
+  }
+}
+
+/** Pausa / ativa um anúncio no conjunto (resource adGroupAds/{adGroupId}~{adId}). */
+export async function mutateGoogleAdGroupAdStatus(
+  organizationId: string,
+  adGroupExternalId: string,
+  adExternalId: string,
+  enabled: boolean,
+  queryContext?: GoogleAdsMetricsQueryContext
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const ctx = await resolveGoogleAdsCustomer(organizationId, queryContext);
+  if (!ctx.ok) {
+    return { ok: false, message: ctx.message };
+  }
+  if (!ctx.customerId) {
+    return { ok: false, message: "Nenhuma conta Google Ads acessível para esta organização." };
+  }
+  const resolved = resolveGoogleAdGroupAdResource(adGroupExternalId, adExternalId, ctx.customerId);
+  if (!resolved) {
+    return {
+      ok: false,
+      message:
+        "IDs de anúncio inválidos. Use adGroupId e adId numéricos ou o resourceName customers/…/adGroupAds/…~….",
+    };
+  }
+  const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN.trim();
+  const status = enabled ? "ENABLED" : "PAUSED";
+  const mutateCid = normalizeGoogleAdsCustomerId(resolved.customerId);
+  const url = `https://googleads.googleapis.com/${API_VERSION}/customers/${mutateCid}/adGroupAds:mutate`;
 
   let loginForMutate = ctx.loginCustomerId;
   if (normalizeGoogleAdsCustomerId(resolved.customerId) !== normalizeGoogleAdsCustomerId(ctx.customerId)) {

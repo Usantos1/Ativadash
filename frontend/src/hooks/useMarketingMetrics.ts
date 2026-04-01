@@ -160,14 +160,12 @@ export function useMarketingMetrics(opts?: {
     }
     setCmpLoading(true);
     try {
-      if (hasGoogle) {
-        const d = await fetchGoogleAdsMetrics(compareRange);
-        setCmpMetrics(d && d.ok ? d : null);
-      } else setCmpMetrics(null);
-      if (hasMeta) {
-        const d = await fetchMetaAdsMetrics(compareRange);
-        setCmpMetaMetrics(d && d.ok ? d : null);
-      } else setCmpMetaMetrics(null);
+      const [g, m] = await Promise.all([
+        hasGoogle ? fetchGoogleAdsMetrics(compareRange) : Promise.resolve(null),
+        hasMeta ? fetchMetaAdsMetrics(compareRange) : Promise.resolve(null),
+      ]);
+      setCmpMetrics(g && g.ok ? g : null);
+      setCmpMetaMetrics(m && m.ok ? m : null);
     } catch {
       setCmpMetrics(null);
       setCmpMetaMetrics(null);
@@ -177,14 +175,11 @@ export function useMarketingMetrics(opts?: {
   }, [compareRange, hasGoogle, hasMeta]);
 
   useEffect(() => {
-    if (hasGoogle) loadMetrics();
+    if (hasGoogle) void loadMetrics();
     else setMetrics(null);
-  }, [hasGoogle, loadMetrics]);
-
-  useEffect(() => {
-    if (hasMeta) loadMetaMetrics();
+    if (hasMeta) void loadMetaMetrics();
     else setMetaMetrics(null);
-  }, [hasMeta, loadMetaMetrics]);
+  }, [hasGoogle, hasMeta, loadMetrics, loadMetaMetrics]);
 
   useEffect(() => {
     if (compareEnabled && compareRange && (hasGoogle || hasMeta)) {

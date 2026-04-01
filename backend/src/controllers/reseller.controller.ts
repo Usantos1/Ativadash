@@ -13,6 +13,7 @@ import {
   resellerListActivePlans,
   resellerListAllPlans,
   resellerListAuditLogs,
+  resellerListNetworkActivity,
   resellerListEcosystemOrganizations,
   resellerListEcosystemUsers,
   resellerLogEnterChild,
@@ -34,6 +35,7 @@ import {
 import {
   matrixWorkspaceGrantUpsertSchema,
   resellerAuditQuerySchema,
+  resellerNetworkActivityQuerySchema,
   resellerCreateChildSchema,
   resellerCreateUserSchema,
   resellerEcosystemUsersQuerySchema,
@@ -311,6 +313,30 @@ export async function resellerAuditHandler(req: Request, res: Response) {
     return res.json({ logs });
   } catch (e) {
     return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
+  }
+}
+
+export async function resellerNetworkActivityHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const parsed = resellerNetworkActivityQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ message: firstErrorMessage(parsed.error) });
+  }
+  try {
+    const items = await resellerListNetworkActivity(user.organizationId, user.userId, {
+      limit: parsed.data.limit,
+      organizationId: parsed.data.organizationId,
+      actorUserId: parsed.data.actorUserId,
+      action: parsed.data.action,
+      from: parsed.data.from ? new Date(parsed.data.from) : undefined,
+      to: parsed.data.to ? new Date(parsed.data.to) : undefined,
+      source: parsed.data.source,
+    });
+    return res.json({ items });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Sem permissão";
+    const status = msg.includes("fora do ecossistema") ? 400 : 403;
+    return res.status(status).json({ message: msg });
   }
 }
 

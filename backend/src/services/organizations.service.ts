@@ -1138,22 +1138,25 @@ export async function listChildOrganizationsOperationsDashboard(
     };
   });
 
-  const rollupMap = await rollupMarketing30dForChildren(
-    organizations.map((o) => ({
-      id: o.id,
-      workspaceStatus: o.workspaceStatus,
-      metaAdsConnected: o.metaAdsConnected,
-      googleAdsConnected: o.googleAdsConnected,
-    }))
-  );
+  const childIdsForRollup = organizations.map((x) => x.id);
+  const [rollupMap, settingsForCpl] = await Promise.all([
+    rollupMarketing30dForChildren(
+      organizations.map((o) => ({
+        id: o.id,
+        workspaceStatus: o.workspaceStatus,
+        metaAdsConnected: o.metaAdsConnected,
+        googleAdsConnected: o.googleAdsConnected,
+      }))
+    ),
+    prisma.marketingSettings.findMany({
+      where: { organizationId: { in: childIdsForRollup } },
+      select: { organizationId: true, targetCpaBrl: true },
+    }),
+  ]);
   const organizationsOutRaw = organizations.map((o) => ({
     ...o,
     marketing30d: rollupMap.get(o.id) ?? null,
   }));
-  const settingsForCpl = await prisma.marketingSettings.findMany({
-    where: { organizationId: { in: organizationsOutRaw.map((x) => x.id) } },
-    select: { organizationId: true, targetCpaBrl: true },
-  });
   const targetCpaMap = new Map(
     settingsForCpl.map((s) => [s.organizationId, s.targetCpaBrl != null ? Number(s.targetCpaBrl) : null])
   );

@@ -1242,7 +1242,7 @@ export function MarketingCampaignsOsTable({
         </Link>
         {" · "}
         <Link to="/marketing/configuracoes" className="font-semibold text-primary underline-offset-4 hover:underline">
-          Metas
+          Metas e canais
         </Link>
       </p>
       </div>

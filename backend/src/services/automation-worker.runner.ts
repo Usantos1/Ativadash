@@ -6,9 +6,9 @@ async function runTickSafe(): Promise<void> {
   try {
     const { runAutomationExecutionTick } = await import("./automation-execution-engine.service.js");
     const r = await runAutomationExecutionTick();
-    if (r.actionsExecuted > 0) {
-      console.info("[automation-worker] tick concluído:", r);
-    }
+    console.info(
+      `[automation-worker] tick — orgs=${r.organizationsScanned} actions=${r.actionsExecuted} ${r.durationMs}ms`
+    );
   } catch (e) {
     console.error("[automation-worker] erro no tick:", e);
   }

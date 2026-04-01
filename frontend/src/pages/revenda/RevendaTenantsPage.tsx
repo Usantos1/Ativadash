@@ -176,10 +176,39 @@ export function RevendaTenantsPage({ kind }: Props) {
     [ecosystem]
   );
 
-  const filtered = useMemo(
-    () => rows.filter((r) => (r.resellerOrgKind ?? "CLIENT") === kind),
-    [rows, kind]
-  );
+  /** IDs de agências filiais — clientes sob uma agência aparecem em /revenda/agencias, não em /revenda/empresas. */
+  const agencyBranchIds = useMemo(() => new Set(agencyOptions.map((o) => o.id)), [agencyOptions]);
+
+  const filtered = useMemo(() => {
+    const isClientLike = (r: ChildWorkspaceOperationsRow) => (r.resellerOrgKind ?? "CLIENT") === "CLIENT";
+
+    if (kind === "AGENCY") {
+      const list = rows.filter(
+        (r) =>
+          r.resellerOrgKind === "AGENCY" ||
+          (isClientLike(r) &&
+            r.parentOrganizationId != null &&
+            agencyBranchIds.has(r.parentOrganizationId))
+      );
+      return [...list].sort((a, b) => {
+        const tier = (x: ChildWorkspaceOperationsRow) => (x.resellerOrgKind === "AGENCY" ? 0 : 1);
+        const d = tier(a) - tier(b);
+        if (d !== 0) return d;
+        const pa = a.parentOrganization?.name ?? "";
+        const pb = b.parentOrganization?.name ?? "";
+        if (pa !== pb) return pa.localeCompare(pb, "pt");
+        return a.name.localeCompare(b.name, "pt");
+      });
+    }
+
+    return rows
+      .filter(
+        (r) =>
+          isClientLike(r) &&
+          (r.parentOrganizationId == null || !agencyBranchIds.has(r.parentOrganizationId))
+      )
+      .sort((a, b) => a.name.localeCompare(b.name, "pt"));
+  }, [rows, kind, agencyBranchIds]);
 
   const load = useCallback(async () => {
     setLoading(true);

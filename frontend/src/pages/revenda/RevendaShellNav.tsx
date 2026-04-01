@@ -35,9 +35,24 @@ const NAV_ITEMS: NavDef[] = [
   { to: "/revenda/agencias", label: "Agências", hint: "Filiais com equipe própria e clientes vinculados.", icon: Store },
   { to: "/revenda/usuarios", label: "Usuários", hint: "Quem entra na matriz e nas contas abaixo: convite, papel e bloqueio.", icon: Users },
   { to: "/revenda/planos", label: "Planos", hint: "Ofertas que você vende; definem o padrão de recursos e números.", icon: CreditCard },
-  { to: "/revenda/modulos", label: "Limites", hint: "Referência de recursos e cotas por plano; ajuste fino por conta na edição do cliente/agência.", icon: Puzzle },
-  { to: "/revenda/saude", label: "Saúde", hint: "Alertas e contas com risco (integração, equipe, etc.).", icon: Activity },
-  { to: "/revenda/auditoria", label: "Auditoria", hint: "Histórico do que mudou neste painel da matriz.", icon: ScrollText },
+  {
+    to: "/revenda/modulos",
+    label: "Módulos",
+    hint: "Chaves de módulos (ligar/desligar) e cotas numéricas; o plano define o padrão e você ajusta por conta em Clientes ou Agências → Editar.",
+    icon: Puzzle,
+  },
+  {
+    to: "/revenda/saude",
+    label: "Saúde",
+    hint: "Indicadores e alertas da rede (integrações, membros, atividade). Liga ao resumo e às listas de empresas.",
+    icon: Activity,
+  },
+  {
+    to: "/revenda/auditoria",
+    label: "Auditoria",
+    hint: "Governança da matriz e linha do tempo nas empresas: quem alterou campanhas vs. o que a automação executou.",
+    icon: ScrollText,
+  },
 ];
 
 function NavEntry({ to, end, label, hint, icon: Icon }: NavDef) {

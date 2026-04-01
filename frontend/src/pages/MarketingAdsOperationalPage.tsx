@@ -16,13 +16,13 @@ import { ptBR } from "date-fns/locale";
 import {
   ArrowLeft,
   BarChart3,
+  Bell,
   ChevronRight,
   LayoutDashboard,
   Loader2,
   MessageCircle,
-  Plus,
   Save,
-  Trash2,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,14 +56,9 @@ import {
   type MarketingSettingsDto,
 } from "@/lib/marketing-settings-api";
 import {
-  createAlertRule,
-  deleteAlertRule,
   fetchAlertRules,
-  patchAlertRule,
   type AlertRuleDto,
-  type AlertRuleMetric,
-  type AlertRuleOperator,
-  type AlertRuleSeverity,
+  type AlertRulesListResponse,
 } from "@/lib/alert-rules-api";
 import { canUserEditMarketingSettings } from "@/lib/marketing-ads-permissions";
 import { useAuthStore } from "@/stores/auth-store";
@@ -220,65 +215,70 @@ function AutomationCard({
   );
 }
 
-const METRIC_LABEL: Record<AlertRuleMetric, string> = {
-  cpa: "CPA (R$)",
-  roas: "ROAS (×)",
-  spend: "Gasto (R$)",
-  daily_spend: "Gasto diário (R$)",
-  ctr: "CTR (%)",
-};
+function ruleAppliesToChannel(rule: AlertRuleDto, channel: AdsChannelKey): boolean {
+  const c = (rule.appliesToChannel ?? "").toLowerCase();
+  if (!c || c === "all") return true;
+  return c === channel;
+}
 
-const OP_LABEL: Record<AlertRuleOperator, string> = {
-  gt: ">",
-  gte: "≥",
-  lt: "<",
-  lte: "≤",
-  outside_target: "fora da meta",
-  cpa_band: "entre meta e teto (CPL)",
-};
+function actionTypeLabelPt(action: string | undefined): string {
+  const a = (action ?? "NOTIFY_ONLY").trim();
+  if (a === "NOTIFY_ONLY") return "Notificar";
+  if (a === "PAUSE_ASSET") return "Pausar";
+  if (a === "INCREASE_BUDGET_20") return "+20% orç.";
+  if (a === "DECREASE_BUDGET_20") return "−20% orç.";
+  return a;
+}
 
-function OperationalAlertRulesCard({
+function evaluationLevelShort(level: string | null | undefined): string {
+  const l = (level ?? "campaign").trim();
+  if (l === "ad_set") return "Conjunto";
+  if (l === "ad") return "Anúncio";
+  return "Campanha";
+}
+
+function filterRulesForChannel(pack: AlertRulesListResponse | null, channel: AdsChannelKey): AlertRuleDto[] {
+  if (!pack) return [];
+  return pack.items.filter((r) => ruleAppliesToChannel(r, channel));
+}
+
+/** Resumo só de leitura + CTA único para edição completa em /ads/metas-alertas. */
+function AlertRulesHubCard({
   channel,
-  canEdit,
+  pack,
 }: {
   channel: AdsChannelKey;
-  canEdit: boolean;
+  pack: AlertRulesListResponse | null;
 }) {
-  const [pack, setPack] = useState<{ items: AlertRuleDto[]; performanceAlerts: boolean } | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
-  const [nName, setNName] = useState("");
-  const [nMetric, setNMetric] = useState<AlertRuleMetric>("cpa");
-  const [nOp, setNOp] = useState<AlertRuleOperator>("gt");
-  const [nThreshold, setNThreshold] = useState("");
-  const [nSeverity, setNSeverity] = useState<AlertRuleSeverity>("warning");
-  const [creating, setCreating] = useState(false);
+  const filtered = useMemo(() => filterRulesForChannel(pack, channel), [pack, channel]);
+  const activeCount = useMemo(() => filtered.filter((r) => r.active).length, [filtered]);
+  const motorActiveCount = useMemo(
+    () => filtered.filter((r) => r.active && r.actionType && r.actionType !== "NOTIFY_ONLY").length,
+    [filtered]
+  );
 
-  const load = useCallback(() => {
-    fetchAlertRules()
-      .then((r) => setPack({ items: r.items, performanceAlerts: r.performanceAlerts }))
-      .catch(() => setPack({ items: [], performanceAlerts: false }));
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const filtered = useMemo(() => {
-    if (!pack) return [];
-    return pack.items.filter((r) => {
-      const c = (r.appliesToChannel ?? "").toLowerCase();
-      if (!c || c === "all") return true;
-      return c === channel;
-    });
-  }, [pack, channel]);
-
-  if (!pack?.performanceAlerts) {
+  if (pack === null) {
     return (
       <Card className="border-border/50 bg-card/40">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base font-bold">Regras avançadas</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base font-bold">
+            <Bell className="h-4 w-4 text-primary" />
+            Regras e motor
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          A carregar regras…
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!pack.performanceAlerts) {
+    return (
+      <Card className="border-border/50 bg-card/40">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-bold">Regras e motor</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">Indisponível no plano atual.</p>
@@ -287,237 +287,123 @@ function OperationalAlertRulesCard({
     );
   }
 
-  async function handleCreate() {
-    setErr(null);
-    setOk(null);
-    const name = nName.trim();
-    const t = parseFloat(nThreshold.replace(",", "."));
-    if (!name) {
-      setErr("Nome da regra.");
-      return;
-    }
-    if (!Number.isFinite(t)) {
-      setErr("Limite inválido.");
-      return;
-    }
-    setCreating(true);
-    try {
-      await createAlertRule({
-        name,
-        metric: nMetric,
-        operator: nOp,
-        threshold: t,
-        severity: nSeverity,
-        active: true,
-        appliesToChannel: channel,
-        notifyWhatsapp: true,
-      });
-      setNName("");
-      setNThreshold("");
-      setOk("Regra criada.");
-      load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Erro.");
-    } finally {
-      setCreating(false);
-    }
-  }
+  const preview = filtered.slice(0, 5);
+  const rest = Math.max(0, filtered.length - preview.length);
 
   return (
-    <Card className="border-border/50 bg-card/40">
+    <Card className="border-border/50 bg-gradient-to-br from-card/80 to-muted/15">
       <CardHeader className="pb-2">
-        <CardTitle className="text-base font-bold">Regras avançadas</CardTitle>
-        <p className="text-xs text-muted-foreground">
-          Condições extras · disparo no painel e WhatsApp (conforme integração). Canal: {CH_LABEL[channel]}.
+        <CardTitle className="flex flex-wrap items-center gap-2 text-base font-bold">
+          <span className="inline-flex items-center gap-2">
+            <Bell className="h-4 w-4 text-primary" />
+            Regras e motor de automação
+          </span>
+          <span className="text-xs font-normal text-muted-foreground">· {CH_LABEL[channel]}</span>
+        </CardTitle>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          A <span className="font-medium text-foreground">fonte única</span> para criar e editar regras (níveis
+          campanha/conjunto/anúncio, stop-loss, histórico de execução) é{" "}
+          <span className="font-medium text-foreground">Metas e alertas</span>. Aqui vê só um resumo deste canal.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        {err ? <p className="text-sm text-destructive">{err}</p> : null}
-        {ok ? <p className="text-sm text-emerald-600 dark:text-emerald-400">{ok}</p> : null}
         <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="text-xs"
-            disabled={!canEdit}
-            onClick={() => {
-              setNName("CPL crítico");
-              setNMetric("cpa");
-              setNOp("gt");
-              setNThreshold("50");
-              setNSeverity("critical");
-            }}
-          >
-            CPL crítico
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="text-xs"
-            disabled={!canEdit}
-            onClick={() => {
-              setNName("ROAS baixo");
-              setNMetric("roas");
-              setNOp("lt");
-              setNThreshold("2");
-              setNSeverity("warning");
-            }}
-          >
-            ROAS baixo
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="text-xs"
-            disabled={!canEdit}
-            onClick={() => {
-              setNName("Gasto alto");
-              setNMetric("spend");
-              setNOp("gt");
-              setNThreshold("5000");
-              setNSeverity("warning");
-            }}
-          >
-            Gasto alto
-          </Button>
+          <span className="inline-flex items-center gap-1 rounded-lg border border-border/50 bg-background/60 px-2.5 py-1 text-[11px] font-medium">
+            <span className="text-muted-foreground">Regras visíveis</span>
+            <span className="tabular-nums text-foreground">{filtered.length}</span>
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-lg border border-border/50 bg-background/60 px-2.5 py-1 text-[11px] font-medium">
+            <span className="text-muted-foreground">Ativas</span>
+            <span className="tabular-nums text-foreground">{activeCount}</span>
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.06] px-2.5 py-1 text-[11px] font-medium text-emerald-900 dark:text-emerald-100">
+            <Zap className="h-3 w-3" />
+            Motor (pausa/orçamento)
+            <span className="tabular-nums">{motorActiveCount}</span>
+          </span>
         </div>
-        <div className="space-y-2">
-          {filtered.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhuma regra neste canal.</p>
-          ) : (
-            filtered.map((rule) => (
-              <div
-                key={rule.id}
-                className="flex flex-col gap-2 rounded-lg border border-border/50 bg-muted/10 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0 text-sm">
-                  <span className="font-medium">{rule.name}</span>
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    {METRIC_LABEL[rule.metric as AlertRuleMetric]} {OP_LABEL[rule.operator as AlertRuleOperator]}{" "}
-                    {rule.threshold} · {rule.severity}
-                    {rule.appliesToChannel ? ` · ${rule.appliesToChannel}` : ""}
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {canEdit ? (
-                    <>
-                      <div className="flex items-center gap-1.5 rounded-md border border-border/40 px-2 py-1">
-                        <span className="text-[10px] font-semibold uppercase text-muted-foreground">WhatsApp</span>
-                        <Switch
-                          checked={rule.notifyWhatsapp !== false}
-                          disabled={busy === rule.id}
-                          onCheckedChange={() => {
-                            setBusy(rule.id);
-                            patchAlertRule(rule.id, {
-                              notifyWhatsapp: !(rule.notifyWhatsapp !== false),
-                            })
-                              .then(() => load())
-                              .finally(() => setBusy(null));
-                          }}
-                        />
-                      </div>
-                      <div className="flex items-center gap-1.5 rounded-md border border-border/40 px-2 py-1">
-                        <span className="text-[10px] font-semibold uppercase text-muted-foreground">Ativa</span>
-                        <Switch
-                          checked={rule.active}
-                          disabled={busy === rule.id}
-                          onCheckedChange={() => {
-                            setBusy(rule.id);
-                            patchAlertRule(rule.id, { active: !rule.active })
-                              .then(() => load())
-                              .finally(() => setBusy(null));
-                          }}
-                        />
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive"
-                        disabled={busy === rule.id}
-                        onClick={() => {
-                          if (!window.confirm("Excluir regra?")) return;
-                          setBusy(rule.id);
-                          deleteAlertRule(rule.id)
-                            .then(() => load())
-                            .finally(() => setBusy(null));
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </>
-                  ) : null}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-        {canEdit ? (
-          <>
-            <Separator />
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1 sm:col-span-2">
-                <Label>Nome</Label>
-                <Input value={nName} onChange={(e) => setNName(e.target.value)} className="h-10 rounded-xl" />
-              </div>
-              <div className="space-y-1">
-                <Label>Métrica</Label>
-                <Select value={nMetric} onValueChange={(v) => setNMetric(v as AlertRuleMetric)}>
-                  <SelectTrigger className="h-10 rounded-xl">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(METRIC_LABEL) as AlertRuleMetric[]).map((k) => (
-                      <SelectItem key={k} value={k}>
-                        {METRIC_LABEL[k]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>Condição</Label>
-                <Select value={nOp} onValueChange={(v) => setNOp(v as AlertRuleOperator)}>
-                  <SelectTrigger className="h-10 rounded-xl">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(OP_LABEL) as AlertRuleOperator[]).map((k) => (
-                      <SelectItem key={k} value={k}>
-                        {OP_LABEL[k]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>Limite</Label>
-                <Input value={nThreshold} onChange={(e) => setNThreshold(e.target.value)} className="h-10 rounded-xl" />
-              </div>
-              <div className="space-y-1">
-                <Label>Severidade</Label>
-                <Select value={nSeverity} onValueChange={(v) => setNSeverity(v as AlertRuleSeverity)}>
-                  <SelectTrigger className="h-10 rounded-xl">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="warning">Aviso</SelectItem>
-                    <SelectItem value="critical">Crítico</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <Button type="button" size="sm" className="rounded-xl" disabled={creating} onClick={() => void handleCreate()}>
-              {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-              Adicionar regra
-            </Button>
-          </>
+
+        {preview.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhuma regra aplica-se a este canal (inclui regras “todos os canais”).</p>
         ) : (
-          <p className="text-xs text-muted-foreground">Somente leitura.</p>
+          <ul className="space-y-2">
+            {preview.map((rule) => (
+              <li
+                key={rule.id}
+                className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-border/40 bg-muted/10 px-3 py-2 text-sm"
+              >
+                <span className="min-w-0 font-medium leading-snug">{rule.name}</span>
+                <span className="text-[11px] text-muted-foreground">
+                  {evaluationLevelShort(rule.evaluationLevel)} · {actionTypeLabelPt(rule.actionType)}
+                  {rule.active ? "" : " · pausada"}
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
+        {rest > 0 ? (
+          <p className="text-[11px] text-muted-foreground">Mais {rest} regra(s) — abra Metas e alertas para ver tudo.</p>
+        ) : null}
+
+        <Button type="button" size="sm" className="w-full rounded-xl sm:w-auto" asChild>
+          <Link to="/ads/metas-alertas" className="gap-1.5">
+            Abrir Metas e alertas
+            <ChevronRight className="h-4 w-4 opacity-70" />
+          </Link>
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Destaque na aba Geral: totais da conta + CTA. */
+function AlertRulesGlobalHubCard({ pack }: { pack: AlertRulesListResponse | null }) {
+  if (pack === null) {
+    return (
+      <Card className="border-primary/20 bg-primary/[0.04]">
+        <CardContent className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          A carregar regras…
+        </CardContent>
+      </Card>
+    );
+  }
+  if (!pack.performanceAlerts) return null;
+
+  const items = pack.items;
+  const active = items.filter((r) => r.active).length;
+  const motor = items.filter((r) => r.active && r.actionType && r.actionType !== "NOTIFY_ONLY").length;
+
+  return (
+    <Card className="border-primary/25 bg-gradient-to-br from-primary/[0.06] to-transparent">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-base font-bold">
+          <Zap className="h-4 w-4 text-primary" />
+          Regras personalizadas e motor
+        </CardTitle>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Stop-loss, take-profit, desmame, pausa na Meta/Google e histórico de execução — tudo num único sítio para evitar
+          configurações duplicadas.
+        </p>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-2 text-[11px]">
+          <span className="rounded-md border border-border/50 bg-background/70 px-2 py-1 font-medium">
+            Total <span className="tabular-nums text-foreground">{items.length}</span>
+          </span>
+          <span className="rounded-md border border-border/50 bg-background/70 px-2 py-1 font-medium">
+            Ativas <span className="tabular-nums text-foreground">{active}</span>
+          </span>
+          <span className="rounded-md border border-emerald-500/20 bg-emerald-500/[0.08] px-2 py-1 font-medium text-emerald-950 dark:text-emerald-100">
+            Com ação na conta <span className="tabular-nums">{motor}</span>
+          </span>
+        </div>
+        <Button type="button" size="sm" className="rounded-xl" asChild>
+          <Link to="/ads/metas-alertas" className="gap-1.5">
+            Metas e alertas
+            <ChevronRight className="h-4 w-4 opacity-70" />
+          </Link>
+        </Button>
       </CardContent>
     </Card>
   );
@@ -578,6 +464,7 @@ function AdsOperationalChannelPanel({
   canEdit,
   testBusy,
   onTestWhatsapp,
+  alertRulesPack,
 }: {
   ch: AdsChannelKey;
   goals: OperationalGoalsForm;
@@ -596,6 +483,7 @@ function AdsOperationalChannelPanel({
   canEdit: boolean;
   testBusy: boolean;
   onTestWhatsapp: () => void;
+  alertRulesPack: AlertRulesListResponse | null;
 }) {
   const lastAlertRel = formatDistanceSafe(crmLastAlertAt);
   const lastTestRel = formatDistanceSafe(crmLastTestAt);
@@ -870,7 +758,7 @@ function AdsOperationalChannelPanel({
         </CardContent>
       </Card>
 
-      <OperationalAlertRulesCard channel={ch} canEdit={canEdit} />
+      <AlertRulesHubCard channel={ch} pack={alertRulesPack} />
     </div>
   );
 }
@@ -970,6 +858,7 @@ export function MarketingAdsOperationalPage() {
   const [crmLastAlertAt, setCrmLastAlertAt] = useState<string | null>(null);
   const [crmLastTestAt, setCrmLastTestAt] = useState<string | null>(null);
   const [testBusy, setTestBusy] = useState(false);
+  const [alertRulesPack, setAlertRulesPack] = useState<AlertRulesListResponse | null>(null);
 
   const { metricsLoading, hasGoogle, hasMeta, metrics, metaMetrics } = useMarketingMetrics();
 
@@ -1057,6 +946,13 @@ export function MarketingAdsOperationalPage() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    fetchAlertRules()
+      .then((r) => {
+        if (!cancelled) setAlertRulesPack(r);
+      })
+      .catch(() => {
+        if (!cancelled) setAlertRulesPack({ items: [], performanceAlerts: false });
+      });
     fetchMarketingSettings()
       .then((s) => {
         if (!cancelled) applyDto(s);
@@ -1075,6 +971,9 @@ export function MarketingAdsOperationalPage() {
   useEffect(() => {
     const onRefresh = () => {
       fetchMarketingSettings().then(applyDto).catch(() => {});
+      fetchAlertRules()
+        .then(setAlertRulesPack)
+        .catch(() => setAlertRulesPack({ items: [], performanceAlerts: false }));
     };
     window.addEventListener(MARKETING_SETTINGS_REFRESH_EVENT, onRefresh);
     return () => window.removeEventListener(MARKETING_SETTINGS_REFRESH_EVENT, onRefresh);
@@ -1268,7 +1167,7 @@ export function MarketingAdsOperationalPage() {
           </Link>
         </Button>
         <Button variant="outline" size="sm" className="h-9 text-xs sm:text-sm" asChild>
-          <Link to="/ads/metas-alertas">Alertas e regras operacionais</Link>
+          <Link to="/ads/metas-alertas">Metas e alertas · regras e motor</Link>
         </Button>
       </div>
 
@@ -1279,7 +1178,7 @@ export function MarketingAdsOperationalPage() {
           { label: "Metas, automações e alertas" },
         ]}
         title="Metas, automações e alertas"
-        subtitle="Por canal: metas numéricas, automações, WhatsApp e regras avançadas."
+        subtitle="Metas por canal, toggles de automação e WhatsApp aqui. Regras personalizadas e motor (pausa/orçamento) — edição completa em Metas e alertas."
         meta={
           <span className="inline-flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1 rounded-md border border-border/50 bg-muted/30 px-2 py-1">
@@ -1381,6 +1280,7 @@ export function MarketingAdsOperationalPage() {
         </TabsList>
 
         <TabsContent value="geral" className="mt-6 space-y-6">
+          <AlertRulesGlobalHubCard pack={alertRulesPack} />
           <Card className="border-border/50 bg-card/40">
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-bold">Conta e alertas no painel</CardTitle>
@@ -1609,6 +1509,7 @@ export function MarketingAdsOperationalPage() {
               canEdit={canEdit}
               testBusy={testBusy}
               onTestWhatsapp={() => void handleTestWhatsapp()}
+              alertRulesPack={alertRulesPack}
             />
           </MetasOperacaoChannelErrorBoundary>
         </TabsContent>
@@ -1633,6 +1534,7 @@ export function MarketingAdsOperationalPage() {
               canEdit={canEdit}
               testBusy={testBusy}
               onTestWhatsapp={() => void handleTestWhatsapp()}
+              alertRulesPack={alertRulesPack}
             />
           </MetasOperacaoChannelErrorBoundary>
         </TabsContent>

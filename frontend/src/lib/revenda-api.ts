@@ -286,6 +286,42 @@ export async function fetchResellerAudit(params: {
   return api.get<{ logs: ResellerAuditRow[] }>(`/reseller/audit${suffix}`);
 }
 
+export type ResellerNetworkActivityRow = {
+  id: string;
+  source: "user" | "automation";
+  createdAt: string;
+  organizationId: string | null;
+  organizationName: string | null;
+  actorUserId: string | null;
+  actorEmail: string | null;
+  actorName: string | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  metadata: unknown;
+};
+
+export async function fetchResellerNetworkActivity(params: {
+  limit?: number;
+  organizationId?: string;
+  actorUserId?: string;
+  action?: string;
+  from?: string;
+  to?: string;
+  source?: "all" | "user" | "automation";
+}): Promise<{ items: ResellerNetworkActivityRow[] }> {
+  const qs = new URLSearchParams();
+  if (params.limit != null) qs.set("limit", String(params.limit));
+  if (params.organizationId?.trim()) qs.set("organizationId", params.organizationId.trim());
+  if (params.actorUserId?.trim()) qs.set("actorUserId", params.actorUserId.trim());
+  if (params.action?.trim()) qs.set("action", params.action.trim());
+  if (params.from?.trim()) qs.set("from", params.from.trim());
+  if (params.to?.trim()) qs.set("to", params.to.trim());
+  if (params.source) qs.set("source", params.source);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return api.get<{ items: ResellerNetworkActivityRow[] }>(`/reseller/network-activity${suffix}`);
+}
+
 /** Chaves de módulo alinhadas ao merge do backend (plan-features). */
 export const REVENDA_PLAN_FEATURE_KEYS = [
   { key: "marketingDashboard", label: "Dashboard marketing" },

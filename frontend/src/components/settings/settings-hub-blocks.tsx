@@ -1,8 +1,14 @@
+import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-/** Seção compacta: título pequeno + painel denso. */
+/** Painel simples — legível, sem excesso de gradiente. */
+export const settingsHubPanelClass =
+  "overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm";
+
 export function SettingsHubSection({
   kicker,
   title,
@@ -20,46 +26,75 @@ export function SettingsHubSection({
 }) {
   return (
     <section className={cn("scroll-mt-6", className)}>
-      <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           {kicker ? (
             <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{kicker}</p>
           ) : null}
           <h2 className="text-sm font-semibold text-foreground">{title}</h2>
         </div>
-        {headerRight}
+        {headerRight ? <div className="shrink-0">{headerRight}</div> : null}
       </div>
-      <div
-        className={cn(
-          "overflow-hidden rounded-lg border border-border/60 bg-card/60 shadow-sm",
-          panelClassName
-        )}
-      >
-        {children}
-      </div>
+      <div className={cn(settingsHubPanelClass, panelClassName)}>{children}</div>
     </section>
+  );
+}
+
+/** Destino principal — uma linha = uma ação. */
+export function SettingsQuickNavCard({
+  to,
+  title,
+  detail,
+  icon: Icon,
+  className,
+}: {
+  to: string;
+  title: string;
+  detail?: string;
+  icon: LucideIcon;
+  className?: string;
+}) {
+  return (
+    <Link
+      to={to}
+      className={cn(
+        "flex items-start gap-3 rounded-xl border border-border/70 bg-card p-3.5 shadow-sm outline-none transition-colors",
+        "hover:border-primary/40 hover:bg-muted/20 focus-visible:ring-2 focus-visible:ring-ring",
+        className
+      )}
+    >
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/40 text-foreground">
+        <Icon className="h-4 w-4" aria-hidden />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold leading-tight text-foreground">{title}</span>
+        {detail ? (
+          <span className="mt-1 block text-xs leading-snug text-muted-foreground line-clamp-2">{detail}</span>
+        ) : null}
+      </span>
+      <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/50" aria-hidden />
+    </Link>
   );
 }
 
 export function HubStat({ label, value, className }: { label: string; value: ReactNode; className?: string }) {
   return (
-    <div className={cn("rounded-md border border-border/50 bg-muted/15 px-2.5 py-1.5", className)}>
-      <p className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-0.5 truncate text-sm font-semibold tabular-nums text-foreground">{value}</p>
+    <div className={cn("rounded-lg border border-border/60 bg-muted/20 px-2.5 py-2", className)}>
+      <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="mt-0.5 truncate text-sm font-semibold tabular-nums text-foreground">{value}</div>
     </div>
   );
 }
 
 export function HubRow({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-border/40 py-2 text-sm last:border-b-0">
+    <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2 text-sm last:border-b-0">
       <span className="text-muted-foreground">{label}</span>
-      <span className="text-right font-medium text-foreground">{value}</span>
+      <span className="text-right font-medium tabular-nums text-foreground">{value}</span>
     </div>
   );
 }
 
-/** Linha de integração — lista densa. */
 export function SettingsHubIntegrationRow({
   name,
   connected,
@@ -74,7 +109,7 @@ export function SettingsHubIntegrationRow({
   reconnectHref?: string;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border/40 px-3 py-2 last:border-b-0 sm:px-4">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 px-3 py-3 last:border-b-0 sm:px-4">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-foreground">{name}</span>
@@ -89,20 +124,14 @@ export function SettingsHubIntegrationRow({
         </div>
         <p className="text-xs text-muted-foreground">{syncLine}</p>
       </div>
-      <div className="flex shrink-0 items-center gap-1.5">
-        <Link
-          to={configHref}
-          className="inline-flex h-8 items-center rounded-md border border-border/70 bg-background px-3 text-xs font-medium hover:bg-muted/50"
-        >
-          Configurar
-        </Link>
+      <div className="flex shrink-0 flex-wrap gap-1.5">
+        <Button variant="outline" size="sm" className="h-8 text-xs" asChild>
+          <Link to={configHref}>Abrir</Link>
+        </Button>
         {!connected && reconnectHref ? (
-          <Link
-            to={reconnectHref}
-            className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90"
-          >
-            Conectar
-          </Link>
+          <Button size="sm" className="h-8 text-xs" asChild>
+            <Link to={reconnectHref}>Ligar</Link>
+          </Button>
         ) : null}
       </div>
     </div>

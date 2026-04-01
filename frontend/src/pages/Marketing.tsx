@@ -807,7 +807,7 @@ export function Marketing() {
                   Enviar
                 </Button>
                 <Button variant="default" size="sm" className="h-9 rounded-lg shadow-sm" asChild>
-                  <Link to="/marketing/configuracoes">Metas e alertas</Link>
+                  <Link to="/marketing/configuracoes">Metas e canais</Link>
                 </Button>
               </div>
             </div>
