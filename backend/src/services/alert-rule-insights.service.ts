@@ -204,6 +204,17 @@ function outsideTargetMatches(metric: string, value: number, settings: GoalSnaps
   return false;
 }
 
+/** CPA na “zona de atenção”: CPL alvo &lt; CPA &lt; teto (metas do canal). Requer ambos os limites. */
+function cpaBandMatches(value: number, settings: GoalSnapshot | null): boolean {
+  if (!settings) return false;
+  const lo = settings.targetCpaBrl;
+  const hi = settings.maxCpaBrl;
+  if (lo == null || hi == null || !Number.isFinite(lo) || !Number.isFinite(hi)) return false;
+  if (lo >= hi) return false;
+  const v = Math.round(value * 100) / 100;
+  return v > lo && v < hi;
+}
+
 export type CustomAlertKpisContext = {
   /** Ex.: 7d, 30d — usado para estimar gasto diário quando não há spendTodayBrl. */
   period: string;
@@ -367,6 +378,11 @@ export function entityMatchesAlertRule(
 
   const goalSnapChannel = channelGoalSnapshot(settingsRow, scope);
 
+  if (rule.operator === "cpa_band") {
+    if (rule.metric !== "cpa") return false;
+    return cpaBandMatches(v, goalSnapChannel);
+  }
+
   if (rule.operator === "outside_target") {
     return outsideTargetMatches(rule.metric, v, goalSnapChannel);
   }
@@ -445,7 +461,10 @@ export async function appendCustomRuleAlerts(
       t = tResolved != null && Number.isFinite(tResolved) ? Math.round(tResolved * 100) / 100 : NaN;
     }
 
-    if (rule.operator === "outside_target") {
+    if (rule.operator === "cpa_band") {
+      if (rule.metric !== "cpa") continue;
+      fires = cpaBandMatches(v, goalSnapChannel);
+    } else if (rule.operator === "outside_target") {
       fires = outsideTargetMatches(rule.metric, v, goalSnapChannel);
     } else {
       if (tResolved == null || !Number.isFinite(tResolved)) continue;
@@ -470,19 +489,24 @@ export async function appendCustomRuleAlerts(
           : `${(Number.isFinite(tResolved ?? NaN) ? (tResolved as number) : Number(rule.threshold)).toFixed(2)}×`;
 
     const goalLine =
-      rule.metric === "cpa"
-        ? goalSnapChannel?.maxCpaBrl != null
-          ? formatMoney(goalSnapChannel.maxCpaBrl)
-          : goalSnapChannel?.targetCpaBrl != null
-            ? formatMoney(goalSnapChannel.targetCpaBrl)
-            : thLabel
-        : rule.metric === "roas" && goalSnapChannel?.targetRoas != null
-          ? `${goalSnapChannel.targetRoas.toFixed(2)}×`
-          : rule.metric === "daily_spend"
-            ? thLabel
-            : thLabel;
+      rule.operator === "cpa_band" && rule.metric === "cpa"
+        ? `alvo ${goalSnapChannel?.targetCpaBrl != null ? formatMoney(goalSnapChannel.targetCpaBrl) : "—"} · teto ${goalSnapChannel?.maxCpaBrl != null ? formatMoney(goalSnapChannel.maxCpaBrl) : "—"}`
+        : rule.metric === "cpa"
+          ? goalSnapChannel?.maxCpaBrl != null
+            ? formatMoney(goalSnapChannel.maxCpaBrl)
+            : goalSnapChannel?.targetCpaBrl != null
+              ? formatMoney(goalSnapChannel.targetCpaBrl)
+              : thLabel
+          : rule.metric === "roas" && goalSnapChannel?.targetRoas != null
+            ? `${goalSnapChannel.targetRoas.toFixed(2)}×`
+            : rule.metric === "daily_spend"
+              ? thLabel
+              : thLabel;
 
-    const fallbackMsg = `Valor atual ${metricLabel} — ${rule.operator === "outside_target" ? "fora da meta" : `condição ${rule.operator}`} (${ctx.periodLabel}).`;
+    const fallbackMsg =
+      rule.operator === "cpa_band"
+        ? `CPA ${metricLabel} na zona entre meta e teto (${ctx.periodLabel}).`
+        : `Valor atual ${metricLabel} — ${rule.operator === "outside_target" ? "fora da meta" : `condição ${rule.operator}`} (${ctx.periodLabel}).`;
     const spendFmt = formatMoney(ctx.totalSpendBrl);
     const roasFmt = ctx.roas != null && Number.isFinite(ctx.roas) ? `${ctx.roas.toFixed(2)}×` : "—";
     const msg = formatRuleMessage(rule.messageTemplate, fallbackMsg, {

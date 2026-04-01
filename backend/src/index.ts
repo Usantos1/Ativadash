@@ -44,6 +44,25 @@ app.use(
 
 app.use(express.json());
 
+app.post("/api/internal/automation-tick", async (req, res) => {
+  const secret = env.AUTOMATION_INTERNAL_SECRET;
+  if (!secret) {
+    return res.status(404).json({ message: "Not found" });
+  }
+  const h = req.get("x-automation-secret") ?? req.get("X-Automation-Secret") ?? "";
+  if (h !== secret) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+  try {
+    const { runAutomationExecutionTick } = await import("./services/automation-execution-engine.service.js");
+    const result = await runAutomationExecutionTick();
+    return res.json(result);
+  } catch (e) {
+    console.error("[internal/automation-tick]", e);
+    return res.status(500).json({ message: "Erro ao executar tick de automação" });
+  }
+});
+
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", service: "ativa-dash-api" });
 });

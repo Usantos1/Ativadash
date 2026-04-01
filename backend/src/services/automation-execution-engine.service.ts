@@ -27,10 +27,13 @@ import {
 } from "./meta-ads-metrics.service.js";
 import {
   fetchGoogleAdsMetrics,
+  fetchGoogleAdsAdGroupMetrics,
   mutateGoogleCampaignStatus,
   mutateGoogleCampaignDailyBudget,
+  mutateGoogleAdGroupStatus,
   fetchGoogleCampaignBudgetMicros,
   type GoogleAdsCampaignRow,
+  type GoogleAdsAdGroupRow,
 } from "./google-ads-metrics.service.js";
 import type { InsightAlert } from "../types/marketing-insight.types.js";
 
@@ -110,6 +113,17 @@ function metaAdToEntity(row: MetaAdRow): AutomationEntityMetricInput {
 }
 
 function googleCampaignToEntity(row: GoogleAdsCampaignRow): AutomationEntityMetricInput {
+  const costBrl = row.costMicros / 1_000_000;
+  return {
+    spendBrl: costBrl,
+    resultsForCpa: Math.max(0, row.conversions),
+    purchaseValueBrl: row.conversionsValue,
+    impressions: row.impressions,
+    clicks: row.clicks,
+  };
+}
+
+function googleAdGroupToEntity(row: GoogleAdsAdGroupRow): AutomationEntityMetricInput {
   const costBrl = row.costMicros / 1_000_000;
   return {
     spendBrl: costBrl,
@@ -325,11 +339,37 @@ async function executeGoogleForRule(
   range: { start: string; end: string }
 ): Promise<number> {
   const level = (rule.evaluationLevel ?? "campaign").trim() || "campaign";
-  if (level !== "campaign") {
+
+  if (level === "ad") {
     console.info(
-      `[automation] Google: regra ${rule.id} nível "${level}" — execução só em campanha; ignorada na API Google.`
+      `[automation] Google: regra ${rule.id} nível "anúncio" — mutação ainda não suportada (use campanha ou conjunto).`
     );
     return 0;
+  }
+
+  if (level === "ad_set") {
+    let actions = 0;
+    const pack = await fetchGoogleAdsAdGroupMetrics(organizationId, range, undefined);
+    if (!pack.ok) return 0;
+    for (const row of pack.rows) {
+      const agId = row.adGroupId;
+      const campId = row.campaignId;
+      if (!agId || !campId) continue;
+      const entity = googleAdGroupToEntity(row);
+      if (!entityMatchesAlertRule(rule, settingsRow, "google", PERIOD_KEY, entity)) continue;
+      if (await wasRecentlyExecuted(organizationId, rule.id, agId, rule.actionType)) continue;
+      const n = await runGoogleAdGroupMutation(
+        organizationId,
+        rule,
+        agId,
+        row.adGroupName || agId,
+        campId,
+        row.campaignName || campId,
+        row.entityStatus
+      );
+      actions += n;
+    }
+    return actions;
   }
 
   let actions = 0;
@@ -346,6 +386,72 @@ async function executeGoogleForRule(
     actions += n;
   }
   return actions;
+}
+
+async function runGoogleAdGroupMutation(
+  organizationId: string,
+  rule: AlertRule,
+  adGroupId: string,
+  adGroupLabel: string,
+  campaignId: string,
+  campaignLabel: string,
+  entityStatus: string | undefined
+): Promise<number> {
+  const action = rule.actionType;
+
+  if (action === "PAUSE_ASSET") {
+    if (entityStatus === "PAUSED") return 0;
+    const out = await mutateGoogleAdGroupStatus(organizationId, adGroupId, false, undefined);
+    if (!out.ok) {
+      console.warn(`[automation] Google pause ad_group ${adGroupId}:`, out.message);
+      return 0;
+    }
+    const log = await appendAutomationExecutionLog(organizationId, {
+      ruleId: rule.id,
+      assetId: adGroupId,
+      assetLabel: `${adGroupLabel} · ${campaignLabel}`,
+      actionTaken: "PAUSE_ASSET",
+      previousValue: entityStatus ?? "ACTIVE",
+      newValue: "PAUSED",
+    });
+    if (!log) return 0;
+    const msg = `Pausa automática (Google) no conjunto *${adGroupLabel}* (campanha *${campaignLabel}*).`;
+    await persistOccurrence(organizationId, rule, msg);
+    await notifyAutomationWhatsApp(organizationId, rule, msg, "google");
+    return 1;
+  }
+
+  if (action === "INCREASE_BUDGET_20" || action === "DECREASE_BUDGET_20") {
+    if (entityStatus === "PAUSED") return 0;
+    const mult = action === "INCREASE_BUDGET_20" ? 1.2 : 0.8;
+    const cur = await fetchGoogleCampaignBudgetMicros(organizationId, campaignId, undefined);
+    if (!cur.ok) {
+      console.warn(`[automation] Google orçamento (campanha pai) ${campaignId}:`, cur.message);
+      return 0;
+    }
+    const prevMajor = cur.amountMicros / 1_000_000;
+    const nextMajor = Math.max(1, Math.round(prevMajor * mult * 100) / 100);
+    const out = await mutateGoogleCampaignDailyBudget(organizationId, campaignId, nextMajor, undefined);
+    if (!out.ok) {
+      console.warn(`[automation] Google budget campanha ${campaignId}:`, out.message);
+      return 0;
+    }
+    const log = await appendAutomationExecutionLog(organizationId, {
+      ruleId: rule.id,
+      assetId: adGroupId,
+      assetLabel: `${adGroupLabel} → camp. ${campaignLabel}`,
+      actionTaken: String(action),
+      previousValue: formatMoney(prevMajor),
+      newValue: formatMoney(nextMajor),
+    });
+    if (!log) return 0;
+    const msg = `Orçamento diário da campanha *${campaignLabel}* (gatilho no conjunto *${adGroupLabel}*): ${formatMoney(prevMajor)} → ${formatMoney(nextMajor)}.`;
+    await persistOccurrence(organizationId, rule, msg);
+    await notifyAutomationWhatsApp(organizationId, rule, msg, "google");
+    return 1;
+  }
+
+  return 0;
 }
 
 async function runGoogleMutation(

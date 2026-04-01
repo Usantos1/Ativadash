@@ -340,8 +340,8 @@ model AlertRule {
   name      String @db.VarChar(120)
   /// cpa | roas | spend | ctr | daily_spend (valores atuais do período / agregados)
   metric    String @db.VarChar(32)
-  /// gt | gte | lt | lte
-  operator  String @db.VarChar(8)
+  /// gt | gte | lt | lte | outside_target | cpa_band (CPL entre meta e teto do canal)
+  operator  String @db.VarChar(32)
   threshold Decimal @db.Decimal(14, 4)
   /// Limiar resolvido a partir das metas (ex.: teto CPL do canal). Null = usar `threshold`.
   thresholdRef String? @db.VarChar(64)

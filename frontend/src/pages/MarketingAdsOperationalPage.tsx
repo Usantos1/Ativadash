@@ -234,6 +234,7 @@ const OP_LABEL: Record<AlertRuleOperator, string> = {
   lt: "<",
   lte: "≤",
   outside_target: "fora da meta",
+  cpa_band: "entre meta e teto (CPL)",
 };
 
 function OperationalAlertRulesCard({

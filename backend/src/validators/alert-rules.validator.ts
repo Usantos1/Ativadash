@@ -1,7 +1,15 @@
 import { z } from "zod";
 
 export const alertRuleMetricSchema = z.enum(["cpa", "roas", "spend", "ctr", "daily_spend"]);
-export const alertRuleOperatorSchema = z.enum(["gt", "gte", "lt", "lte", "outside_target"]);
+export const alertRuleOperatorSchema = z.enum([
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+  "outside_target",
+  /** CPA: meta CPL &lt; valor atual &lt; teto CPL (metas do canal). Ignora threshold/thresholdRef. */
+  "cpa_band",
+]);
 export const alertRuleSeveritySchema = z.enum(["warning", "critical"]);
 export const alertRuleAppliesToChannelSchema = z.enum(["meta", "google", "all"]).optional();
 

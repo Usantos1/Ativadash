@@ -72,10 +72,15 @@ const THRESHOLD_REF_LABEL: Record<AlertRuleThresholdRef, string> = {
   VAR_BLENDED_DAILY_BUDGET_MAX: "Variável: orçamento máx. diário (Meta + Google)",
 };
 
-const OPERATOR_OPTIONS: { value: AlertRuleOperator; label: string }[] = [
+const OPERATOR_OPTIONS: { value: AlertRuleOperator; label: string; hint?: string }[] = [
   { value: "gt", label: "Maior que" },
   { value: "lt", label: "Menor que" },
   { value: "outside_target", label: "Fora da meta" },
+  {
+    value: "cpa_band",
+    label: "Entre meta e teto (CPL)",
+    hint: "Só métrica CPL: alvo < CPA < teto nas metas do canal",
+  },
 ];
 
 const LEVEL_OPTIONS: { value: AlertRuleEvaluationLevel; label: string }[] = [
@@ -200,7 +205,8 @@ function dtoToDraft(d: AlertRuleDto): RuleDraft {
     operator: (OPERATOR_OPTIONS.some((o) => o.value === d.operator)
       ? d.operator
       : "gt") as AlertRuleOperator,
-    thresholdStr: d.operator === "outside_target" ? "" : String(d.threshold),
+    thresholdStr:
+      d.operator === "outside_target" || d.operator === "cpa_band" ? "" : String(d.threshold),
     thresholdRef,
     severity: d.severity === "critical" ? "critical" : "warning",
     active: d.active,
@@ -362,19 +368,15 @@ function optimizationProfileDraftTakeProfit(channel: "meta" | "google"): RuleDra
   };
 }
 
-/**
- * CPL > alvo (valor das metas globais ou ajuste manual). A faixa “entre meta e teto” será refinada no worker;
- * use metas globais (CPL alvo × teto) como referência operacional.
- */
-function optimizationProfileDraftDesmame(channel: "meta" | "google", cplAlvoStr: string): RuleDraft {
-  const thresholdStr = cplAlvoStr.trim() !== "" ? cplAlvoStr.trim() : "0";
+/** CPL entre meta e teto (metas globais do canal) → reduz orçamento 20%. */
+function optimizationProfileDraftDesmame(channel: "meta" | "google"): RuleDraft {
   return {
     clientKey: crypto.randomUUID(),
     name: "Desmame de verba",
     evaluationLevel: "campaign",
     metric: "cpa",
-    operator: "gt",
-    thresholdStr,
+    operator: "cpa_band",
+    thresholdStr: "",
     thresholdRef: null,
     severity: "warning",
     active: true,
@@ -442,7 +444,7 @@ function buildRouting(d: RuleDraft): AlertRuleRoutingDto | null {
 
 function draftToPayload(d: RuleDraft, tz: string) {
   const threshold =
-    d.operator === "outside_target"
+    d.operator === "outside_target" || d.operator === "cpa_band"
       ? 0
       : d.thresholdRef
         ? 0
@@ -697,7 +699,11 @@ export function MetasAlertasPage() {
       return;
     }
     for (const r of rules) {
-      if (r.operator !== "outside_target" && !r.thresholdRef) {
+      if (r.operator === "cpa_band" && r.metric !== "cpa") {
+        setError(`A regra "${r.name}" usa "Entre meta e teto" — altere a métrica para CPL.`);
+        return;
+      }
+      if (r.operator !== "outside_target" && r.operator !== "cpa_band" && !r.thresholdRef) {
         const n = Number(String(r.thresholdStr).replace(",", "."));
         if (!Number.isFinite(n)) {
           setError(`Defina um valor numérico para a regra "${r.name}".`);
@@ -993,8 +999,8 @@ export function MetasAlertasPage() {
                     <CardHeader className="space-y-1 pb-2">
                       <CardTitle className="text-sm font-semibold">Desmame de verba</CardTitle>
                       <p className="text-[11px] leading-snug text-muted-foreground">
-                        SE CPL &gt; meta (CPL alvo das metas globais) → reduzir orçamento 20%. Ajuste o valor se o alvo
-                        estiver vazio.
+                        SE CPL entre alvo e teto (metas globais deste canal) → reduzir orçamento 20%. Exige CPL alvo e
+                        teto de CPA preenchidos em Metas globais.
                       </p>
                     </CardHeader>
                     <CardContent className="pt-0">
@@ -1005,16 +1011,8 @@ export function MetasAlertasPage() {
                         className="w-full rounded-xl"
                         disabled={!canEdit}
                         onClick={() => {
-                          const alvo =
-                            automationChannel === "meta" ? metaGoals.cplAlvo : googleGoals.cplAlvo;
-                          setRules((p) => [...p, optimizationProfileDraftDesmame(automationChannel, alvo)]);
-                          if (alvo.trim()) {
-                            setOk(null);
-                          } else {
-                            setOk(
-                              "Perfil Desmame aplicado: o limiar ficou em 0 — edite o valor fixo na regra ou preencha CPL alvo em Metas globais."
-                            );
-                          }
+                          setOk(null);
+                          setRules((p) => [...p, optimizationProfileDraftDesmame(automationChannel)]);
                         }}
                       >
                         Aplicar perfil
@@ -1218,7 +1216,19 @@ export function MetasAlertasPage() {
                         <Select
                           value={r.operator}
                           disabled={!canEdit}
-                          onValueChange={(v) => updateRule(r.clientKey, { operator: v as AlertRuleOperator })}
+                          onValueChange={(v) => {
+                            const op = v as AlertRuleOperator;
+                            if (op === "cpa_band") {
+                              updateRule(r.clientKey, {
+                                operator: op,
+                                metric: "cpa",
+                                thresholdRef: null,
+                                thresholdStr: "",
+                              });
+                            } else {
+                              updateRule(r.clientKey, { operator: op });
+                            }
+                          }}
                         >
                           <SelectTrigger className="h-8 w-[10.5rem] rounded-lg">
                             <SelectValue />
@@ -1226,12 +1236,17 @@ export function MetasAlertasPage() {
                           <SelectContent>
                             {OPERATOR_OPTIONS.map((o) => (
                               <SelectItem key={o.value} value={o.value}>
-                                {o.label}
+                                <span className="flex flex-col text-left">
+                                  <span>{o.label}</span>
+                                  {o.hint ? (
+                                    <span className="text-[10px] font-normal text-muted-foreground">{o.hint}</span>
+                                  ) : null}
+                                </span>
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
-                        {r.operator !== "outside_target" ? (
+                        {r.operator !== "outside_target" && r.operator !== "cpa_band" ? (
                           <>
                             <Select
                               value={r.thresholdRef ?? "fixed"}
@@ -1266,8 +1281,12 @@ export function MetasAlertasPage() {
                               <span className="text-[11px]">(variável das metas)</span>
                             )}
                           </>
-                        ) : (
+                        ) : r.operator === "outside_target" ? (
                           <span className="text-[11px]">(fora da meta global)</span>
+                        ) : (
+                          <span className="text-[11px]">
+                            (CPL alvo &lt; CPA &lt; teto — metas globais do canal da regra)
+                          </span>
                         )}
                       </p>
 

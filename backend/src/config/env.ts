@@ -89,4 +89,9 @@ export const env = {
   AUTOMATION_WORKER_ENABLED: process.env.AUTOMATION_WORKER_ENABLED === "true",
   /** Padrão 1 hora (ms). */
   AUTOMATION_WORKER_INTERVAL_MS: parsePositiveInt(process.env.AUTOMATION_WORKER_INTERVAL_MS, 60 * 60 * 1000),
+  /**
+   * Se definido, `POST /api/internal/automation-tick` com header `X-Automation-Secret`
+   * executa uma passagem do motor (útil com cron externo sem worker embutido).
+   */
+  AUTOMATION_INTERNAL_SECRET: (process.env.AUTOMATION_INTERNAL_SECRET ?? "").trim(),
 };

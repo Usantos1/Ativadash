@@ -5,7 +5,14 @@ export type AlertRuleThresholdRef =
   | "VAR_CHANNEL_MAX_CPA"
   | "VAR_CHANNEL_TARGET_ROAS"
   | "VAR_BLENDED_DAILY_BUDGET_MAX";
-export type AlertRuleOperator = "gt" | "gte" | "lt" | "lte" | "outside_target";
+export type AlertRuleOperator =
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "outside_target"
+  /** CPL entre meta e teto do canal (metas globais). */
+  | "cpa_band";
 export type AlertRuleSeverity = "warning" | "critical";
 export type AlertRuleEvaluationLevel = "campaign" | "ad_set" | "ad";
 export type AlertRuleCheckFrequency = "1h" | "3h" | "12h" | "daily";
