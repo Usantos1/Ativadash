@@ -1220,6 +1220,15 @@ export function MarketingCampaignsOsTable({
                                 <X className="h-3.5 w-3.5" />
                               </button>
                             </form>
+                          ) : row.level === "campaign" && row.externalId && row.revenue === 0 ? (
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-lg border border-dashed border-primary/40 bg-primary/[0.06] px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:border-primary/70 hover:bg-primary/[0.12]"
+                              onClick={() => openRevenueEdit(row.id, 0)}
+                            >
+                              <Pencil className="h-3 w-3" />
+                              Adicionar
+                            </button>
                           ) : (
                             <span
                               className="group inline-flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-muted/60"
@@ -1230,12 +1239,12 @@ export function MarketingCampaignsOsTable({
                             >
                               {row.revenue > 0 ? formatSpend(row.revenue) : "—"}
                               {row.manualRevenue != null && row.manualRevenue > 0 ? (
-                                <span className="inline-block rounded border border-primary/30 bg-primary/10 px-1 py-px text-[9px] font-bold uppercase text-primary">
+                                <span className="ml-1 inline-block rounded border border-primary/30 bg-primary/10 px-1 py-px text-[9px] font-bold uppercase text-primary">
                                   Manual
                                 </span>
                               ) : null}
                               {row.level === "campaign" && row.externalId ? (
-                                <Pencil className="hidden h-3 w-3 text-muted-foreground group-hover:inline-block" />
+                                <Pencil className="ml-0.5 h-3 w-3 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                               ) : null}
                             </span>
                           )}
