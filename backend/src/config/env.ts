@@ -82,4 +82,11 @@ export const env = {
   API_RATE_LIMIT_MAX: parsePositiveInt(process.env.API_RATE_LIMIT_MAX, 800),
   /** Tentativas de login com falha (4xx/5xx) por IP; acertos não consomem o contador. */
   AUTH_LOGIN_RATE_LIMIT_MAX: parsePositiveInt(process.env.AUTH_LOGIN_RATE_LIMIT_MAX, 60),
+  /**
+   * Motor autónomo: avalia regras com ação ≠ NOTIFY_ONLY e executa na Meta/Google.
+   * Requer integrações conectadas, plano com performanceAlerts + campaignWrite.
+   */
+  AUTOMATION_WORKER_ENABLED: process.env.AUTOMATION_WORKER_ENABLED === "true",
+  /** Padrão 1 hora (ms). */
+  AUTOMATION_WORKER_INTERVAL_MS: parsePositiveInt(process.env.AUTOMATION_WORKER_INTERVAL_MS, 60 * 60 * 1000),
 };

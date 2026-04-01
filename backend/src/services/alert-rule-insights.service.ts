@@ -1,4 +1,4 @@
-import type { MarketingSettings } from "@prisma/client";
+import type { AlertRule, MarketingSettings } from "@prisma/client";
 import type { InsightAlert } from "../types/marketing-insight.types.js";
 import {
   resolveBlendedDailyBudgetMaxBrl,
@@ -290,6 +290,88 @@ function ruleMatchesEvalScope(
     return ch === "all";
   }
   return ch === "all" || ch === evaluatingChannel;
+}
+
+/** Métricas por entidade (campanha / conjunto / anúncio) para o motor de execução autónoma. */
+export type AutomationEntityMetricInput = {
+  spendBrl: number;
+  /** Leads + compras (Meta) ou conversões (Google) — denominador do CPA. */
+  resultsForCpa: number;
+  purchaseValueBrl: number;
+  impressions: number;
+  clicks: number;
+  /** Gasto hoje (BRL), quando existir; senão `daily_spend` usa média do período. */
+  spendTodayBrl?: number | null;
+};
+
+/**
+ * Avalia SE a regra dispara para uma entidade (mesma semântica que `appendCustomRuleAlerts` agregado).
+ * Usado pelo worker de automação por campanha/conjunto/anúncio.
+ */
+export function entityMatchesAlertRule(
+  rule: AlertRule,
+  settingsRow: MarketingSettings | null,
+  scope: RuleEvaluatingChannel,
+  periodKey: string,
+  entity: AutomationEntityMetricInput
+): boolean {
+  if (!ruleMatchesEvalScope(rule.appliesToChannel, scope)) return false;
+  if (!passesTimeWindow(rule)) return false;
+
+  const minSpend =
+    settingsRow?.minSpendForAlertsBrl != null ? Number(settingsRow.minSpendForAlertsBrl) : null;
+  const minRes = settingsRow?.minResultsForCpa ?? 5;
+
+  let value: number | null = null;
+  switch (rule.metric) {
+    case "cpa": {
+      if (minSpend != null && entity.spendBrl < minSpend) return false;
+      if (entity.resultsForCpa < minRes) return false;
+      value = entity.spendBrl / entity.resultsForCpa;
+      break;
+    }
+    case "roas": {
+      if (entity.spendBrl <= 0) return false;
+      value = entity.purchaseValueBrl / entity.spendBrl;
+      break;
+    }
+    case "spend":
+      value = entity.spendBrl;
+      break;
+    case "daily_spend": {
+      const days = Math.max(1, periodDays(periodKey));
+      const st = entity.spendTodayBrl;
+      value =
+        st != null && Number.isFinite(st) && st >= 0 ? st : entity.spendBrl / days;
+      break;
+    }
+    case "ctr": {
+      if (entity.impressions <= 0) return false;
+      value = (entity.clicks / entity.impressions) * 100;
+      break;
+    }
+    default:
+      return false;
+  }
+
+  if (value == null || !Number.isFinite(value)) return false;
+
+  let v = value;
+  const tResolved = resolveDynamicThreshold(rule, settingsRow, scope);
+  let t = tResolved ?? NaN;
+
+  if (rule.metric === "cpa") {
+    v = Math.round(value * 100) / 100;
+    t = tResolved != null && Number.isFinite(tResolved) ? Math.round(tResolved * 100) / 100 : NaN;
+  }
+
+  const goalSnapChannel = channelGoalSnapshot(settingsRow, scope);
+
+  if (rule.operator === "outside_target") {
+    return outsideTargetMatches(rule.metric, v, goalSnapChannel);
+  }
+  if (tResolved == null || !Number.isFinite(tResolved)) return false;
+  return compareOp(rule.operator, v, t);
 }
 
 export async function appendCustomRuleAlerts(

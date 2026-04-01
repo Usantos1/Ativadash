@@ -829,3 +829,187 @@ export async function mutateGoogleCampaignStatus(
     return { ok: false, message: raw };
   }
 }
+
+/** Orçamento diário da campanha (micros) + resource do budget para mutação. */
+export async function fetchGoogleCampaignBudgetMicros(
+  organizationId: string,
+  campaignExternalId: string,
+  queryContext?: GoogleAdsMetricsQueryContext
+): Promise<
+  | { ok: true; campaignResourceName: string; budgetResourceName: string; amountMicros: number }
+  | { ok: false; message: string }
+> {
+  if (isGoogleAdsUxPending()) {
+    return { ok: false, message: MSG_API_NOT_READY };
+  }
+  if (!isGoogleAdsDeveloperTokenConfigured()) {
+    return { ok: false, message: MSG_PENDING_CONFIGURATION };
+  }
+  const operational = await resolveGoogleAdsOperationalContext(organizationId, {
+    clientAccountId: queryContext?.clientAccountId,
+  });
+  if (!operational.ok) {
+    return { ok: false, message: operational.message };
+  }
+  if (!operational.customerId) {
+    return { ok: false, message: "Nenhuma conta Google Ads acessível para esta organização." };
+  }
+  const resolved = resolveGoogleCampaignResource(campaignExternalId, operational.customerId);
+  if (!resolved) {
+    return {
+      ok: false,
+      message:
+        "ID de campanha inválido. Use o ID numérico da campanha ou o resourceName completo (customers/…/campaigns/…).",
+    };
+  }
+  const numericId = /^customers\/\d+\/campaigns\/(\d+)$/.exec(resolved.resourceName)?.[1];
+  if (!numericId) {
+    return { ok: false, message: "Não foi possível resolver o ID numérico da campanha." };
+  }
+
+  const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN.trim();
+  const mutateCid = normalizeGoogleAdsCustomerId(resolved.customerId);
+  const query = `
+    SELECT
+      campaign.resource_name,
+      campaign.campaign_budget,
+      campaign_budget.resource_name,
+      campaign_budget.amount_micros
+    FROM campaign
+    WHERE campaign.id = ${numericId}
+  `.trim();
+
+  let loginForQuery = operational.loginCustomerId;
+  if (normalizeGoogleAdsCustomerId(resolved.customerId) !== normalizeGoogleAdsCustomerId(operational.customerId)) {
+    const acc = await prisma.googleAdsAccessibleCustomer.findUnique({
+      where: {
+        integrationId_customerId: {
+          integrationId: operational.integrationId,
+          customerId: mutateCid,
+        },
+      },
+    });
+    loginForQuery = acc?.managerCustomerId ? normalizeGoogleAdsCustomerId(acc.managerCustomerId) : null;
+  }
+
+  const url = `https://googleads.googleapis.com/${API_VERSION}/customers/${mutateCid}/googleAds:searchStream`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: buildGoogleAdsHeaders(operational.accessToken, developerToken, loginForQuery),
+      body: JSON.stringify({ query }),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      const classified = classifyGoogleAdsError(text);
+      if (!classified.ok) {
+        return { ok: false, message: classified.message };
+      }
+      return { ok: false, message: text.length > 300 ? `${text.slice(0, 300)}…` : text };
+    }
+    const raw = JSON.parse(text) as unknown;
+    const batches = Array.isArray(raw) ? raw : [raw];
+    for (const batch of batches) {
+      const results = (batch as { results?: Record<string, unknown>[] }).results ?? [];
+      for (const row of results) {
+        const camp = row.campaign as Record<string, unknown> | undefined;
+        const bud = (row.campaignBudget ?? row.campaign_budget) as Record<string, unknown> | undefined;
+        const cr = (camp?.resourceName ?? camp?.resource_name) as string | undefined;
+        const br = (bud?.resourceName ?? bud?.resource_name) as string | undefined;
+        const amRaw = bud?.amountMicros ?? bud?.amount_micros;
+        const n = typeof amRaw === "string" ? parseInt(amRaw, 10) : Number(amRaw ?? 0);
+        if (cr && br && Number.isFinite(n) && n > 0) {
+          return {
+            ok: true,
+            campaignResourceName: cr,
+            budgetResourceName: br,
+            amountMicros: n,
+          };
+        }
+      }
+    }
+    return { ok: false, message: "Orçamento da campanha não encontrado na API Google Ads." };
+  } catch (e) {
+    const raw = e instanceof Error ? e.message : String(e);
+    return { ok: false, message: raw };
+  }
+}
+
+/** Define orçamento diário (amount_micros) no CampaignBudget vinculado. */
+export async function mutateGoogleCampaignDailyBudget(
+  organizationId: string,
+  campaignExternalId: string,
+  dailyBudgetMajorUnits: number,
+  queryContext?: GoogleAdsMetricsQueryContext
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const major = Number(dailyBudgetMajorUnits);
+  if (!Number.isFinite(major) || major <= 0) {
+    return { ok: false, message: "Orçamento diário inválido." };
+  }
+  const nextMicros = Math.max(1_000_000, Math.round(major * 1_000_000));
+
+  const cur = await fetchGoogleCampaignBudgetMicros(organizationId, campaignExternalId, queryContext);
+  if (!cur.ok) {
+    return { ok: false, message: cur.message };
+  }
+
+  if (isGoogleAdsUxPending()) {
+    return { ok: false, message: MSG_API_NOT_READY };
+  }
+  const operational = await resolveGoogleAdsOperationalContext(organizationId, {
+    clientAccountId: queryContext?.clientAccountId,
+  });
+  if (!operational.ok) {
+    return { ok: false, message: operational.message };
+  }
+  const resolved = resolveGoogleCampaignResource(campaignExternalId, operational.customerId!);
+  if (!resolved) {
+    return { ok: false, message: "ID de campanha inválido." };
+  }
+  const mutateCid = normalizeGoogleAdsCustomerId(resolved.customerId);
+  const developerToken = env.GOOGLE_ADS_DEVELOPER_TOKEN.trim();
+
+  let loginForMutate = operational.loginCustomerId;
+  if (normalizeGoogleAdsCustomerId(resolved.customerId) !== normalizeGoogleAdsCustomerId(operational.customerId!)) {
+    const acc = await prisma.googleAdsAccessibleCustomer.findUnique({
+      where: {
+        integrationId_customerId: {
+          integrationId: operational.integrationId,
+          customerId: mutateCid,
+        },
+      },
+    });
+    loginForMutate = acc?.managerCustomerId ? normalizeGoogleAdsCustomerId(acc.managerCustomerId) : null;
+  }
+
+  const budgetUrl = `https://googleads.googleapis.com/${API_VERSION}/customers/${mutateCid}/campaignBudgets:mutate`;
+  try {
+    const res = await fetch(budgetUrl, {
+      method: "POST",
+      headers: buildGoogleAdsHeaders(operational.accessToken, developerToken, loginForMutate),
+      body: JSON.stringify({
+        operations: [
+          {
+            update: {
+              resourceName: cur.budgetResourceName,
+              amountMicros: String(nextMicros),
+            },
+            updateMask: "amount_micros",
+          },
+        ],
+      }),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      const classified = classifyGoogleAdsError(text);
+      if (!classified.ok) {
+        return { ok: false, message: classified.message };
+      }
+      return { ok: false, message: text.length > 500 ? `${text.slice(0, 500)}…` : text };
+    }
+    return { ok: true };
+  } catch (e) {
+    const raw = e instanceof Error ? e.message : String(e);
+    return { ok: false, message: raw };
+  }
+}

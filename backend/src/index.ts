@@ -95,4 +95,9 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 
 app.listen(env.PORT, () => {
   console.log(`Ativa Dash API rodando em http://localhost:${env.PORT}`);
+  if (env.AUTOMATION_WORKER_ENABLED) {
+    import("./services/automation-worker.runner.js")
+      .then((m) => m.startAutomationWorker())
+      .catch((e) => console.error("[automation-worker] falha ao iniciar:", e));
+  }
 });

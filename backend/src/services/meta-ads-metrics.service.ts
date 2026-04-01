@@ -914,3 +914,143 @@ export async function updateMetaCampaignDailyBudget(
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
 }
+
+type MetaGraphEntityFields = {
+  name?: string;
+  daily_budget?: string;
+  effective_status?: string;
+};
+
+export async function fetchMetaCampaignBudgetMeta(
+  organizationId: string,
+  metaCampaignId: string
+): Promise<
+  | { ok: true; name: string; dailyBudgetMajorBrl: number; effectiveStatus: string }
+  | { ok: false; message: string }
+> {
+  const config = await getMetaAdsConfig(organizationId);
+  if (!config?.access_token) {
+    return { ok: false, message: "Meta Ads não conectado." };
+  }
+  const appSecret = env.META_APP_SECRET;
+  if (!appSecret) {
+    return { ok: false, message: "META_APP_SECRET não configurado." };
+  }
+  try {
+    const data = await graphGet<MetaGraphEntityFields>(
+      `/${metaCampaignId}?fields=name,daily_budget,effective_status`,
+      config.access_token,
+      appSecret
+    );
+    const minor = parseInt(String(data.daily_budget ?? "0"), 10) || 0;
+    const major = minor > 0 ? minor / 100 : 0;
+    return {
+      ok: true,
+      name: data.name?.trim() || metaCampaignId,
+      dailyBudgetMajorBrl: major,
+      effectiveStatus: (data.effective_status ?? "").toUpperCase(),
+    };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function updateMetaAdsetStatus(
+  organizationId: string,
+  adsetId: string,
+  status: "PAUSED" | "ACTIVE"
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const config = await getMetaAdsConfig(organizationId);
+  if (!config?.access_token) {
+    return { ok: false, message: "Meta Ads não conectado." };
+  }
+  const appSecret = env.META_APP_SECRET;
+  if (!appSecret) {
+    return { ok: false, message: "META_APP_SECRET não configurado." };
+  }
+  try {
+    await graphPost(`/${adsetId}`, config.access_token, appSecret, { status });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function updateMetaAdStatus(
+  organizationId: string,
+  adId: string,
+  status: "PAUSED" | "ACTIVE"
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const config = await getMetaAdsConfig(organizationId);
+  if (!config?.access_token) {
+    return { ok: false, message: "Meta Ads não conectado." };
+  }
+  const appSecret = env.META_APP_SECRET;
+  if (!appSecret) {
+    return { ok: false, message: "META_APP_SECRET não configurado." };
+  }
+  try {
+    await graphPost(`/${adId}`, config.access_token, appSecret, { status });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function fetchMetaAdsetBudgetMeta(
+  organizationId: string,
+  adsetId: string
+): Promise<
+  | { ok: true; name: string; dailyBudgetMajorBrl: number; effectiveStatus: string }
+  | { ok: false; message: string }
+> {
+  const config = await getMetaAdsConfig(organizationId);
+  if (!config?.access_token) {
+    return { ok: false, message: "Meta Ads não conectado." };
+  }
+  const appSecret = env.META_APP_SECRET;
+  if (!appSecret) {
+    return { ok: false, message: "META_APP_SECRET não configurado." };
+  }
+  try {
+    const data = await graphGet<MetaGraphEntityFields>(
+      `/${adsetId}?fields=name,daily_budget,effective_status`,
+      config.access_token,
+      appSecret
+    );
+    const minor = parseInt(String(data.daily_budget ?? "0"), 10) || 0;
+    const major = minor > 0 ? minor / 100 : 0;
+    return {
+      ok: true,
+      name: data.name?.trim() || adsetId,
+      dailyBudgetMajorBrl: major,
+      effectiveStatus: (data.effective_status ?? "").toUpperCase(),
+    };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function updateMetaAdsetDailyBudget(
+  organizationId: string,
+  adsetId: string,
+  dailyBudgetMajorUnits: number
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const config = await getMetaAdsConfig(organizationId);
+  if (!config?.access_token) {
+    return { ok: false, message: "Meta Ads não conectado." };
+  }
+  const appSecret = env.META_APP_SECRET;
+  if (!appSecret) {
+    return { ok: false, message: "META_APP_SECRET não configurado." };
+  }
+  const minor = Math.max(1, Math.round(dailyBudgetMajorUnits * 100));
+  try {
+    await graphPost(`/${adsetId}`, config.access_token, appSecret, {
+      daily_budget: String(minor),
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
