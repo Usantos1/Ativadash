@@ -5,3 +5,4 @@ export { SettingsHelpAccordion } from "./SettingsHelpAccordion";
 export { SettingsControlPanel, SettingsMetricLine } from "./SettingsControlPanel";
 export { SettingsHubSection, SettingsHubIntegrationRow, HubStat, HubRow } from "./settings-hub-blocks";
 export { SettingsChangePasswordDialog } from "./SettingsChangePasswordDialog";
+export { AdminOrgPanel } from "./AdminOrgPanel";

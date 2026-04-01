@@ -148,3 +148,16 @@ export async function patchMarketingGoogleCampaignStatus(
   const enc = encodeURIComponent(externalId);
   await api.patch(`/marketing/google/campaigns/${enc}/status`, { status });
 }
+
+export type MarketingRollbackItem =
+  | { channel: "meta"; externalId: string; metaStatus: "PAUSED" | "ACTIVE" }
+  | { channel: "meta"; externalId: string; dailyBudget: number }
+  | { channel: "google"; externalId: string; googleStatus: "ENABLED" | "PAUSED" };
+
+export async function postMarketingCampaignRollback(items: MarketingRollbackItem[]): Promise<{
+  ok: boolean;
+  applied?: number;
+  errors?: string[];
+}> {
+  return api.post("/marketing/campaign-mutations/rollback", { items });
+}

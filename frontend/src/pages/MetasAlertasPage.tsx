@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import {
   Bell,
   ChevronRight,
@@ -8,6 +10,7 @@ import {
   PauseCircle,
   Plus,
   Save,
+  ScrollText,
   Trash2,
   Zap,
 } from "lucide-react";
@@ -36,6 +39,7 @@ import {
   createAlertRule,
   deleteAlertRule,
   fetchAlertRules,
+  fetchAutomationExecutionLogs,
   patchAlertRule,
   type AlertRuleActionType,
   type AlertRuleCheckFrequency,
@@ -46,6 +50,7 @@ import {
   type AlertRuleRoutingDto,
   type AlertRuleSeverity,
   type AlertRuleThresholdRef,
+  type AutomationExecutionLogDto,
 } from "@/lib/alert-rules-api";
 import { fetchMembers, type MemberRow } from "@/lib/workspace-api";
 import { canUserEditMarketingSettings } from "@/lib/marketing-ads-permissions";
@@ -86,31 +91,33 @@ const FREQUENCY_OPTIONS: { value: AlertRuleCheckFrequency; label: string }[] = [
   { value: "daily", label: "Diariamente" },
 ];
 
-const ACTION_OPTIONS: { value: AlertRuleActionType; label: string; hint?: string }[] = [
-  { value: "whatsapp_alert", label: "Enviar alerta WhatsApp", hint: "Somente notificação" },
-  {
-    value: "pause_entity_whatsapp",
-    label: "Pausar (nível da regra) e avisar no WhatsApp",
-    hint: "Automação — API em integração",
-  },
-  {
-    value: "reduce_budget_20_whatsapp",
-    label: "Reduzir orçamento em 20% e avisar no WhatsApp",
-    hint: "Automação — API em integração",
-  },
-  { value: "pause_campaign", label: "Pausar campanha (legado)", hint: "Compatibilidade" },
-];
+/** Valores antigos da API — normalizados para `AutomationActionType`. */
+const LEGACY_ACTION_TYPE_MAP: Record<string, AlertRuleActionType> = {
+  whatsapp_alert: "NOTIFY_ONLY",
+  pause_campaign: "PAUSE_ASSET",
+  pause_entity_whatsapp: "PAUSE_ASSET",
+  reduce_budget_20_whatsapp: "DECREASE_BUDGET_20",
+};
 
 const VALID_ACTION_TYPES: AlertRuleActionType[] = [
-  "whatsapp_alert",
-  "pause_campaign",
-  "pause_entity_whatsapp",
-  "reduce_budget_20_whatsapp",
+  "NOTIFY_ONLY",
+  "PAUSE_ASSET",
+  "INCREASE_BUDGET_20",
+  "DECREASE_BUDGET_20",
 ];
 
 function normalizeActionType(raw: string): AlertRuleActionType {
-  return VALID_ACTION_TYPES.includes(raw as AlertRuleActionType) ? (raw as AlertRuleActionType) : "whatsapp_alert";
+  const u = String(raw ?? "").trim();
+  const mapped = LEGACY_ACTION_TYPE_MAP[u] ?? u;
+  return VALID_ACTION_TYPES.includes(mapped as AlertRuleActionType) ? (mapped as AlertRuleActionType) : "NOTIFY_ONLY";
 }
+
+const ACTION_OPTIONS: { value: AlertRuleActionType; label: string; hint?: string }[] = [
+  { value: "NOTIFY_ONLY", label: "Apenas notificar", hint: "Alertas sem alterar campanhas na mídia" },
+  { value: "PAUSE_ASSET", label: "Pausar", hint: "Execução na API em integração; WhatsApp opcional" },
+  { value: "INCREASE_BUDGET_20", label: "Aumentar orçamento (20%)", hint: "Take-profit / escala" },
+  { value: "DECREASE_BUDGET_20", label: "Reduzir orçamento (20%)", hint: "Desmame gradual" },
+];
 
 const MESSAGE_CHIPS: { label: string; insert: string }[] = [
   { label: "[Nome da Campanha]", insert: "{{campaign_name}}" },
@@ -200,7 +207,7 @@ function dtoToDraft(d: AlertRuleDto): RuleDraft {
     appliesToChannel:
       d.appliesToChannel === "meta" || d.appliesToChannel === "google" ? d.appliesToChannel : "all",
     notifyWhatsapp: d.notifyWhatsapp !== false,
-    actionType: normalizeActionType(d.actionType ?? "whatsapp_alert"),
+    actionType: normalizeActionType(d.actionType ?? "NOTIFY_ONLY"),
     messageTemplate: d.messageTemplate ?? "",
     routingJobSlugs: [...(d.routing?.jobTitleSlugs ?? [])],
     routingUserIds: [...(d.routing?.userIds ?? [])],
@@ -224,7 +231,7 @@ function newDraft(channel: "meta" | "google"): RuleDraft {
     active: true,
     appliesToChannel: channel,
     notifyWhatsapp: true,
-    actionType: "whatsapp_alert",
+    actionType: "NOTIFY_ONLY",
     messageTemplate:
       "⚠️ {{rule_name}}\nSE [{{campaign_name}}] — {{metric_value}} no período {{period}}. Meta: {{goal_value}}.\nGasto: {{spend_current}} · ROAS: {{roas_current}}",
     routingJobSlugs: [],
@@ -257,7 +264,7 @@ function buildDefaultAutomationDrafts(): RuleDraft[] {
       active: true,
       appliesToChannel: "meta",
       notifyWhatsapp: true,
-      actionType: "whatsapp_alert",
+      actionType: "NOTIFY_ONLY",
       messageTemplate:
         "🚨 *ALERTA ATIVA DASH*\nSE [Campanha] *{{campaign_name}}* — CPL acima do teto Meta.\n• CPL atual: {{metric_value}}\n• Referência: {{goal_value}}\n• {{period}}",
       routingJobSlugs: [],
@@ -277,7 +284,7 @@ function buildDefaultAutomationDrafts(): RuleDraft[] {
       active: true,
       appliesToChannel: "all",
       notifyWhatsapp: true,
-      actionType: "whatsapp_alert",
+      actionType: "NOTIFY_ONLY",
       messageTemplate:
         "🚨 *ALERTA ATIVA DASH — Sangria*\nGasto diário acima do teto *{{goal_value}}*.\n• Gasto hoje: {{metric_value}} ({{spend_current}})\n• {{period}}",
       routingJobSlugs: [],
@@ -297,7 +304,7 @@ function buildDefaultAutomationDrafts(): RuleDraft[] {
       active: true,
       appliesToChannel: "google",
       notifyWhatsapp: true,
-      actionType: "whatsapp_alert",
+      actionType: "NOTIFY_ONLY",
       messageTemplate:
         "🚨 *ALERTA ATIVA DASH*\nSE [Campanha] *{{campaign_name}}* — ROAS abaixo da meta Google.\n• ROAS atual: {{metric_value}} ({{roas_current}})\n• Meta: {{goal_value}}\n• {{period}}",
       routingJobSlugs: [],
@@ -306,6 +313,120 @@ function buildDefaultAutomationDrafts(): RuleDraft[] {
       ...DEFAULT_SCHEDULE,
     },
   ];
+}
+
+/** Perfis prontos — alinhados ao canal selecionado na aba Motor. */
+function optimizationProfileDraftStopLoss(channel: "meta" | "google"): RuleDraft {
+  return {
+    clientKey: crypto.randomUUID(),
+    name: "Proteção de orçamento (Stop-Loss)",
+    evaluationLevel: "ad",
+    metric: "cpa",
+    operator: "gt",
+    thresholdStr: "0",
+    thresholdRef: "VAR_CHANNEL_MAX_CPA",
+    severity: "critical",
+    active: true,
+    appliesToChannel: channel,
+    notifyWhatsapp: true,
+    actionType: "PAUSE_ASSET",
+    messageTemplate:
+      "🔴 *STOP-LOSS — Ativa Dash*\nAnúncio *{{ad_name}}* — CPL {{metric_value}} acima do teto {{goal_value}}.\n{{period}} · {{rule_name}}",
+    routingJobSlugs: [],
+    routingUserIds: [],
+    routingCustomPhonesStr: "",
+    ...DEFAULT_SCHEDULE,
+  };
+}
+
+function optimizationProfileDraftTakeProfit(channel: "meta" | "google"): RuleDraft {
+  return {
+    clientKey: crypto.randomUUID(),
+    name: "Escala agressiva (Take-Profit)",
+    evaluationLevel: "campaign",
+    metric: "roas",
+    operator: "gt",
+    thresholdStr: "0",
+    thresholdRef: "VAR_CHANNEL_TARGET_ROAS",
+    severity: "warning",
+    active: true,
+    appliesToChannel: channel,
+    notifyWhatsapp: true,
+    actionType: "INCREASE_BUDGET_20",
+    messageTemplate:
+      "🟢 *ESCALA — Ativa Dash*\nCampanha *{{campaign_name}}* — ROAS {{metric_value}} acima da meta {{goal_value}}. Orçamento +20%.\n{{period}} · {{rule_name}}",
+    routingJobSlugs: [],
+    routingUserIds: [],
+    routingCustomPhonesStr: "",
+    ...DEFAULT_SCHEDULE,
+  };
+}
+
+/**
+ * CPL > alvo (valor das metas globais ou ajuste manual). A faixa “entre meta e teto” será refinada no worker;
+ * use metas globais (CPL alvo × teto) como referência operacional.
+ */
+function optimizationProfileDraftDesmame(channel: "meta" | "google", cplAlvoStr: string): RuleDraft {
+  const thresholdStr = cplAlvoStr.trim() !== "" ? cplAlvoStr.trim() : "0";
+  return {
+    clientKey: crypto.randomUUID(),
+    name: "Desmame de verba",
+    evaluationLevel: "campaign",
+    metric: "cpa",
+    operator: "gt",
+    thresholdStr,
+    thresholdRef: null,
+    severity: "warning",
+    active: true,
+    appliesToChannel: channel,
+    notifyWhatsapp: true,
+    actionType: "DECREASE_BUDGET_20",
+    messageTemplate:
+      "🟠 *DESNAME — Ativa Dash*\nCampanha *{{campaign_name}}* — CPL {{metric_value}} acima do alvo. Orçamento −20%.\n{{period}} · {{rule_name}}",
+    routingJobSlugs: [],
+    routingUserIds: [],
+    routingCustomPhonesStr: "",
+    ...DEFAULT_SCHEDULE,
+  };
+}
+
+function formatExecutionFeedLine(row: AutomationExecutionLogDto): {
+  tone: "risk" | "gain" | "neutral";
+  line: string;
+} {
+  const ts = format(new Date(row.executedAt), "dd/MM HH:mm", { locale: ptBR });
+  const name = row.assetLabel?.trim() || row.assetId;
+  const act = row.actionTaken.trim().toUpperCase();
+  const rule = row.ruleName || "Regra";
+
+  if (act === "PAUSE_ASSET") {
+    const prev = row.previousValue ?? "—";
+    const ceiling = row.newValue ?? "—";
+    return {
+      tone: "risk",
+      line: `[${ts}] 🔴 STOP-LOSS: "${name}" pausado. CPA/ref.: ${prev} (teto/meta: ${ceiling}). · ${rule}`,
+    };
+  }
+  if (act === "INCREASE_BUDGET_20") {
+    const a = row.previousValue ?? "—";
+    const b = row.newValue ?? "—";
+    return {
+      tone: "gain",
+      line: `[${ts}] 🟢 ESCALA: "${name}" — orçamento ${a} → ${b}. · ${rule}`,
+    };
+  }
+  if (act === "DECREASE_BUDGET_20") {
+    const a = row.previousValue ?? "—";
+    const b = row.newValue ?? "—";
+    return {
+      tone: "neutral",
+      line: `[${ts}] 🟠 DESNAME: "${name}" — orçamento ${a} → ${b}. · ${rule}`,
+    };
+  }
+  return {
+    tone: "neutral",
+    line: `[${ts}] ${row.actionTaken} · "${name}" · ${rule}`,
+  };
 }
 
 function buildRouting(d: RuleDraft): AlertRuleRoutingDto | null {
@@ -416,6 +537,9 @@ export function MetasAlertasPage() {
   const loadedRuleIdsRef = useRef<string[]>([]);
   const tplRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
 
+  const [execLogs, setExecLogs] = useState<AutomationExecutionLogDto[]>([]);
+  const [execLogsLoading, setExecLogsLoading] = useState(false);
+
   const tz = useMemo(() => clientTz(), []);
 
   const filteredAutomationRules = useMemo(
@@ -478,6 +602,25 @@ export function MetasAlertasPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (tab !== "historico" || !performanceAlerts) return;
+    let cancelled = false;
+    setExecLogsLoading(true);
+    void fetchAutomationExecutionLogs(100)
+      .then((res) => {
+        if (!cancelled) setExecLogs(res.items);
+      })
+      .catch(() => {
+        if (!cancelled) setExecLogs([]);
+      })
+      .finally(() => {
+        if (!cancelled) setExecLogsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, performanceAlerts]);
 
   function updateRule(clientKey: string, patch: Partial<RuleDraft>) {
     setRules((prev) => prev.map((r) => (r.clientKey === clientKey ? { ...r, ...patch } : r)));
@@ -612,6 +755,9 @@ export function MetasAlertasPage() {
         <Button variant="ghost" size="sm" className="h-9 text-muted-foreground" asChild>
           <Link to="/ads/metas-operacao">Operação por canal</Link>
         </Button>
+        <Button variant="outline" size="sm" className="h-9 text-xs sm:text-sm" asChild>
+          <Link to="/marketing/configuracoes">Metas por canal (automações)</Link>
+        </Button>
       </div>
 
       <PageHeaderPremium
@@ -646,12 +792,18 @@ export function MetasAlertasPage() {
       ) : null}
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="grid h-auto w-full max-w-lg grid-cols-2 rounded-xl border border-border/40 bg-muted/30 p-1">
+        <TabsList className="grid h-auto w-full max-w-4xl grid-cols-3 rounded-xl border border-border/40 bg-muted/30 p-1">
           <TabsTrigger value="metas" className="rounded-lg text-xs sm:text-sm">
             Metas globais
           </TabsTrigger>
           <TabsTrigger value="regras" className="rounded-lg text-xs sm:text-sm">
             Motor de automações
+          </TabsTrigger>
+          <TabsTrigger value="historico" className="rounded-lg px-2 text-[10px] leading-tight sm:text-sm sm:leading-normal">
+            <span className="block sm:inline">Histórico de execuções</span>
+            <span className="block text-[9px] font-normal text-muted-foreground sm:ml-1 sm:inline sm:text-sm">
+              (transparência)
+            </span>
           </TabsTrigger>
         </TabsList>
 
@@ -780,6 +932,96 @@ export function MetasAlertasPage() {
                   SE [nível] tiver [métrica] [condição] [valor] → ENTÃO [ação]
                 </span>
                 . Pausa e orçamento guardam o tipo de ação; integração com APIs de mídia em evolução.
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Zap className="h-4 w-4 text-amber-500" />
+                  Templates prontos (perfis de otimização)
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Um clique adiciona uma regra ao rascunho para o canal{" "}
+                  <strong className="text-foreground">{automationChannel === "meta" ? "Meta Ads" : "Google Ads"}</strong>.
+                  Revise destinatários e salve.
+                </p>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <Card className="border-border/50 bg-card shadow-sm">
+                    <CardHeader className="space-y-1 pb-2">
+                      <CardTitle className="text-sm font-semibold">Stop-Loss</CardTitle>
+                      <p className="text-[11px] leading-snug text-muted-foreground">
+                        SE CPL &gt; teto de CPA → pausar anúncio e notificar (WhatsApp opcional).
+                      </p>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="w-full rounded-xl"
+                        disabled={!canEdit}
+                        onClick={() =>
+                          setRules((p) => [...p, optimizationProfileDraftStopLoss(automationChannel)])
+                        }
+                      >
+                        Aplicar perfil
+                      </Button>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-border/50 bg-card shadow-sm">
+                    <CardHeader className="space-y-1 pb-2">
+                      <CardTitle className="text-sm font-semibold">Take-Profit</CardTitle>
+                      <p className="text-[11px] leading-snug text-muted-foreground">
+                        SE ROAS &gt; meta de ROAS → aumentar orçamento 20% e notificar.
+                      </p>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="w-full rounded-xl"
+                        disabled={!canEdit}
+                        onClick={() =>
+                          setRules((p) => [...p, optimizationProfileDraftTakeProfit(automationChannel)])
+                        }
+                      >
+                        Aplicar perfil
+                      </Button>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-border/50 bg-card shadow-sm">
+                    <CardHeader className="space-y-1 pb-2">
+                      <CardTitle className="text-sm font-semibold">Desmame de verba</CardTitle>
+                      <p className="text-[11px] leading-snug text-muted-foreground">
+                        SE CPL &gt; meta (CPL alvo das metas globais) → reduzir orçamento 20%. Ajuste o valor se o alvo
+                        estiver vazio.
+                      </p>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="w-full rounded-xl"
+                        disabled={!canEdit}
+                        onClick={() => {
+                          const alvo =
+                            automationChannel === "meta" ? metaGoals.cplAlvo : googleGoals.cplAlvo;
+                          setRules((p) => [...p, optimizationProfileDraftDesmame(automationChannel, alvo)]);
+                          if (alvo.trim()) {
+                            setOk(null);
+                          } else {
+                            setOk(
+                              "Perfil Desmame aplicado: o limiar ficou em 0 — edite o valor fixo na regra ou preencha CPL alvo em Metas globais."
+                            );
+                          }
+                        }}
+                      >
+                        Aplicar perfil
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </div>
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1249,6 +1491,67 @@ export function MetasAlertasPage() {
                   Salvar automações
                 </Button>
               </div>
+            </>
+          )}
+        </TabsContent>
+
+        <TabsContent value="historico" className="mt-6 space-y-4">
+          {!performanceAlerts ? (
+            <Card className="border-border/50">
+              <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                Histórico de execuções não está disponível no plano atual.
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              <div className="rounded-xl border border-border/40 bg-muted/15 px-4 py-3 text-sm text-muted-foreground">
+                <ScrollText className="mr-2 inline h-4 w-4 align-text-bottom text-primary" />
+                <strong className="text-foreground">Transparência:</strong> registo das ações autónomas (pausa, escala,
+                desmame) executadas pelo motor. Entradas aparecem quando o worker gravar cada execução na API.
+              </div>
+              {execLogsLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-16 w-full rounded-xl" />
+                  <Skeleton className="h-16 w-full rounded-xl" />
+                  <Skeleton className="h-16 w-full rounded-xl" />
+                </div>
+              ) : execLogs.length === 0 ? (
+                <Card className="border-dashed border-border/60 bg-muted/10">
+                  <CardContent className="flex flex-col items-center gap-2 py-12 text-center text-sm text-muted-foreground">
+                    <ScrollText className="h-10 w-10 opacity-40" />
+                    <p>Ainda não há execuções registadas.</p>
+                    <p className="max-w-md text-xs">
+                      Quando o cron executar pausas ou ajustes de orçamento, cada ação ficará listada aqui com horário,
+                      ativo e valores antes/depois.
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card className="border-border/50 bg-card shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base font-semibold">Últimas execuções</CardTitle>
+                    <p className="text-xs text-muted-foreground">Ordenado do mais recente para o mais antigo.</p>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {execLogs.map((row) => {
+                      const { tone, line } = formatExecutionFeedLine(row);
+                      return (
+                        <div
+                          key={row.id}
+                          className={cn(
+                            "rounded-lg border px-3 py-2.5 text-sm leading-relaxed",
+                            tone === "risk" && "border-destructive/25 bg-destructive/[0.06]",
+                            tone === "gain" && "border-emerald-500/25 bg-emerald-500/[0.06]",
+                            tone === "neutral" && "border-border/50 bg-muted/20"
+                          )}
+                        >
+                          {line}
+                        </div>
+                      );
+                    })}
+                  </CardContent>
+                </Card>
+              )}
             </>
           )}
         </TabsContent>

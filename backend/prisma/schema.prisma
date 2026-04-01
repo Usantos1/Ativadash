@@ -131,7 +131,8 @@ model Organization {
   metricsSnapshots MetricsSnapshot[]
   webhookEndpoints WebhookEndpoint[]
   webhookEvents    WebhookEvent[]
-  alertRules       AlertRule[]
+  alertRules                 AlertRule[]
+  automationExecutionLogs    AutomationExecutionLog[]
   dashboardShareLinks DashboardShareLink[]
 
   matrixGrantsAsMatrix   MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantMatrix")
@@ -319,6 +320,14 @@ model MarketingSettings {
   updatedAt DateTime @updatedAt
 }
 
+/// Ação principal quando a regra dispara (notificação WhatsApp é efeito secundário se notifyWhatsapp).
+enum AutomationActionType {
+  NOTIFY_ONLY
+  PAUSE_ASSET
+  INCREASE_BUDGET_20
+  DECREASE_BUDGET_20
+}
+
 /// Regras de alerta customizadas (Fase 6 — avaliação pode integrar ao motor de insights depois)
 model AlertRule {
   id             String       @id @default(cuid())
@@ -346,8 +355,7 @@ model AlertRule {
 
   /// Incluir esta regra em envios automáticos por WhatsApp (quando disparada)
   notifyWhatsapp Boolean @default(true)
-  /// whatsapp_alert | pause_entity_whatsapp | reduce_budget_20_whatsapp (pausa/orçamento: API em evolução)
-  actionType String @default("whatsapp_alert") @db.VarChar(40)
+  actionType AutomationActionType @default(NOTIFY_ONLY)
   /// Nível avaliado no SE: campaign | ad_set | ad (agregados atuais; entidades finas quando API existir)
   evaluationLevel String? @db.VarChar(16)
   /// 1h | 3h | 12h | daily — frequência aproximada de checagem dentro da janela
@@ -368,9 +376,32 @@ model AlertRule {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  occurrences AlertOccurrence[]
+  occurrences   AlertOccurrence[]
+  executionLogs AutomationExecutionLog[]
 
   @@index([organizationId])
+}
+
+/// Ledger de execuções autónomas (pausa/orçamento) — worker/cron grava aqui para transparência.
+model AutomationExecutionLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ruleId         String
+  rule           AlertRule    @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  /// ID externo (campanha / conjunto / anúncio Meta ou Google)
+  assetId       String  @db.VarChar(128)
+  /// Nome amigável para o feed (ex.: "Criativo 01")
+  assetLabel    String? @db.VarChar(200)
+  /// Ex.: PAUSE_ASSET, INCREASE_BUDGET_20 ou rótulo curto para UI
+  actionTaken   String  @db.VarChar(80)
+  previousValue String? @db.VarChar(512)
+  newValue      String? @db.VarChar(512)
+  executedAt    DateTime @default(now())
+
+  @@index([organizationId, executedAt])
+  @@index([ruleId, executedAt])
 }
 
 /// Disparos registrados de regras customizadas (dedupe na gravação)

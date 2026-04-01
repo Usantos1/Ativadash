@@ -28,12 +28,25 @@ export const alertRuleThresholdRefSchema = z.enum([
 export const alertRuleEvaluationLevelSchema = z.enum(["campaign", "ad_set", "ad"]);
 export const alertRuleCheckFrequencySchema = z.enum(["1h", "3h", "12h", "daily"]);
 
-export const alertRuleActionTypeSchema = z.enum([
-  "whatsapp_alert",
-  "pause_campaign",
-  "pause_entity_whatsapp",
-  "reduce_budget_20_whatsapp",
+/** Ações do motor autónomo (WhatsApp continua opcional via notifyWhatsapp). */
+export const automationActionTypeSchema = z.enum([
+  "NOTIFY_ONLY",
+  "PAUSE_ASSET",
+  "INCREASE_BUDGET_20",
+  "DECREASE_BUDGET_20",
 ]);
+
+const LEGACY_ACTION_MAP: Record<string, z.infer<typeof automationActionTypeSchema>> = {
+  whatsapp_alert: "NOTIFY_ONLY",
+  pause_campaign: "PAUSE_ASSET",
+  pause_entity_whatsapp: "PAUSE_ASSET",
+  reduce_budget_20_whatsapp: "DECREASE_BUDGET_20",
+};
+
+export const alertRuleActionTypeSchema = z.preprocess((v) => {
+  if (typeof v !== "string") return v;
+  return LEGACY_ACTION_MAP[v] ?? v;
+}, automationActionTypeSchema);
 
 export const createAlertRuleSchema = z.object({
   name: z.string().trim().min(1).max(120),

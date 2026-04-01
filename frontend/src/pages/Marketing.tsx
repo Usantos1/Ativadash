@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { differenceInDays, parseISO } from "date-fns";
-import { BarChart3, RefreshCw, Share2, CalendarRange, Loader2 } from "lucide-react";
+import { BarChart3, FileDown, Mail, RefreshCw, Share2, CalendarRange, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -49,11 +49,15 @@ import {
 } from "@/lib/marketing-operational-actions";
 import { deriveChannelPerformanceSignals } from "@/lib/channel-performance-compare";
 import { useAuthStore } from "@/stores/auth-store";
+import { formatPageTitle, usePageTitle } from "@/hooks/usePageTitle";
 import {
   patchMarketingGoogleCampaignStatus,
   patchMarketingMetaCampaignBudget,
   patchMarketingMetaCampaignStatus,
 } from "@/lib/marketing-contract-api";
+import { appendCampaignActionLog } from "@/lib/campaign-local-actions";
+import { downloadTextPdf } from "@/lib/export-pdf";
+import { openMailtoWithReportNote } from "@/lib/export-csv";
 import { canUserMutateMarketingAds } from "@/lib/marketing-ads-permissions";
 import {
   aggregateGoogle,
@@ -64,12 +68,16 @@ import {
   filterMetaCampaigns,
 } from "@/lib/marketing-capture-aggregate";
 import { chartLeadExtrema, deriveAccountHealth } from "@/lib/marketing-strategic-insights";
+import { formatNumber, formatSpend } from "@/lib/metrics-format";
 import { generateInsights } from "@/lib/marketing-insights-engine";
 import { isNonDefaultPeriod } from "@/lib/marketing-period-storage";
 import type { OsCampaignRow } from "@/lib/marketing-campaign-os";
 
 export function Marketing() {
   const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
+  const ws = user?.organization?.name?.trim();
+  usePageTitle(formatPageTitle(ws ? ["Painel ADS", ws] : ["Painel ADS"]));
   const {
     dateRange,
     dateRangeLabel,
@@ -89,7 +97,6 @@ export function Marketing() {
     lastUpdated,
   } = useMarketingMetrics();
 
-  const user = useAuthStore((s) => s.user);
   const memberships = useAuthStore((s) => s.memberships);
 
   const [osPlatform, setOsPlatform] = useState<"meta" | "google">("meta");
@@ -104,8 +111,13 @@ export function Marketing() {
   const [adsActionHint, setAdsActionHint] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const [mutatingAdsKey, setMutatingAdsKey] = useState<string | null>(null);
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
-  const [budgetTarget, setBudgetTarget] = useState<{ id: string; name: string } | null>(null);
+  const [budgetTarget, setBudgetTarget] = useState<{
+    id: string;
+    name: string;
+    estimatedDaily?: number;
+  } | null>(null);
   const [budgetInput, setBudgetInput] = useState("");
+  const [budgetStep, setBudgetStep] = useState<"input" | "confirm">("input");
   const [budgetSaving, setBudgetSaving] = useState(false);
   const [orgCtx, setOrgCtx] = useState<OrganizationContext | null>(null);
 
@@ -158,7 +170,7 @@ export function Marketing() {
   }, []);
 
   const runMetaStatus = useCallback(
-    async (id: string, status: "PAUSED" | "ACTIVE") => {
+    async (id: string, status: "PAUSED" | "ACTIVE", campaignName?: string): Promise<boolean> => {
       const key = `meta:${id}:${status}`;
       setMutatingAdsKey(key);
       setAdsActionHint(null);
@@ -168,12 +180,21 @@ export function Marketing() {
           tone: "ok",
           text: status === "PAUSED" ? "Campanha Meta pausada." : "Campanha Meta ativada.",
         });
+        appendCampaignActionLog({
+          at: new Date().toISOString(),
+          channel: "Meta",
+          externalId: id,
+          campaignName: campaignName?.trim() || "—",
+          kind: status === "PAUSED" ? "pause" : "activate",
+        });
         refreshAll();
+        return true;
       } catch (e) {
         setAdsActionHint({
           tone: "err",
           text: e instanceof Error ? e.message : "Não foi possível alterar a campanha na Meta.",
         });
+        return false;
       } finally {
         setMutatingAdsKey(null);
       }
@@ -182,7 +203,7 @@ export function Marketing() {
   );
 
   const runGoogleStatus = useCallback(
-    async (id: string, status: "ENABLED" | "PAUSED") => {
+    async (id: string, status: "ENABLED" | "PAUSED", campaignName?: string): Promise<boolean> => {
       setMutatingAdsKey(`google:${id}:${status}`);
       setAdsActionHint(null);
       try {
@@ -191,12 +212,21 @@ export function Marketing() {
           tone: "ok",
           text: status === "PAUSED" ? "Campanha Google pausada." : "Campanha Google ativada.",
         });
+        appendCampaignActionLog({
+          at: new Date().toISOString(),
+          channel: "Google",
+          externalId: id,
+          campaignName: campaignName?.trim() || "—",
+          kind: status === "PAUSED" ? "pause" : "activate",
+        });
         refreshAll();
+        return true;
       } catch (e) {
         setAdsActionHint({
           tone: "err",
           text: e instanceof Error ? e.message : "Não foi possível alterar a campanha no Google.",
         });
+        return false;
       } finally {
         setMutatingAdsKey(null);
       }
@@ -204,9 +234,10 @@ export function Marketing() {
     [refreshAll]
   );
 
-  const openBudgetDialog = useCallback((id: string, name: string) => {
-    setBudgetTarget({ id, name });
+  const openBudgetDialog = useCallback((id: string, name: string, opts?: { estimatedDaily?: number }) => {
+    setBudgetTarget({ id, name, estimatedDaily: opts?.estimatedDaily });
     setBudgetInput("");
+    setBudgetStep("input");
     setBudgetDialogOpen(true);
     setAdsActionHint(null);
   }, []);
@@ -223,8 +254,17 @@ export function Marketing() {
     try {
       await patchMarketingMetaCampaignBudget(budgetTarget.id, v);
       setAdsActionHint({ tone: "ok", text: "Orçamento diário da campanha Meta atualizado." });
+      appendCampaignActionLog({
+        at: new Date().toISOString(),
+        channel: "Meta",
+        externalId: budgetTarget.id,
+        campaignName: budgetTarget.name,
+        kind: "budget_set",
+        detail: `Novo diário: ${v}`,
+      });
       setBudgetDialogOpen(false);
       setBudgetTarget(null);
+      setBudgetStep("input");
       refreshAll();
     } catch (e) {
       setAdsActionHint({
@@ -235,6 +275,9 @@ export function Marketing() {
       setBudgetSaving(false);
     }
   }, [budgetTarget, budgetInput, refreshAll]);
+
+  const fmtBrl = (n: number) =>
+    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
 
   const googleDaily = metrics?.ok ? metrics.daily ?? [] : [];
   const metaDaily = metaMetrics?.ok ? metaMetrics.daily ?? [] : [];
@@ -558,6 +601,7 @@ export function Marketing() {
         googleRows: googleCampaignsFiltered,
         ctrLowCampaigns,
         maxItems: 10,
+        periodDays,
       }),
     [
       goalMode,
@@ -566,6 +610,7 @@ export function Marketing() {
       metaCampaignsFiltered,
       googleCampaignsFiltered,
       ctrLowCampaigns,
+      periodDays,
     ]
   );
 
@@ -721,6 +766,46 @@ export function Marketing() {
                   endDate={dateRange.endDate}
                   periodLabel={dateRangeLabel}
                 />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 rounded-lg border-border/70 bg-background/80 shadow-sm"
+                  disabled={!dataHealthy}
+                  onClick={() => {
+                    downloadTextPdf(
+                      `Painel ADS · ${dateRangeLabel}`,
+                      [
+                        `Período: ${dateRange.startDate} a ${dateRange.endDate}`,
+                        `Investimento (filtro): ${formatSpend(filteredSpend)}`,
+                        `Leads / conv. reais: ${formatNumber(Math.round(leadsReais))}`,
+                        roasBlend != null ? `ROAS (blend): ${roasBlend.toFixed(2)}x` : "ROAS: —",
+                      ],
+                      `painel-ads-${dateRange.startDate}.pdf`
+                    );
+                  }}
+                >
+                  <FileDown className="mr-1.5 h-3.5 w-3.5" />
+                  Exportar PDF
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 rounded-lg border-border/70 bg-background/80 shadow-sm"
+                  onClick={() => {
+                    const to = window.prompt("E-mail do destinatário");
+                    if (!to?.trim()) return;
+                    openMailtoWithReportNote(
+                      to.trim(),
+                      `Painel ADS · ${dateRangeLabel}`,
+                      "PDF exportado pelo botão Exportar PDF (anexe o ficheiro)."
+                    );
+                  }}
+                >
+                  <Mail className="mr-1.5 h-3.5 w-3.5" />
+                  Enviar
+                </Button>
                 <Button variant="default" size="sm" className="h-9 rounded-lg shadow-sm" asChild>
                   <Link to="/marketing/configuracoes">Metas e alertas</Link>
                 </Button>
@@ -805,9 +890,9 @@ export function Marketing() {
                   items={operationalActions}
                   busyKey={mutatingAdsKey}
                   canMutate={canMutateCampaigns}
-                  onPauseMeta={(id) => void runMetaStatus(id, "PAUSED")}
-                  onPauseGoogle={(id) => void runGoogleStatus(id, "PAUSED")}
-                  onBudgetMeta={(id, name) => openBudgetDialog(id, name)}
+                  onPauseMeta={(id, name) => void runMetaStatus(id, "PAUSED", name)}
+                  onPauseGoogle={(id, name) => void runGoogleStatus(id, "PAUSED", name)}
+                  onBudgetMeta={(id, name, opts) => openBudgetDialog(id, name, opts)}
                   onDuplicateStub={() =>
                     setAdsActionHint({
                       tone: "ok",
@@ -958,8 +1043,8 @@ export function Marketing() {
                   periodDays={periodDays}
                   canMutateCampaigns={canMutateCampaigns}
                   mutatingAdsKey={mutatingAdsKey}
-                  runMetaStatus={(id, s) => void runMetaStatus(id, s)}
-                  runGoogleStatus={(id, s) => void runGoogleStatus(id, s)}
+                  runMetaStatus={(id, s, name) => runMetaStatus(id, s, name)}
+                  runGoogleStatus={(id, s, name) => runGoogleStatus(id, s, name)}
                   openBudgetDialog={openBudgetDialog}
                   onAfterMutation={() => void refreshAll()}
                   platform={osPlatform}
@@ -999,39 +1084,96 @@ export function Marketing() {
         open={budgetDialogOpen}
         onOpenChange={(open) => {
           setBudgetDialogOpen(open);
-          if (!open) setBudgetTarget(null);
+          if (!open) {
+            setBudgetTarget(null);
+            setBudgetStep("input");
+          }
         }}
       >
         <DialogContent title="Orçamento diário · Meta" showClose alignTop>
           {budgetTarget?.name ? (
             <p className="text-sm text-muted-foreground">Campanha: {budgetTarget.name}</p>
           ) : null}
-          <div className="space-y-2 py-2">
-            <Label htmlFor="meta-daily-budget">Valor diário (moeda da conta)</Label>
-            <Input
-              id="meta-daily-budget"
-              inputMode="decimal"
-              placeholder="Ex.: 120,50"
-              value={budgetInput}
-              onChange={(e) => setBudgetInput(e.target.value)}
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setBudgetDialogOpen(false);
-                setBudgetTarget(null);
-              }}
-            >
-              Cancelar
-            </Button>
-            <Button type="button" disabled={budgetSaving} onClick={() => void submitMetaBudget()}>
-              {budgetSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Salvar
-            </Button>
-          </DialogFooter>
+          {budgetStep === "input" ? (
+            <>
+              <div className="space-y-2 py-2">
+                <Label htmlFor="meta-daily-budget">Valor diário (moeda da conta)</Label>
+                <Input
+                  id="meta-daily-budget"
+                  inputMode="decimal"
+                  placeholder="Ex.: 120,50"
+                  value={budgetInput}
+                  onChange={(e) => setBudgetInput(e.target.value)}
+                />
+                {budgetTarget?.estimatedDaily != null && Number.isFinite(budgetTarget.estimatedDaily) ? (
+                  <p className="text-xs text-muted-foreground">
+                    Ritmo médio no período (referência):{" "}
+                    <span className="font-medium text-foreground">{fmtBrl(budgetTarget.estimatedDaily)}</span> / dia
+                  </p>
+                ) : null}
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setBudgetDialogOpen(false);
+                    setBudgetTarget(null);
+                    setBudgetStep("input");
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    const v = parseFloat(budgetInput.replace(",", "."));
+                    if (!Number.isFinite(v) || v <= 0) {
+                      setAdsActionHint({ tone: "err", text: "Informe um valor diário maior que zero." });
+                      return;
+                    }
+                    setBudgetStep("confirm");
+                  }}
+                >
+                  Revisar
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <div className="space-y-3 py-2 text-sm">
+                <p className="text-muted-foreground">Confirme o envio do novo orçamento diário para a Meta Ads.</p>
+                <div className="rounded-lg border border-border/50 bg-muted/30 p-3">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Valor a aplicar</p>
+                  <p className="text-lg font-bold tabular-nums text-foreground">
+                    {fmtBrl(parseFloat(budgetInput.replace(",", ".")) || 0)}
+                  </p>
+                  {budgetTarget?.estimatedDaily != null && Number.isFinite(budgetTarget.estimatedDaily) ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Referência (ritmo no período): {fmtBrl(budgetTarget.estimatedDaily)} / dia →{" "}
+                      <span className="font-semibold text-foreground">
+                        {fmtBrl(parseFloat(budgetInput.replace(",", ".")) || 0)}
+                      </span>
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setBudgetStep("input")}>
+                  Voltar
+                </Button>
+                <Button
+                  type="button"
+                  className="bg-emerald-600 text-white hover:bg-emerald-700"
+                  disabled={budgetSaving}
+                  onClick={() => void submitMetaBudget()}
+                >
+                  {budgetSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Confirmar na Meta
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </AppMainRouteBody>

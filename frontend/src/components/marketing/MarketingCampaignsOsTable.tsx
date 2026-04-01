@@ -1,7 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Columns2, Loader2, Pause, Play, SlidersHorizontal, Wallet } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Columns2,
+  FileDown,
+  Loader2,
+  Pause,
+  Play,
+  SlidersHorizontal,
+  Wallet,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollRegion } from "@/components/ui/scroll-region";
@@ -21,7 +32,12 @@ import {
   patchMarketingGoogleCampaignStatus,
   patchMarketingMetaCampaignBudget,
   patchMarketingMetaCampaignStatus,
+  postMarketingCampaignRollback,
+  type MarketingRollbackItem,
 } from "@/lib/marketing-contract-api";
+import { appendCampaignActionLog } from "@/lib/campaign-local-actions";
+import { downloadCsv } from "@/lib/export-csv";
+import { CampaignOsDetailSheet } from "@/components/marketing/CampaignOsDetailSheet";
 
 const OS_TABLE_COLS_KEY = "ativadash:os-table-cols";
 
@@ -111,6 +127,41 @@ function smartLabelPt(s: SmartOperationalLabel): string {
   return "🟡 Ajustar";
 }
 
+function formatBrlOs(n: number): string {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
+}
+
+type OsConfirmState =
+  | {
+      kind: "single_meta";
+      externalId: string;
+      name: string;
+      next: "PAUSED" | "ACTIVE";
+      undo: MarketingRollbackItem;
+      actionLabel: string;
+      detail: ReactNode;
+    }
+  | {
+      kind: "single_google";
+      externalId: string;
+      name: string;
+      next: "PAUSED" | "ENABLED";
+      undo: MarketingRollbackItem;
+      actionLabel: string;
+      detail: ReactNode;
+    }
+  | {
+      kind: "bulk_pause";
+      targets: OsCampaignRow[];
+      detail: ReactNode;
+    }
+  | {
+      kind: "bulk_budget";
+      factor: number;
+      targets: OsCampaignRow[];
+      detail: ReactNode;
+    };
+
 export function MarketingCampaignsOsTable({
   rows,
   goalMode,
@@ -140,9 +191,9 @@ export function MarketingCampaignsOsTable({
   periodDays: number;
   canMutateCampaigns: boolean;
   mutatingAdsKey: string | null;
-  runMetaStatus: (id: string, next: "PAUSED" | "ACTIVE") => void;
-  runGoogleStatus: (id: string, next: "PAUSED" | "ENABLED") => void;
-  openBudgetDialog: (id: string, name: string) => void;
+  runMetaStatus: (id: string, next: "PAUSED" | "ACTIVE", campaignName?: string) => Promise<boolean>;
+  runGoogleStatus: (id: string, next: "PAUSED" | "ENABLED", campaignName?: string) => Promise<boolean>;
+  openBudgetDialog: (id: string, name: string, opts?: { estimatedDaily?: number }) => void;
   onAfterMutation: () => void;
   platform?: "meta" | "google";
   onPlatformChange?: (p: "meta" | "google") => void;
@@ -169,6 +220,29 @@ export function MarketingCampaignsOsTable({
   const [colMenuOpen, setColMenuOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollHint, setScrollHint] = useState({ left: false, right: false });
+  const [confirm, setConfirm] = useState<OsConfirmState | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [undoState, setUndoState] = useState<{ items: MarketingRollbackItem[]; message: string } | null>(null);
+  const [detailRow, setDetailRow] = useState<OsCampaignRow | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const pageSearchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const focusSearch = () => {
+      const el = pageSearchRef.current;
+      if (!el) return;
+      el.focus();
+      el.select();
+    };
+    window.addEventListener("ativadash:focus-page-search", focusSearch);
+    return () => window.removeEventListener("ativadash:focus-page-search", focusSearch);
+  }, []);
+
+  useEffect(() => {
+    if (!undoState) return;
+    const t = window.setTimeout(() => setUndoState(null), 8000);
+    return () => window.clearTimeout(t);
+  }, [undoState]);
 
   const updateScrollHint = useCallback(() => {
     const el = scrollRef.current;
@@ -229,7 +303,9 @@ export function MarketingCampaignsOsTable({
       out = out.filter((r) => {
         const n = r.name.toLowerCase();
         const p = (r.parentLabel || "").toLowerCase();
-        return n.includes(needle) || p.includes(needle);
+        const ext = (r.externalId || "").toLowerCase();
+        const idLocal = r.id.toLowerCase();
+        return n.includes(needle) || p.includes(needle) || ext.includes(needle) || idLocal.includes(needle);
       });
     }
     out = out.filter((r) => {
@@ -307,31 +383,222 @@ export function MarketingCampaignsOsTable({
     [sorted, selected]
   );
 
-  const runBulkPauseFixed = async () => {
+  const requestMetaStatusConfirm = (externalId: string, name: string, next: "PAUSED" | "ACTIVE") => {
+    const undo: MarketingRollbackItem =
+      next === "PAUSED"
+        ? { channel: "meta", externalId, metaStatus: "ACTIVE" }
+        : { channel: "meta", externalId, metaStatus: "PAUSED" };
+    setConfirm({
+      kind: "single_meta",
+      externalId,
+      name,
+      next,
+      undo,
+      actionLabel: next === "PAUSED" ? "Pausar campanha (Meta)" : "Ativar campanha (Meta)",
+      detail:
+        next === "PAUSED" ? (
+          <p className="text-sm text-muted-foreground">
+            A campanha <span className="font-semibold text-foreground">{name}</span> será pausada na Meta Ads. O tráfego
+            pode interromper de imediato.
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            A campanha <span className="font-semibold text-foreground">{name}</span> será reativada (ACTIVE) na Meta
+            Ads.
+          </p>
+        ),
+    });
+  };
+
+  const requestGoogleStatusConfirm = (externalId: string, name: string, next: "PAUSED" | "ENABLED") => {
+    const undo: MarketingRollbackItem =
+      next === "PAUSED"
+        ? { channel: "google", externalId, googleStatus: "ENABLED" }
+        : { channel: "google", externalId, googleStatus: "PAUSED" };
+    setConfirm({
+      kind: "single_google",
+      externalId,
+      name,
+      next,
+      undo,
+      actionLabel: next === "PAUSED" ? "Pausar campanha (Google)" : "Ativar campanha (Google)",
+      detail: (
+        <p className="text-sm text-muted-foreground">
+          <span className="font-semibold text-foreground">{name}</span> ·{" "}
+          {next === "PAUSED" ? "Status atual na conta: ENABLED → PAUSED." : "Status: PAUSED → ENABLED."}
+        </p>
+      ),
+    });
+  };
+
+  const requestBulkPauseConfirm = () => {
     const targets = selectedRows.filter((r) => r.level === "campaign" && r.externalId);
     if (!targets.length) {
       setBulkHint("Selecione campanhas no nível Campanhas para pausar em massa.");
       return;
     }
-    setBulkBusy(true);
     setBulkHint(null);
-    let ok = 0;
-    for (const r of targets) {
-      try {
-        if (r.channel === "Meta") {
-          await patchMarketingMetaCampaignStatus(r.externalId!, "PAUSED");
-        } else {
-          await patchMarketingGoogleCampaignStatus(r.externalId!, "PAUSED");
-        }
-        ok++;
-      } catch {
-        /* um erro não bloqueia o restante */
-      }
+    setConfirm({
+      kind: "bulk_pause",
+      targets,
+      detail: (
+        <p className="text-sm text-muted-foreground">
+          Pausar <span className="font-semibold text-foreground">{targets.length}</span> campanha(s) selecionadas (Meta
+          e Google). Esta ação afeta contas reais de anúncios.
+        </p>
+      ),
+    });
+  };
+
+  const requestBulkBudgetConfirm = (factor: number) => {
+    const targets = selectedRows.filter((r) => r.channel === "Meta" && r.level === "campaign" && r.externalId);
+    if (!targets.length) {
+      setBulkHint("Escalar/reduzir em massa: só campanhas Meta neste nível.");
+      return;
     }
-    setBulkBusy(false);
-    setBulkHint(`${ok} de ${targets.length} campanha(s) enviadas para pausa.`);
-    setSelected(new Set());
-    onAfterMutation();
+    const days = Math.max(1, periodDays);
+    const lines: ReactNode[] = [];
+    for (const r of targets) {
+      const pace = r.spend / days;
+      const nextB = Math.max(5, Math.round(pace * factor * 100) / 100);
+      lines.push(
+        <li key={r.id}>
+          <span className="font-medium text-foreground">{r.name}</span>: orçamento diário estimado{" "}
+          <span className="tabular-nums">{formatBrlOs(pace)}</span> →{" "}
+          <span className="tabular-nums font-semibold">{formatBrlOs(nextB)}</span>
+        </li>
+      );
+    }
+    setBulkHint(null);
+    setConfirm({
+      kind: "bulk_budget",
+      factor,
+      targets,
+      detail: (
+        <div className="space-y-2 text-sm text-muted-foreground">
+          <p>
+            Ajuste ~{factor > 1 ? "+" : ""}
+            {Math.round((factor - 1) * 100)}% sobre o ritmo de gasto do período ({days} dia(s)).
+          </p>
+          <ul className="max-h-48 list-inside list-disc space-y-1 overflow-y-auto">{lines}</ul>
+        </div>
+      ),
+    });
+  };
+
+  const executeOsConfirm = async () => {
+    if (!confirm) return;
+    setConfirmBusy(true);
+    try {
+      if (confirm.kind === "single_meta") {
+        const ok = await runMetaStatus(confirm.externalId, confirm.next, confirm.name);
+        setConfirm(null);
+        if (ok) {
+          setUndoState({ items: [confirm.undo], message: "Alteração aplicada na Meta." });
+          onAfterMutation();
+        }
+        return;
+      }
+      if (confirm.kind === "single_google") {
+        const ok = await runGoogleStatus(confirm.externalId, confirm.next, confirm.name);
+        setConfirm(null);
+        if (ok) {
+          setUndoState({ items: [confirm.undo], message: "Alteração aplicada no Google Ads." });
+          onAfterMutation();
+        }
+        return;
+      }
+      if (confirm.kind === "bulk_pause") {
+        setBulkBusy(true);
+        setBulkHint(null);
+        const undoItems: MarketingRollbackItem[] = [];
+        for (const r of confirm.targets) {
+          try {
+            if (r.channel === "Meta") {
+              await patchMarketingMetaCampaignStatus(r.externalId!, "PAUSED");
+              undoItems.push({ channel: "meta", externalId: r.externalId!, metaStatus: "ACTIVE" });
+              appendCampaignActionLog({
+                at: new Date().toISOString(),
+                channel: "Meta",
+                externalId: r.externalId!,
+                campaignName: r.name,
+                kind: "pause",
+              });
+            } else {
+              await patchMarketingGoogleCampaignStatus(r.externalId!, "PAUSED");
+              undoItems.push({ channel: "google", externalId: r.externalId!, googleStatus: "ENABLED" });
+              appendCampaignActionLog({
+                at: new Date().toISOString(),
+                channel: "Google",
+                externalId: r.externalId!,
+                campaignName: r.name,
+                kind: "pause",
+              });
+            }
+          } catch {
+            /* skip */
+          }
+        }
+        setBulkBusy(false);
+        setBulkHint(`${undoItems.length} de ${confirm.targets.length} campanha(s) pausadas.`);
+        setSelected(new Set());
+        setConfirm(null);
+        if (undoItems.length) setUndoState({ items: undoItems, message: "Pausas aplicadas." });
+        onAfterMutation();
+        return;
+      }
+      if (confirm.kind === "bulk_budget") {
+        const days = Math.max(1, periodDays);
+        setBulkBusy(true);
+        setBulkHint(null);
+        const undoItems: MarketingRollbackItem[] = [];
+        let ok = 0;
+        for (const r of confirm.targets) {
+          const pace = r.spend / days;
+          const nextB = Math.max(5, Math.round(pace * confirm.factor * 100) / 100);
+          try {
+            await patchMarketingMetaCampaignBudget(r.externalId!, nextB);
+            undoItems.push({ channel: "meta", externalId: r.externalId!, dailyBudget: pace });
+            appendCampaignActionLog({
+              at: new Date().toISOString(),
+              channel: "Meta",
+              externalId: r.externalId!,
+              campaignName: r.name,
+              kind: "budget_set",
+              detail: `Novo diário: ${nextB}`,
+            });
+            ok++;
+          } catch {
+            /* skip */
+          }
+        }
+        setBulkBusy(false);
+        setBulkHint(`${ok} orçamento(s) diário(s) ajustados.`);
+        setSelected(new Set());
+        setConfirm(null);
+        if (undoItems.length) setUndoState({ items: undoItems, message: "Orçamentos Meta atualizados." });
+        onAfterMutation();
+      }
+    } finally {
+      setConfirmBusy(false);
+    }
+  };
+
+  const handleUndo = async () => {
+    if (!undoState) return;
+    const items = undoState.items;
+    setUndoState(null);
+    try {
+      const res = await postMarketingCampaignRollback(items);
+      if (res.ok && !(res.errors?.length)) {
+        onAfterMutation();
+        setBulkHint("Alterações desfeitas.");
+      } else {
+        setBulkHint("Não foi possível desfazer todas as alterações.");
+      }
+    } catch {
+      setBulkHint("Erro ao desfazer.");
+    }
   };
 
   const cbSticky =
@@ -345,32 +612,6 @@ export function MarketingCampaignsOsTable({
   const nomeSticky = canMutateCampaigns
     ? "sticky left-[24.5rem] z-20 min-w-[200px] max-w-[15rem] border-r border-border/40 bg-card shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]"
     : "sticky left-[22rem] z-20 min-w-[200px] max-w-[15rem] border-r border-border/40 bg-card shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]";
-
-  const runBulkBudgetFactor = async (factor: number) => {
-    const targets = selectedRows.filter((r) => r.channel === "Meta" && r.level === "campaign" && r.externalId);
-    if (!targets.length) {
-      setBulkHint("Escalar/reduzir em massa: só campanhas Meta neste nível.");
-      return;
-    }
-    const days = Math.max(1, periodDays);
-    setBulkBusy(true);
-    setBulkHint(null);
-    let ok = 0;
-    for (const r of targets) {
-      const pace = r.spend / days;
-      const next = Math.max(5, Math.round(pace * factor * 100) / 100);
-      try {
-        await patchMarketingMetaCampaignBudget(r.externalId!, next);
-        ok++;
-      } catch {
-        /* continue */
-      }
-    }
-    setBulkBusy(false);
-    setBulkHint(`${ok} orçamento(s) diário(s) ajustados (~${factor > 1 ? "+" : ""}${Math.round((factor - 1) * 100)}% sobre ritmo do período).`);
-    setSelected(new Set());
-    onAfterMutation();
-  };
 
   if (!rows.length) {
     return (
@@ -478,10 +719,13 @@ export function MarketingCampaignsOsTable({
               Buscar campanha
             </Label>
             <Input
+              ref={pageSearchRef}
+              id="ativadash-page-search"
               className="h-9 rounded-lg"
-              placeholder="Buscar campanha…"
+              placeholder="Nome, ID ou conjunto…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              aria-label="Buscar na tabela de campanhas"
             />
           </div>
         </div>
@@ -585,7 +829,7 @@ export function MarketingCampaignsOsTable({
                 variant="destructive"
                 className="h-8 rounded-lg text-xs font-semibold"
                 disabled={bulkBusy || !someSelected}
-                onClick={() => void runBulkPauseFixed()}
+                onClick={() => requestBulkPauseConfirm()}
               >
                 {bulkBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
                 Pausar selecionadas
@@ -596,7 +840,7 @@ export function MarketingCampaignsOsTable({
                 variant="secondary"
                 className="h-8 rounded-lg text-xs font-semibold"
                 disabled={bulkBusy || !someSelected}
-                onClick={() => void runBulkBudgetFactor(1.2)}
+                onClick={() => requestBulkBudgetConfirm(1.2)}
               >
                 Escalar +20%
               </Button>
@@ -606,7 +850,7 @@ export function MarketingCampaignsOsTable({
                 variant="outline"
                 className="h-8 rounded-lg text-xs font-semibold"
                 disabled={bulkBusy || !someSelected}
-                onClick={() => void runBulkBudgetFactor(0.8)}
+                onClick={() => requestBulkBudgetConfirm(0.8)}
               >
                 Reduzir −20%
               </Button>
@@ -617,6 +861,36 @@ export function MarketingCampaignsOsTable({
       </div>
 
       <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 rounded-lg text-xs"
+          onClick={() => {
+            const days = Math.max(1, periodDays);
+            downloadCsv(
+              `central-controle-${new Date().toISOString().slice(0, 10)}.csv`,
+              sorted.map((r) => ({
+                canal: r.channel,
+                nivel: r.level,
+                nome: r.name,
+                conjunto_pai: r.parentLabel ?? "",
+                id_externo: r.externalId ?? "",
+                id_linha: r.id,
+                gasto_brl: Math.round(r.spend * 100) / 100,
+                impressoes: r.impressions,
+                cliques: r.clicks,
+                leads: r.leads,
+                vendas: r.sales,
+                receita_brl: Math.round(r.revenue * 100) / 100,
+                ritmo_diario_ref_brl: Math.round((r.spend / days) * 100) / 100,
+              }))
+            );
+          }}
+        >
+          <FileDown className="mr-1.5 h-3.5 w-3.5" />
+          Exportar CSV
+        </Button>
         <div className="relative">
           <Button
             type="button"
@@ -769,13 +1043,20 @@ export function MarketingCampaignsOsTable({
                   <td className={cn(nomeSticky, "py-2.5 align-middle")}>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <div className="min-w-0 cursor-default text-left">
+                        <button
+                          type="button"
+                          className="min-w-0 w-full cursor-pointer rounded-md text-left outline-none ring-offset-background hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
+                          onClick={() => {
+                            setDetailRow(row);
+                            setDetailOpen(true);
+                          }}
+                        >
                           <div className="truncate font-semibold text-foreground">{row.name}</div>
                           {row.parentLabel ? (
                             <div className="truncate text-[11px] text-muted-foreground">{row.parentLabel}</div>
                           ) : null}
                           <div className="text-[10px] font-medium text-muted-foreground">{row.channel}</div>
-                        </div>
+                        </button>
                       </TooltipTrigger>
                       <TooltipContent side="bottom" className="max-w-sm">
                         <p className="font-semibold leading-snug">{row.name}</p>
@@ -861,7 +1142,10 @@ export function MarketingCampaignsOsTable({
                             className="h-8 w-8"
                             title="Pausar"
                             disabled={!!mBusy}
-                            onClick={() => void runMetaStatus(ext, "PAUSED")}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              requestMetaStatusConfirm(ext, row.name, "PAUSED");
+                            }}
                           >
                             {mBusy && mutatingAdsKey === `meta:${ext}:PAUSED` ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
@@ -876,7 +1160,10 @@ export function MarketingCampaignsOsTable({
                             className="h-8 w-8"
                             title="Ativar"
                             disabled={!!mBusy}
-                            onClick={() => void runMetaStatus(ext, "ACTIVE")}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              requestMetaStatusConfirm(ext, row.name, "ACTIVE");
+                            }}
                           >
                             {mBusy && mutatingAdsKey === `meta:${ext}:ACTIVE` ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
@@ -891,7 +1178,12 @@ export function MarketingCampaignsOsTable({
                             className="h-8 w-8"
                             title="Orçamento"
                             disabled={!!mBusy}
-                            onClick={() => openBudgetDialog(ext, row.name)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openBudgetDialog(ext, row.name, {
+                                estimatedDaily: row.spend / Math.max(1, periodDays),
+                              });
+                            }}
                           >
                             <Wallet className="h-4 w-4" />
                           </Button>
@@ -904,7 +1196,10 @@ export function MarketingCampaignsOsTable({
                             size="icon"
                             className="h-8 w-8"
                             disabled={!!gBusy}
-                            onClick={() => void runGoogleStatus(ext, "PAUSED")}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              requestGoogleStatusConfirm(ext, row.name, "PAUSED");
+                            }}
                           >
                             {gBusy && mutatingAdsKey === `google:${ext}:PAUSED` ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
@@ -918,7 +1213,10 @@ export function MarketingCampaignsOsTable({
                             size="icon"
                             className="h-8 w-8"
                             disabled={!!gBusy}
-                            onClick={() => void runGoogleStatus(ext, "ENABLED")}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              requestGoogleStatusConfirm(ext, row.name, "ENABLED");
+                            }}
                           >
                             {gBusy && mutatingAdsKey === `google:${ext}:ENABLED` ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
@@ -948,6 +1246,88 @@ export function MarketingCampaignsOsTable({
         </Link>
       </p>
       </div>
+
+      <Dialog
+        open={confirm != null}
+        onOpenChange={(open) => {
+          if (!open) setConfirm(null);
+        }}
+      >
+        <DialogContent
+          className="max-w-lg"
+          showClose
+          description="Revise o impacto antes de confirmar. As alterações são enviadas às APIs Meta e Google Ads."
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onCloseAutoFocus={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>
+              {confirm?.kind === "single_meta" || confirm?.kind === "single_google"
+                ? confirm.actionLabel
+                : confirm?.kind === "bulk_pause"
+                  ? `Pausar ${confirm.targets.length} campanha(s)`
+                  : confirm?.kind === "bulk_budget"
+                    ? confirm.factor > 1
+                      ? `Escalar orçamento (+${Math.round((confirm.factor - 1) * 100)}%)`
+                      : `Reduzir orçamento (${Math.round((confirm.factor - 1) * 100)}%)`
+                    : "Confirmar ação"}
+            </DialogTitle>
+          </DialogHeader>
+          {confirm ? <div className="space-y-3">{confirm.detail}</div> : null}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" className="rounded-lg" autoFocus onClick={() => setConfirm(null)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={confirmBusy}
+              variant={
+                confirm &&
+                (confirm.kind === "bulk_pause" ||
+                  (confirm.kind === "single_meta" && confirm.next === "PAUSED") ||
+                  (confirm.kind === "single_google" && confirm.next === "PAUSED"))
+                  ? "destructive"
+                  : "default"
+              }
+              className={cn(
+                "rounded-lg",
+                confirm &&
+                  ((confirm.kind === "single_meta" && confirm.next === "ACTIVE") ||
+                    (confirm.kind === "single_google" && confirm.next === "ENABLED") ||
+                    (confirm.kind === "bulk_budget" && confirm.factor > 1)) &&
+                  "bg-emerald-600 text-white hover:bg-emerald-700",
+                confirm?.kind === "bulk_budget" &&
+                  confirm.factor < 1 &&
+                  "border border-amber-600/40 bg-amber-500/15 text-amber-950 hover:bg-amber-500/25 dark:text-amber-50"
+              )}
+              onClick={() => void executeOsConfirm()}
+            >
+              {confirmBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <CampaignOsDetailSheet
+        row={detailRow}
+        open={detailOpen}
+        onOpenChange={(v) => {
+          setDetailOpen(v);
+          if (!v) setDetailRow(null);
+        }}
+        periodDays={periodDays}
+        onOpenBudget={openBudgetDialog}
+      />
+
+      {undoState ? (
+        <div className="fixed bottom-6 left-1/2 z-[100] flex max-w-md -translate-x-1/2 items-center gap-3 rounded-xl border border-border/80 bg-popover px-4 py-3 text-sm shadow-lg">
+          <span className="text-muted-foreground">{undoState.message}</span>
+          <Button type="button" size="sm" variant="secondary" className="rounded-lg" onClick={() => void handleUndo()}>
+            Desfazer
+          </Button>
+        </div>
+      ) : null}
     </TooltipProvider>
   );
 }

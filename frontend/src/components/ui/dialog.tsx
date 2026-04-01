@@ -29,6 +29,10 @@ const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     showClose?: boolean;
     title?: string;
+    /** Texto para Radix `Description` (acessibilidade). */
+    description?: React.ReactNode;
+    /** Se true, `description` fica só para leitores de tela. */
+    descriptionSrOnly?: boolean;
     /** Classes do backdrop (ex.: `bg-black/70 backdrop-blur-sm`). */
     overlayClassName?: string;
     /**
@@ -42,12 +46,28 @@ const DialogContent = React.forwardRef<
      */
     centered?: boolean;
   }
->(({ className, children, showClose = true, title, alignTop = false, centered = false, overlayClassName, ...props }, ref) => {
+>(({ className, children, showClose = true, title, description, descriptionSrOnly = false, alignTop = false, centered = false, overlayClassName, ...props }, ref) => {
   const overlayMerged = cn(
     "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
     centered ? "bg-black/50 backdrop-blur-sm" : undefined,
     overlayClassName
   );
+
+  const descNode =
+    description != null ? (
+      <DialogPrimitive.Description
+        className={cn(
+          "text-sm text-muted-foreground",
+          descriptionSrOnly && "sr-only"
+        )}
+      >
+        {description}
+      </DialogPrimitive.Description>
+    ) : typeof title === "string" && title.trim().length > 0 ? (
+      <DialogPrimitive.Description className="sr-only">
+        {`Diálogo: ${title}. Revise o conteúdo e confirme ou cancele.`}
+      </DialogPrimitive.Description>
+    ) : null;
 
   const inner = (
     <>
@@ -67,6 +87,7 @@ const DialogContent = React.forwardRef<
           )}
         </div>
       )}
+      {descNode}
       {children}
     </>
   );

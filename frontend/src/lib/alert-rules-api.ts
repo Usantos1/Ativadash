@@ -9,11 +9,12 @@ export type AlertRuleOperator = "gt" | "gte" | "lt" | "lte" | "outside_target";
 export type AlertRuleSeverity = "warning" | "critical";
 export type AlertRuleEvaluationLevel = "campaign" | "ad_set" | "ad";
 export type AlertRuleCheckFrequency = "1h" | "3h" | "12h" | "daily";
+/** Motor autónomo — alinhado ao enum Prisma `AutomationActionType`. */
 export type AlertRuleActionType =
-  | "whatsapp_alert"
-  | "pause_campaign"
-  | "pause_entity_whatsapp"
-  | "reduce_budget_20_whatsapp";
+  | "NOTIFY_ONLY"
+  | "PAUSE_ASSET"
+  | "INCREASE_BUDGET_20"
+  | "DECREASE_BUDGET_20";
 
 export type AlertRuleRoutingDto = {
   jobTitleSlugs?: string[];
@@ -119,4 +120,37 @@ export async function acknowledgeAlertOccurrence(occurrenceId: string): Promise<
 
 export async function acknowledgeAllAlertOccurrences(): Promise<{ ok: true; updated: number }> {
   return api.patch<{ ok: true; updated: number }>("/marketing/alert-occurrences/ack-all", {});
+}
+
+export type AutomationExecutionLogDto = {
+  id: string;
+  organizationId: string;
+  ruleId: string;
+  ruleName: string;
+  assetId: string;
+  assetLabel: string | null;
+  actionTaken: string;
+  previousValue: string | null;
+  newValue: string | null;
+  executedAt: string;
+};
+
+export async function fetchAutomationExecutionLogs(limit = 80): Promise<{ items: AutomationExecutionLogDto[] }> {
+  const q = new URLSearchParams({ limit: String(limit) });
+  return api.get<{ items: AutomationExecutionLogDto[] }>(`/marketing/automation-execution-logs?${q.toString()}`);
+}
+
+export type PostAutomationExecutionLogPayload = {
+  ruleId: string;
+  assetId: string;
+  assetLabel?: string | null;
+  actionTaken: string;
+  previousValue?: string | null;
+  newValue?: string | null;
+};
+
+export async function postAutomationExecutionLog(
+  payload: PostAutomationExecutionLogPayload
+): Promise<{ item: AutomationExecutionLogDto }> {
+  return api.post<{ item: AutomationExecutionLogDto }>("/marketing/automation-execution-logs", payload);
 }

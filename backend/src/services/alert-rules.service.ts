@@ -1,4 +1,4 @@
-import { Prisma, type AlertRule } from "@prisma/client";
+import { Prisma, type AlertRule, type AutomationActionType } from "@prisma/client";
 import { prisma } from "../utils/prisma.js";
 import { getEffectivePlanFeatures } from "./effective-plan-features.service.js";
 import type { CreateAlertRuleInput, PatchAlertRuleInput } from "../validators/alert-rules.validator.js";
@@ -67,7 +67,7 @@ function toDto(row: AlertRule): AlertRuleDto {
     muteEndHour: row.muteEndHour,
     appliesToChannel: row.appliesToChannel?.trim() ? row.appliesToChannel.trim() : null,
     notifyWhatsapp: row.notifyWhatsapp !== false,
-    actionType: row.actionType ?? "whatsapp_alert",
+    actionType: row.actionType,
     evaluationLevel: row.evaluationLevel?.trim() || null,
     checkFrequency: row.checkFrequency?.trim() || null,
     actionWindowStartLocal: row.actionWindowStartLocal?.trim() || null,
@@ -201,7 +201,7 @@ export async function createAlertRule(
             ? "all"
             : null,
       notifyWhatsapp: input.notifyWhatsapp !== false,
-      actionType: input.actionType ?? "whatsapp_alert",
+      actionType: (input.actionType ?? "NOTIFY_ONLY") as AutomationActionType,
       evaluationLevel: input.evaluationLevel?.trim() || null,
       checkFrequency: input.checkFrequency?.trim() || null,
       actionWindowStartLocal: input.actionWindowStartLocal?.trim() || null,
@@ -247,7 +247,7 @@ export async function updateAlertRule(
           : null;
   }
   if (input.notifyWhatsapp !== undefined) data.notifyWhatsapp = input.notifyWhatsapp;
-  if (input.actionType !== undefined) data.actionType = input.actionType;
+  if (input.actionType !== undefined) data.actionType = input.actionType as AutomationActionType;
   if (input.messageTemplate !== undefined) data.messageTemplate = input.messageTemplate;
   if (input.routing !== undefined) {
     data.routing = input.routing === null ? Prisma.JsonNull : (input.routing as Prisma.InputJsonValue);

@@ -10,6 +10,10 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuthStore } from "@/stores/auth-store";
 import {
+  dispatchOrganizationPlanFeaturesRefresh,
+  dispatchOrganizationPlanFeaturesRefreshIfCurrentOrg,
+} from "@/components/layout/organization-plan-features-context";
+import {
   assignOrgPlan,
   createPlatformOrganization,
   createPlatformPlan,
@@ -50,6 +54,7 @@ const ORG_STATUS_PT: Record<WorkspaceStatusDto, string> = {
 
 export function PlatformPage() {
   const platformAdmin = useAuthStore((s) => s.user?.platformAdmin);
+  const currentOrgId = useAuthStore((s) => s.user?.organizationId);
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [orgs, setOrgs] = useState<PlatformOrgRow[]>([]);
   const [subs, setSubs] = useState<PlatformSubscriptionRow[]>([]);
@@ -344,6 +349,7 @@ export function PlatformPage() {
     setError(null);
     try {
       await assignOrgPlan(orgId, planId === "__none__" ? null : planId);
+      dispatchOrganizationPlanFeaturesRefreshIfCurrentOrg(currentOrgId, orgId);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao atribuir plano");
@@ -373,6 +379,7 @@ export function PlatformPage() {
     setError(null);
     try {
       await assignOrgPlan(organizationId, null);
+      dispatchOrganizationPlanFeaturesRefreshIfCurrentOrg(currentOrgId, organizationId);
       if (manageOrg?.id === organizationId) setManageOrg(null);
       await load();
     } catch (err) {
@@ -404,6 +411,7 @@ export function PlatformPage() {
         workspaceStatus: orgEditStatus,
         ...(orgEditor.parentOrganizationId == null ? { resellerPartner: orgEditResellerPartner } : {}),
       });
+      dispatchOrganizationPlanFeaturesRefreshIfCurrentOrg(currentOrgId, orgEditor.id);
       setOrgEditor(null);
       await load();
     } catch (err) {
@@ -418,6 +426,7 @@ export function PlatformPage() {
     setError(null);
     try {
       await patchPlatformOrganization(id, { workspaceStatus });
+      dispatchOrganizationPlanFeaturesRefreshIfCurrentOrg(currentOrgId, id);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao atualizar status");
@@ -478,6 +487,7 @@ export function PlatformPage() {
         maxChildOrganizations: parseCap(planEditForm.maxChildOrganizations),
         features: planEditForm.features,
       });
+      dispatchOrganizationPlanFeaturesRefresh();
       setPlanEditor(null);
       await load();
     } catch (err) {
@@ -490,7 +500,8 @@ export function PlatformPage() {
   async function handleSyncSubs() {
     setError(null);
     try {
-      const r = await syncPlatformSubscriptions();
+      const r =       await syncPlatformSubscriptions();
+      dispatchOrganizationPlanFeaturesRefresh();
       await load();
       alert(`Sincronizado: ${r.synced} empresas.`);
     } catch (err) {
@@ -517,6 +528,7 @@ export function PlatformPage() {
           ovForm.maxChildOrganizations === "" ? null : parseInt(ovForm.maxChildOrganizations, 10),
         notes: ovForm.notes || null,
       });
+      dispatchOrganizationPlanFeaturesRefreshIfCurrentOrg(currentOrgId, manageOrg.id);
       setManageOrg(null);
       await load();
     } catch (err) {

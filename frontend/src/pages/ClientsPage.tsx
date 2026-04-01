@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { formatPageTitle, usePageTitle } from "@/hooks/usePageTitle";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   Building2,
+  CheckCircle2,
   ChevronDown,
   Eye,
   Loader2,
@@ -16,6 +18,8 @@ import {
   UserCog,
   Users2,
   LogIn,
+  Link2,
+  Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +43,7 @@ import {
   patchChildWorkspace,
   setActiveOrganization,
   type ChildWorkspaceOperationsRow,
+  type ResellerOrgKind,
   type WorkspaceStatus,
 } from "@/lib/organization-api";
 import { getWorkspaceHealth } from "@/lib/revenda-workspace-metrics";
@@ -92,6 +97,7 @@ function formatShortDate(iso: string | null | undefined): string {
 }
 
 export function ClientsPage() {
+  usePageTitle(formatPageTitle(["Clientes"]));
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
   const [loading, setLoading] = useState(true);
@@ -102,7 +108,14 @@ export function ClientsPage() {
   );
   const [search, setSearch] = useState("");
   const [openCreate, setOpenCreate] = useState(false);
+  const [createStep, setCreateStep] = useState<1 | 2 | 3 | "done">(1);
   const [newName, setNewName] = useState("");
+  const [newNote, setNewNote] = useState("");
+  const [newKind, setNewKind] = useState<ResellerOrgKind>("CLIENT");
+  const [createdOrg, setCreatedOrg] = useState<{ id: string; name: string; slug: string } | null>(null);
+  const [checklistTeam, setChecklistTeam] = useState(false);
+  const [checklistIntegrations, setChecklistIntegrations] = useState(false);
+  const [checklistMetas, setChecklistMetas] = useState(false);
   const [creating, setCreating] = useState(false);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [rolesOpen, setRolesOpen] = useState(false);
@@ -213,15 +226,35 @@ export function ClientsPage() {
     }
   }
 
+  function openCreateWizard() {
+    setCreateStep(1);
+    setNewName("");
+    setNewNote("");
+    setNewKind("CLIENT");
+    setCreatedOrg(null);
+    setChecklistTeam(false);
+    setChecklistIntegrations(false);
+    setChecklistMetas(false);
+    setOpenCreate(true);
+  }
+
   async function handleCreate() {
     const n = newName.trim();
     if (n.length < 2) return;
     setCreating(true);
     setError(null);
     try {
-      await createManagedOrganization(n, { inheritPlanFromParent: true });
-      setOpenCreate(false);
-      setNewName("");
+      const res = await createManagedOrganization(n, {
+        inheritPlanFromParent: true,
+        workspaceNote: newNote.trim() ? newNote.trim() : null,
+        resellerOrgKind: newKind,
+      });
+      const o = res.organization;
+      setCreatedOrg({ id: o.id, name: o.name, slug: o.slug });
+      setChecklistTeam(false);
+      setChecklistIntegrations(false);
+      setChecklistMetas(false);
+      setCreateStep("done");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao criar workspace.");
@@ -268,10 +301,7 @@ export function ClientsPage() {
             {canCreateChild ? (
               <Button
                 className="h-9 rounded-lg"
-                onClick={() => {
-                  setNewName("");
-                  setOpenCreate(true);
-                }}
+                onClick={() => openCreateWizard()}
                 disabled={atChildLimit}
                 title={atChildLimit ? "Limite de workspaces do plano" : undefined}
               >
@@ -336,7 +366,7 @@ export function ClientsPage() {
             {search.trim() ? "Nenhum resultado." : "Nenhum workspace filho ainda."}
           </p>
           {!search.trim() ? (
-            <Button className="mt-4 rounded-lg" onClick={() => setOpenCreate(true)} disabled={atChildLimit}>
+            <Button className="mt-4 rounded-lg" onClick={() => openCreateWizard()} disabled={atChildLimit}>
               <Plus className="mr-2 h-4 w-4" />
               Criar primeiro cliente
             </Button>
@@ -548,26 +578,294 @@ export function ClientsPage() {
         </Button>
       </div>
 
-      <Dialog open={openCreate} onOpenChange={setOpenCreate}>
-        <DialogContent title="Novo cliente" showClose>
-          <div className="space-y-2 py-2">
-            <Label htmlFor="new-client-name">Nome do workspace</Label>
-            <Input
-              id="new-client-name"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="Ex.: Marca do cliente"
-              className="rounded-xl"
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" type="button" onClick={() => setOpenCreate(false)}>
-              Cancelar
-            </Button>
-            <Button type="button" disabled={creating || newName.trim().length < 2} onClick={() => void handleCreate()}>
-              {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Criar
-            </Button>
+      <Dialog
+        open={openCreate}
+        onOpenChange={(open) => {
+          setOpenCreate(open);
+          if (!open) {
+            setCreateStep(1);
+            setNewName("");
+            setNewNote("");
+            setNewKind("CLIENT");
+            setCreatedOrg(null);
+            setChecklistTeam(false);
+            setChecklistIntegrations(false);
+            setChecklistMetas(false);
+          }
+        }}
+      >
+        <DialogContent
+          alignTop
+          className="max-w-lg"
+          showClose
+          title={
+            createStep === "done"
+              ? "Cliente criado"
+              : createStep === 3
+                ? "Revisar e criar"
+                : createStep === 2
+                  ? "Detalhes do workspace"
+                  : "Novo cliente"
+          }
+          description={
+            createStep === "done"
+              ? "Workspace criado com sucesso. Use o checklist para concluir a configuração."
+              : createStep === 1
+                ? "Passo 1 de 3 — identificação do workspace."
+                : createStep === 2
+                  ? "Passo 2 de 3 — notas internas e tipo de conta."
+                  : createStep === 3
+                    ? "Passo 3 de 3 — confirme antes de criar."
+                    : undefined
+          }
+        >
+          {createStep !== "done" ? (
+            <div className="mb-3 flex gap-1.5" aria-hidden>
+              {([1, 2, 3] as const).map((s) => (
+                <div
+                  key={s}
+                  className={cn(
+                    "h-1 flex-1 rounded-full transition-colors",
+                    createStep >= s ? "bg-primary" : "bg-muted"
+                  )}
+                />
+              ))}
+            </div>
+          ) : null}
+
+          {createStep === 1 ? (
+            <div className="space-y-3 py-2">
+              <p className="text-sm text-muted-foreground">
+                O identificador na URL (slug) é gerado automaticamente pelo sistema a partir do nome.
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor="new-client-name">Nome do workspace</Label>
+                <Input
+                  id="new-client-name"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Ex.: Marca do cliente"
+                  className="rounded-xl"
+                  autoFocus
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {createStep === 2 ? (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="new-client-note">Nota interna (opcional)</Label>
+                <textarea
+                  id="new-client-note"
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
+                  placeholder="Contexto para a equipa: segmento, contacto, contrato…"
+                  rows={4}
+                  className={cn(
+                    "flex w-full rounded-xl border border-input bg-transparent px-3 py-2 text-sm shadow-sm",
+                    "placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  )}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Tipo de conta</Label>
+                <Select value={newKind} onValueChange={(v) => setNewKind(v as ResellerOrgKind)}>
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CLIENT">Cliente (marca / projeto)</SelectItem>
+                    <SelectItem value="AGENCY">Sub-agência (estrutura de revenda)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Na maioria dos casos use <span className="font-medium text-foreground">Cliente</span>. Sub-agência
+                  apenas para filiais que também gerem contas filhas.
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          {createStep === 3 ? (
+            <div className="space-y-3 py-2 text-sm">
+              <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Nome</p>
+                <p className="mt-1 font-semibold text-foreground">{newName.trim()}</p>
+                <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Tipo</p>
+                <p className="mt-1 text-foreground">
+                  {newKind === "AGENCY" ? "Sub-agência" : "Cliente (marca / projeto)"}
+                </p>
+                {newNote.trim() ? (
+                  <>
+                    <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Nota</p>
+                    <p className="mt-1 whitespace-pre-wrap text-foreground">{newNote.trim()}</p>
+                  </>
+                ) : null}
+                <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Plano</p>
+                <p className="mt-1 text-foreground">Herdado da organização matriz</p>
+              </div>
+            </div>
+          ) : null}
+
+          {createStep === "done" && createdOrg ? (
+            <div className="space-y-4 py-2">
+              <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] p-4">
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <div className="min-w-0">
+                  <p className="font-semibold text-foreground">{createdOrg.name}</p>
+                  <p className="font-mono text-xs text-muted-foreground">/{createdOrg.slug}</p>
+                </div>
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  Próximos passos
+                </p>
+                <ul className="space-y-2">
+                  <li className="flex items-start gap-3 rounded-lg border border-border/50 bg-card/50 px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      id="chk-team"
+                      className="mt-1 h-4 w-4 rounded border-border"
+                      checked={checklistTeam}
+                      onChange={(e) => setChecklistTeam(e.target.checked)}
+                    />
+                    <label htmlFor="chk-team" className="flex-1 cursor-pointer text-sm leading-snug">
+                      <span className="font-medium text-foreground">Convidar a equipa</span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
+                        Adicione utilizadores e papéis no workspace do cliente.
+                      </span>
+                      <Button
+                        type="button"
+                        variant="link"
+                        className="mt-1 h-auto p-0 text-xs font-semibold"
+                        onClick={() => void switchToClient(createdOrg.id, "/usuarios")}
+                      >
+                        Abrir utilizadores neste cliente
+                      </Button>
+                    </label>
+                  </li>
+                  <li className="flex items-start gap-3 rounded-lg border border-border/50 bg-card/50 px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      id="chk-integ"
+                      className="mt-1 h-4 w-4 rounded border-border"
+                      checked={checklistIntegrations}
+                      onChange={(e) => setChecklistIntegrations(e.target.checked)}
+                    />
+                    <label htmlFor="chk-integ" className="flex-1 cursor-pointer text-sm leading-snug">
+                      <span className="inline-flex items-center gap-1 font-medium text-foreground">
+                        <Link2 className="h-3.5 w-3.5" aria-hidden />
+                        Ligar integrações
+                      </span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
+                        Meta Ads e Google Ads para métricas no painel.
+                      </span>
+                      <Button
+                        type="button"
+                        variant="link"
+                        className="mt-1 h-auto p-0 text-xs font-semibold"
+                        onClick={() => void switchToClient(createdOrg.id, "/marketing/integracoes")}
+                      >
+                        Abrir integrações
+                      </Button>
+                    </label>
+                  </li>
+                  <li className="flex items-start gap-3 rounded-lg border border-border/50 bg-card/50 px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      id="chk-metas"
+                      className="mt-1 h-4 w-4 rounded border-border"
+                      checked={checklistMetas}
+                      onChange={(e) => setChecklistMetas(e.target.checked)}
+                    />
+                    <label htmlFor="chk-metas" className="flex-1 cursor-pointer text-sm leading-snug">
+                      <span className="inline-flex items-center gap-1 font-medium text-foreground">
+                        <Target className="h-3.5 w-3.5" aria-hidden />
+                        Metas de operação
+                      </span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
+                        CPL, ROAS e alertas por canal.
+                      </span>
+                      <Button
+                        type="button"
+                        variant="link"
+                        className="mt-1 h-auto p-0 text-xs font-semibold"
+                        onClick={() => void switchToClient(createdOrg.id, "/marketing/ads/metas-operacao")}
+                      >
+                        Abrir metas por canal
+                      </Button>
+                    </label>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
+            {createStep === "done" ? (
+              <>
+                <Button type="button" variant="outline" className="rounded-lg" onClick={() => setOpenCreate(false)}>
+                  Ficar na lista de clientes
+                </Button>
+                <Button
+                  type="button"
+                  className="rounded-lg"
+                  onClick={() => void switchToClient(createdOrg!.id, "/marketing")}
+                >
+                  <LogIn className="mr-2 h-4 w-4" />
+                  Entrar no cliente
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="flex w-full gap-2 sm:w-auto">
+                  {createStep > 1 ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-lg"
+                      disabled={creating}
+                      onClick={() => setCreateStep((s) => (s === 2 ? 1 : s === 3 ? 2 : 1))}
+                    >
+                      Voltar
+                    </Button>
+                  ) : (
+                    <Button type="button" variant="outline" className="rounded-lg" disabled={creating} onClick={() => setOpenCreate(false)}>
+                      Cancelar
+                    </Button>
+                  )}
+                </div>
+                <div className="flex w-full justify-end gap-2 sm:w-auto">
+                  {createStep === 1 ? (
+                    <Button
+                      type="button"
+                      className="rounded-lg"
+                      disabled={newName.trim().length < 2}
+                      onClick={() => setCreateStep(2)}
+                    >
+                      Seguinte
+                    </Button>
+                  ) : null}
+                  {createStep === 2 ? (
+                    <Button type="button" className="rounded-lg" onClick={() => setCreateStep(3)}>
+                      Seguinte
+                    </Button>
+                  ) : null}
+                  {createStep === 3 ? (
+                    <Button
+                      type="button"
+                      className="rounded-lg"
+                      disabled={creating || newName.trim().length < 2}
+                      onClick={() => void handleCreate()}
+                    >
+                      {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Criar workspace
+                    </Button>
+                  ) : null}
+                </div>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

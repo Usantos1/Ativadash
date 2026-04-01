@@ -2,7 +2,7 @@
 
 **Objetivo deste documento:** alinhar **propósito**, **quem é quem** no multi-tenant e **o que cada perfil vê** (menu + rotas), com base no código atual (`frontend/src/App.tsx`, `Sidebar.tsx`, serviços de auth) e na arquitetura de permissões em [`arquitetura-final/02-matriz-permissoes.md`](./arquitetura-final/02-matriz-permissoes.md).
 
-**Última revisão:** 2026-03-30.
+**Última revisão:** 2026-03-31 (hub por perfil, guards workspace cliente, modo suporte).
 
 ---
 
@@ -21,7 +21,7 @@
 | **C — Agência (filial)** | Org filha (`parentOrganizationId` preenchido), tipicamente `organizationKind` coerente com operação de agência | **Só a própria operação e os clientes sob sua pasta**: sem ver outras filiais da matriz nem painel global de produto. |
 | **D — Workspace cliente** | `CLIENT_WORKSPACE` (marca/cliente final sob agência/matriz) | **Dados daquele cliente**: marketing, integrações da conta, equipe do workspace (conforme papel). |
 
-> **Nota de modelo de dados:** o backend já distingue `OrganizationKind` (`MATRIX`, `DIRECT`, `CLIENT_WORKSPACE`) e expõe `organizationKind` em **cada item de `memberships`** no `/auth/me`. O **frontend ainda não tipa nem usa** `organizationKind` no store — ver §6.
+> **Nota de modelo de dados:** o backend já distingue `OrganizationKind` (`MATRIX`, `DIRECT`, `CLIENT_WORKSPACE`) e expõe `organizationKind` em **cada item de `memberships`** no `/auth/me`. O **frontend** tipa `organizationKind` no utilizador e em `MembershipSummary` (`auth-store` / `organization-api`) e usa-o em `navigation-mode` + guards — ver §6.
 
 ---
 
@@ -43,23 +43,49 @@
 | `/perfil` | Perfil / senha | Todos. |
 | `/revenda`, `/revenda/*` | Matriz e filiais | **Só** `platformAdmin` **ou** raiz com `rootResellerPartner` + regras de plano (já parcialmente aplicado). |
 | `/assinatura`, `/planos` | Redirect → `/revenda` | Mesmo critério que revenda. |
-| `/admin` | Administração (info org + link integrações) | **Hoje sem guard** — qualquer logado abre; **deveria** ser restrito ou fundido em Configurações. |
+| `/admin` | Redireciona para `/configuracoes/admin` | **Guard:** igual ao destino (`canAccessAdminPage`). |
+| `/configuracoes/admin` | Admin técnico (ID org, atalhos) | `AdminSettingsPage.tsx` + `AdminOrgPanel`; entrada no hub (“Admin técnico”). |
 | `/plataforma` | Admin global do produto | **Só** `platformAdmin` (página já bloqueia). |
 
 ---
 
-## 4. Menu lateral — estado **atual** (`Sidebar.tsx`)
+## 4. Menu lateral — estado **atual** (`Sidebar.tsx` + `resolveSidebarNavVariant`)
 
-| Grupo | Itens | Visibilidade atual |
-|-------|--------|---------------------|
-| Visão geral | Dashboard | Todos. |
-| ADS | Painel ADS, Captação, Conversão, Receita | Todos. |
-| Conexões | Integrações, Metas e alertas | Todos. |
-| Operação | Clientes, Projetos, Lançamentos, Equipe | Todos. |
-| Conta | Matriz e filiais, Configurações | Matriz e filiais: **só** se `platformAdmin` **ou** `rootResellerPartner`. |
-| (extra) | Admin global do produto | Só `platformAdmin`. |
+A variante vem de `navigation-mode.ts` (`full` | `agency_branch` | `client_workspace` | `agency_client_portal`). Em todos os casos, **itens individuais** podem ser filtrados por plano (`nav-plan-features.ts` + `enabledFeatures`), exceto bypass para `platformAdmin`.
 
-**Gap vs. visão “Agência (filial)”:** hoje a agência **ainda vê** todo o bloco ADS, Projetos, Lançamentos, Configurações completas e `/admin` por URL — não há menu “enxuto” só com Visão geral + Clientes + Integrações + Metas/alertas.
+### 4.1 Variante `full` (matriz, conta directa, operação completa)
+
+| Grupo | Itens |
+|-------|--------|
+| Visão geral | Dashboard |
+| ADS | Painel ADS, Captação, Conversão, Receita |
+| Conexões | Integrações, Alertas e regras, Metas por canal |
+| Operação | Clientes, Projetos, Lançamentos, Equipe |
+| Conta | Revenda (se `platformAdmin` ou `rootResellerPartner` na raiz ativa), Configurações |
+| (extra) | Admin global do produto — só `platformAdmin` |
+
+### 4.2 Variante `agency_branch` (agência filial — `parentOrganizationId != null`)
+
+Menu **enxuto**, alinhado ao §5.3:
+
+| Grupo | Itens |
+|-------|--------|
+| Visão geral | `/dashboard` (label “Visão geral”) |
+| Operação | Clientes |
+| Conexões | Integrações, Alertas e regras, Metas por canal |
+| Conta | Revenda (mesmas regras que em `full`), Configurações |
+
+Não aparecem no menu: bloco ADS completo, Projetos, Lançamentos, Equipe. **Deep links:** `MainLayout` redireciona URLs fora de `isPathAllowedForAgencyBranch` (ex.: `/marketing`, `/projetos`, `/usuarios`) para `/dashboard`.
+
+### 4.3 Variante `client_workspace` (`organizationKind === CLIENT_WORKSPACE`)
+
+ADS + Conexões como em `full`; grupo **Operação** só com **Equipe** (`/usuarios`) — sem Clientes / Projetos / Lançamentos no menu. **Deep links:** `/clientes`, `/projetos`, `/lancamentos` redirecionam para `/dashboard` (`isPathBlockedForClientWorkspaceClients`).
+
+### 4.4 Variante `agency_client_portal`
+
+Perfil **report_viewer** / **client_viewer** na org ativa (`isAgencyClientPortalUser`): menu **Visão geral** + **ADS** completo + **Conta → Configurações**. Rotas permitidas incluem `/perfil` e **`/configuracoes` (+ sub-rotas)**; hub e **Empresa** em modo consulta (`CompanySettingsPage` só leitura para nome). Integrações e blocos de marketing no hub estão ocultos (acesso não faz parte do escopo deste perfil).
+
+**Melhorias opcionais futuras:** fundir `/admin` no hub; fundir as duas rotas de “metas” num único fluxo (§5.3).
 
 ---
 
@@ -68,7 +94,7 @@
 ### 5.1 Administrador global (`platformAdmin`)
 
 - **Plataforma:** entrada `/plataforma` (planos, empresas, assinaturas, auditoria, limites, parceiro revenda).
-- **Opcional:** ao assumir contexto de um tenant, mostrar o menu desse tenant + badge “Modo suporte”.
+- **Implementado:** ao assumir contexto de um tenant (modo ≠ `platform_full`), badge **Modo suporte** na topbar (`AppTopbar`).
 
 ### 5.2 Matriz parceira (não platform; raiz `resellerPartner`)
 
@@ -108,7 +134,13 @@
 | Guard de `/revenda` | API + redirect layout | `RevendaLayout` (filial redireciona; matriz só na raiz ativa) |
 | Guard de `/plataforma` | API | `PlatformPage` |
 | Guard de `/admin` | — | `MainLayout` + `canAccessAdminPage` |
+| Guard agência filial (deep links) | — | `isPathAllowedForAgencyBranch` + `shouldEnforceAgencyBranchRouteGuard(user, memberships)` |
+| Guard workspace cliente | — | `isPathBlockedForClientWorkspaceClients` (`/clientes`, `/projetos`, `/lancamentos`) |
+| Badge modo suporte (`platformAdmin` em tenant) | — | `AppTopbar` + `resolveAppNavMode` |
+| Hub `/configuracoes` por perfil | — | `SettingsHubPage` (subconjuntos para filial, workspace cliente, portal cliente) |
 | Menu condicional agência / cliente | — | `navigation-mode.ts` + `Sidebar.tsx` |
+| Menu por features do plano | `enabledFeatures` em `GET /organization` | `nav-plan-features.ts` + `organization-plan-features-context.tsx` (um pedido partilhado; evento `ativadash:organization-plan-features-refresh` + `refreshPlanFeatures` após alterações de plano) + `Sidebar` + `MainLayoutInner` |
+| Filial operação alargada (opt-in build) | — | `VITE_AGENCY_BRANCH_EXPANDED_OPS` + `isAgencyBranchExpandedOpsEnabled()` (`navigation-mode`, `Sidebar`, hub) |
 
 ---
 
@@ -124,10 +156,10 @@
 **P1 — UX**
 
 5. [x] Menu agência: “Visão geral” + link “Automações (Marketing)” para `/marketing/configuracoes`.
-6. [ ] Unificar rotas de metas (opcional): manter `/ads/metas-alertas` e `/marketing/configuracoes` com labels claros.
-7. [x] Hub e **CompanySettingsPage**: filial vê texto de plano pela matriz; raiz mantém detalhe de plano/revenda.
+6. [x] Unificar rotas de metas (opcional): manter `/ads/metas-alertas` e `/marketing/configuracoes` com labels claros (sidebar + hub de configurações).
+7. [x] Hub e **CompanySettingsPage**: filial vê plano pela matriz no hub; **nome da empresa** na filial só leitura (exceto `platformAdmin` em suporte); raiz mantém edição e revenda.
 
-**P2 (futuro):** filtrar itens do menu por `enabledFeatures` do plano (exige sinal no auth ou cache de contexto).
+**P2:** [x] Sidebar filtra itens por `enabledFeatures` de `GET /organization` (com bypass para `platformAdmin`); até ao carregar o contexto o menu mostra o conjunto completo da variante. [x] `MainLayout` redireciona URLs que o plano não cobre para a primeira rota permitida (`firstAllowedPathForPlanAndNav`), respeitando filial / portal cliente / workspace.
 
 **Referência profunda de RBAC:** [02-matriz-permissoes.md](./arquitetura-final/02-matriz-permissoes.md).
 
@@ -139,13 +171,21 @@
 |------|-------------------|
 | `/dashboard` | `pages/Dashboard.tsx` |
 | `/marketing/*` | `pages/Marketing*.tsx`, `pages/integrations/*` |
-| `/ads/metas-alertas` | `pages/MarketingAdsOperationalPage.tsx` |
+| `/ads/metas-alertas` | `pages/MetasAlertasPage.tsx` |
 | `/clientes` | `pages/ClientsPage.tsx` |
 | `/revenda/*` | `pages/revenda/*` |
 | `/plataforma` | `pages/PlatformPage.tsx` |
 | `/configuracoes` | `pages/SettingsHubPage.tsx` |
+| `/configuracoes/admin` | `pages/AdminSettingsPage.tsx`, `components/settings/AdminOrgPanel.tsx` |
 | Menu | `components/layout/Sidebar.tsx` |
 | Auth | `stores/auth-store.ts`, `MainLayout.tsx` (`GET /auth/me`) |
+
+---
+
+## 9. Backlog residual (baixa prioridade)
+
+1. **Agência filial — operação alargada:** com `VITE_AGENCY_BRANCH_EXPANDED_OPS=1` no build, o menu, o guard de rotas e o hub de configurações alinham-se à operação completa (ADS, Projetos, Lançamentos, Equipe). Default permanece **enxuto**.
+2. **Duas rotas de metas** — ligações cruzadas no topo de `/marketing/configuracoes` e `/ads/metas-alertas`; fundir numa única rota com tabs seria refactor maior, se produto unificar.
 
 ---
 

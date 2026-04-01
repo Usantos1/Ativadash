@@ -33,6 +33,7 @@ import {
   type PlanLimitFieldKey,
 } from "@/lib/revenda-api";
 import { useAuthStore } from "@/stores/auth-store";
+import { dispatchOrganizationPlanFeaturesRefreshIfCurrentOrg } from "@/components/layout/organization-plan-features-context";
 import { PageHint } from "@/pages/revenda/PageHint";
 
 const STATUS_PT: Record<WorkspaceStatus, string> = {
@@ -129,6 +130,7 @@ function isClientCreateFormValid(c: ClientCadastroForm): boolean {
 export function RevendaTenantsPage({ kind }: Props) {
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
+  const currentOrgId = useAuthStore((s) => s.user?.organizationId);
 
   const [rows, setRows] = useState<ChildWorkspaceOperationsRow[]>([]);
   const [ecosystem, setEcosystem] = useState<ResellerEcosystemOrgRow[]>([]);
@@ -349,7 +351,9 @@ export function RevendaTenantsPage({ kind }: Props) {
           ...(subNotes.trim() ? { notes: subNotes.trim() } : {}),
         };
       }
-      await resellerPatchChildGovernance(editRow.id, body);
+      const editedId = editRow.id;
+      await resellerPatchChildGovernance(editedId, body);
+      dispatchOrganizationPlanFeaturesRefreshIfCurrentOrg(currentOrgId, editedId);
       setEditRow(null);
       await load();
     } catch (e) {
@@ -374,6 +378,7 @@ export function RevendaTenantsPage({ kind }: Props) {
     setActionError(null);
     try {
       await resellerPatchChildGovernance(row.id, { workspaceStatus: status });
+      dispatchOrganizationPlanFeaturesRefreshIfCurrentOrg(currentOrgId, row.id);
       await load();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Falha ao atualizar status.");

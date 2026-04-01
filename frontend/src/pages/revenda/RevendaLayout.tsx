@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { formatPageTitle, usePageTitle } from "@/hooks/usePageTitle";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/auth-store";
 import { canAccessMatrizResellerNav } from "@/lib/navigation-mode";
@@ -29,6 +30,7 @@ function RevendaHeader({ isPlatformRoute }: { isPlatformRoute: boolean }) {
 }
 
 export function RevendaLayout() {
+  usePageTitle(formatPageTitle(["Matriz"]));
   const navigate = useNavigate();
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
@@ -44,6 +46,10 @@ export function RevendaLayout() {
       navigate("/dashboard", { replace: true });
     }
   }, [accessToken, user, memberships, navigate]);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
 
   return (
     <TooltipProvider delayDuration={280}>

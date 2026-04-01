@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { IndeterminateLoadingBar } from "@/components/ui/indeterminate-loading-bar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchOrganizationContext } from "@/lib/organization-api";
 import { fetchResellerOverview } from "@/lib/revenda-api";
@@ -47,12 +49,17 @@ export function RevendaOverviewPage() {
   const [ctxOk, setCtxOk] = useState<boolean | null>(null);
   const [ctxBlock, setCtxBlock] = useState<"partner" | "plan" | null>(null);
   const [dash, setDash] = useState<ChildrenOperationsDashboard | null>(null);
+  const dashRef = useRef<ChildrenOperationsDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [slowRefreshHint, setSlowRefreshHint] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const hadDash = dashRef.current != null;
     setError(null);
+    if (hadDash) setRefreshing(true);
+    else setLoading(true);
     try {
       const [ctxRes, overviewRes] = await Promise.allSettled([
         fetchOrganizationContext(),
@@ -64,6 +71,7 @@ export function RevendaOverviewPage() {
         setError(e instanceof Error ? e.message : "Não foi possível carregar o contexto da empresa.");
         setCtxOk(null);
         setDash(null);
+        dashRef.current = null;
         return;
       }
 
@@ -80,24 +88,42 @@ export function RevendaOverviewPage() {
 
       if (!enabled) {
         setDash(null);
+        dashRef.current = null;
         return;
       }
 
       if (overviewRes.status === "rejected") {
         const e = overviewRes.reason;
         setError(e instanceof Error ? e.message : "Não foi possível carregar o painel.");
-        setDash(null);
+        if (!hadDash) {
+          setDash(null);
+          dashRef.current = null;
+        }
         return;
       }
 
       setDash(overviewRes.value);
+      dashRef.current = overviewRes.value;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Não foi possível carregar o painel.");
-      setDash(null);
+      if (!hadDash) {
+        setDash(null);
+        dashRef.current = null;
+      }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!refreshing) {
+      setSlowRefreshHint(false);
+      return;
+    }
+    const t = window.setTimeout(() => setSlowRefreshHint(true), 5000);
+    return () => window.clearTimeout(t);
+  }, [refreshing]);
 
   useEffect(() => {
     void load();
@@ -110,7 +136,7 @@ export function RevendaOverviewPage() {
     return sortRowsByLastActivity(dash.organizations, "desc").slice(0, 6);
   }, [dash]);
 
-  if (loading) {
+  if (loading && !dash) {
     return (
       <div className="space-y-8 animate-in fade-in-0 duration-200">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -142,7 +168,7 @@ export function RevendaOverviewPage() {
     );
   }
 
-  if (error) {
+  if (error && !dash) {
     return (
       <Card className="border-destructive/40">
         <CardHeader className="flex flex-row items-start gap-2">
@@ -167,7 +193,36 @@ export function RevendaOverviewPage() {
   const alertCount = dash.alerts.filter((a) => a.severity === "warning" || a.severity === "critical").length;
 
   return (
-    <div className="space-y-8">
+    <div className="relative space-y-8">
+      {refreshing ? (
+        <div className="sticky top-0 z-20 -mx-1">
+          <IndeterminateLoadingBar />
+        </div>
+      ) : null}
+      {slowRefreshHint ? (
+        <p className="rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
+          A atualização está a demorar mais do que o habitual. Os números abaixo são os últimos recebidos com sucesso.
+        </p>
+      ) : null}
+      {error && dash ? (
+        <p className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{error}</span>
+        </p>
+      ) : null}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="rounded-lg"
+          disabled={refreshing}
+          onClick={() => void load()}
+        >
+          <RefreshCw className={`mr-2 h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          Atualizar painel
+        </Button>
+      </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi
           label="Contas"

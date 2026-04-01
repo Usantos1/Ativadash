@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "npx vite",
+    "test:e2e": "npx playwright test",
     "build": "npx tsc -b && npx vite build",
     "build:prod": "cross-env VITE_API_URL=https://api.ativadash.com npm run build",
     "lint": "eslint .",
@@ -26,7 +27,11 @@
     "clsx": "^2.1.0",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
+    "hotkeys-js": "^3.13.9",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.2",
     "lucide-react": "^0.344.0",
+    "papaparse": "^5.4.1",
     "react": "^18.2.0",
     "react-day-picker": "^9.14.0",
     "react-dom": "^18.2.0",
@@ -39,7 +44,9 @@
     "zustand": "^4.5.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.0",
     "@eslint/js": "^9.9.0",
+    "@types/papaparse": "^5.3.14",
     "@types/node": "^20.11.0",
     "@types/react": "^18.2.55",
     "@types/react-dom": "^18.2.19",

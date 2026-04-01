@@ -1,5 +1,6 @@
 import { ArrowUpRight, Copy, Pause, Wallet, Zap, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatNumber, formatSpend } from "@/lib/metrics-format";
 import { cn } from "@/lib/utils";
 import type { AccountHealth } from "@/lib/marketing-strategic-insights";
@@ -31,20 +32,37 @@ export function MarketingCockpitStatus(props: {
   const { health, goalMode, leads, cpl, cplTarget, spend, revenue, roas } = props;
   const cplOk = cpl != null && cplTarget != null && cplTarget > 0 ? cpl <= cplTarget : null;
 
+  const healthTip =
+    health === "healthy"
+      ? "Conta alinhada às metas e aos sinais do período selecionado."
+      : health === "attention"
+        ? "Alguns indicadores pedem revisão (CPL, ROAS ou volume)."
+        : "Prioridade: métricas fora do esperado; revise campanhas e metas.";
+
   return (
-    <div
-      className={cn(
-        "relative overflow-hidden rounded-2xl border-2 p-4 sm:p-5",
-        statusBar[health]
-      )}
-    >
+    <TooltipProvider delayDuration={280}>
       <div
         className={cn(
-          "absolute right-4 top-4 h-3 w-3 rounded-full sm:right-5 sm:top-5",
-          dotPulse[health]
+          "relative overflow-hidden rounded-2xl border-2 p-4 sm:p-5",
+          statusBar[health]
         )}
-        aria-hidden
-      />
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                "absolute right-4 top-4 h-3 w-3 rounded-full sm:right-5 sm:top-5",
+                dotPulse[health],
+                "ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              )}
+              aria-label={healthTip}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="left" className="max-w-xs text-xs">
+            {healthTip}
+          </TooltipContent>
+        </Tooltip>
       <div className="grid gap-4 sm:grid-cols-12 sm:items-center">
         <div className="sm:col-span-3">
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Conta</p>
@@ -104,7 +122,8 @@ export function MarketingCockpitStatus(props: {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -123,22 +142,39 @@ export function MarketingChannelPanel(props: {
       : status === "bad"
         ? "ring-2 ring-rose-500/45"
         : "ring-2 ring-amber-500/35";
+  const dotTip =
+    status === "good"
+      ? "Canal com desempenho favorável face ao outro canal e às metas."
+      : status === "bad"
+        ? "Canal com sinais fracos no período; compare criativos, ofertas e segmentação."
+        : "Canal neutro ou em equilíbrio no período.";
   return (
-    <div
-      className={cn(
-        "rounded-2xl border border-border/60 bg-card/80 p-4 backdrop-blur-sm",
-        ring
-      )}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-black uppercase tracking-[0.15em] text-foreground">{name}</p>
-        <span
-          className={cn(
-            "h-2 w-2 rounded-full",
-            status === "good" ? "bg-emerald-500" : status === "bad" ? "bg-rose-500" : "bg-amber-500"
-          )}
-        />
-      </div>
+    <TooltipProvider delayDuration={280}>
+      <div
+        className={cn(
+          "rounded-2xl border border-border/60 bg-card/80 p-4 backdrop-blur-sm",
+          ring
+        )}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-black uppercase tracking-[0.15em] text-foreground">{name}</p>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "h-2 w-2 rounded-full",
+                  status === "good" ? "bg-emerald-500" : status === "bad" ? "bg-rose-500" : "bg-amber-500",
+                  "ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                )}
+                aria-label={dotTip}
+              />
+            </TooltipTrigger>
+            <TooltipContent side="left" className="max-w-xs text-xs">
+              {dotTip}
+            </TooltipContent>
+          </Tooltip>
+        </div>
       <p className="mt-3 text-3xl font-black tabular-nums text-foreground">{formatNumber(Math.round(leads))}</p>
       <p className="text-[10px] font-semibold uppercase text-muted-foreground">leads / conv.</p>
       <div className="mt-3 flex items-end justify-between gap-2 border-t border-border/40 pt-3">
@@ -154,7 +190,8 @@ export function MarketingChannelPanel(props: {
           ) : null}
         </div>
       </div>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -173,17 +210,34 @@ export function MarketingChannelPanelSales(props: {
       : status === "bad"
         ? "ring-2 ring-rose-500/45"
         : "ring-2 ring-amber-500/35";
+  const dotTip =
+    status === "good"
+      ? "Canal com desempenho favorável face ao outro canal e às metas."
+      : status === "bad"
+        ? "Canal com sinais fracos no período; compare criativos, ofertas e segmentação."
+        : "Canal neutro ou em equilíbrio no período.";
   return (
-    <div className={cn("rounded-2xl border border-border/60 bg-card/80 p-4 backdrop-blur-sm", ring)}>
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-black uppercase tracking-[0.15em]">{name}</p>
-        <span
-          className={cn(
-            "h-2 w-2 rounded-full",
-            status === "good" ? "bg-emerald-500" : status === "bad" ? "bg-rose-500" : "bg-amber-500"
-          )}
-        />
-      </div>
+    <TooltipProvider delayDuration={280}>
+      <div className={cn("rounded-2xl border border-border/60 bg-card/80 p-4 backdrop-blur-sm", ring)}>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-black uppercase tracking-[0.15em]">{name}</p>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "h-2 w-2 rounded-full",
+                  status === "good" ? "bg-emerald-500" : status === "bad" ? "bg-rose-500" : "bg-amber-500",
+                  "ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                )}
+                aria-label={dotTip}
+              />
+            </TooltipTrigger>
+            <TooltipContent side="left" className="max-w-xs text-xs">
+              {dotTip}
+            </TooltipContent>
+          </Tooltip>
+        </div>
       <p className="mt-3 text-2xl font-black tabular-nums sm:text-3xl">{formatSpend(revenue)}</p>
       <p className="text-[10px] font-semibold uppercase text-muted-foreground">receita</p>
       <div className="mt-3 flex items-end justify-between border-t border-border/40 pt-3">
@@ -199,7 +253,8 @@ export function MarketingChannelPanelSales(props: {
           ) : null}
         </div>
       </div>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -245,9 +300,9 @@ export function MarketingActionQueue(props: {
   items: OperationalActionItem[];
   busyKey: string | null;
   canMutate: boolean;
-  onPauseMeta: (id: string) => void;
-  onPauseGoogle: (id: string) => void;
-  onBudgetMeta: (id: string, name: string) => void;
+  onPauseMeta: (id: string, name: string) => void;
+  onPauseGoogle: (id: string, name: string) => void;
+  onBudgetMeta: (id: string, name: string, opts?: { estimatedDaily?: number }) => void;
   onDuplicateStub: () => void;
 }) {
   const { items, busyKey, canMutate, onPauseMeta, onPauseGoogle, onBudgetMeta, onDuplicateStub } = props;
@@ -291,7 +346,7 @@ export function MarketingActionQueue(props: {
                   variant="destructive"
                   className="h-8 gap-1 rounded-lg text-xs"
                   disabled={busy}
-                  onClick={() => onPauseMeta(item.campaignId)}
+                  onClick={() => onPauseMeta(item.campaignId, item.campaignName)}
                 >
                   {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pause className="h-3.5 w-3.5" />}
                   Pausar
@@ -304,7 +359,7 @@ export function MarketingActionQueue(props: {
                   variant="destructive"
                   className="h-8 gap-1 rounded-lg text-xs"
                   disabled={busy}
-                  onClick={() => onPauseGoogle(item.campaignId)}
+                  onClick={() => onPauseGoogle(item.campaignId, item.campaignName)}
                 >
                   {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pause className="h-3.5 w-3.5" />}
                   Pausar
@@ -316,7 +371,11 @@ export function MarketingActionQueue(props: {
                   size="sm"
                   className="h-8 gap-1 rounded-lg bg-emerald-600 text-xs hover:bg-emerald-700"
                   disabled={busy}
-                  onClick={() => onBudgetMeta(item.campaignId, item.campaignName)}
+                  onClick={() =>
+                    onBudgetMeta(item.campaignId, item.campaignName, {
+                      estimatedDaily: item.estimatedDaily,
+                    })
+                  }
                 >
                   <ArrowUpRight className="h-3.5 w-3.5" />
                   Orçamento

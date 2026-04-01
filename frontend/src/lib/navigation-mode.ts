@@ -17,6 +17,18 @@ const ADMIN_PAGE_ROLES = new Set([
   "workspace_admin",
 ]);
 
+const TRUTHY_ENV = new Set(["1", "true", "yes", "on"]);
+
+/**
+ * Agência filial com operação alargada (ADS completos, Projetos, Lançamentos, Equipe).
+ * Build/deploy: `VITE_AGENCY_BRANCH_EXPANDED_OPS=1` (testes ou rollout futuro por tenant).
+ */
+export function isAgencyBranchExpandedOpsEnabled(): boolean {
+  const v = import.meta.env.VITE_AGENCY_BRANCH_EXPANDED_OPS;
+  if (v == null || String(v).trim() === "") return false;
+  return TRUTHY_ENV.has(String(v).trim().toLowerCase());
+}
+
 export function resolveOrganizationKind(user: User | null): OrganizationKindDto {
   const k = user?.organizationKind;
   if (k === "MATRIX" || k === "DIRECT" || k === "CLIENT_WORKSPACE") return k;
@@ -46,12 +58,18 @@ export function resolveAppNavMode(user: User | null): AppNavMode {
   return "operational_full";
 }
 
-export function shouldEnforceAgencyBranchRouteGuard(user: User | null): boolean {
-  return resolveSidebarNavVariant(user, null) === "agency_branch" && user?.platformAdmin !== true;
+export function shouldEnforceAgencyBranchRouteGuard(
+  user: User | null,
+  memberships: MembershipSummary[] | null = null
+): boolean {
+  return resolveSidebarNavVariant(user, memberships) === "agency_branch" && user?.platformAdmin !== true;
 }
 
-export function shouldEnforceClientWorkspaceClientsGuard(user: User | null): boolean {
-  return resolveSidebarNavVariant(user, null) === "client_workspace" && user?.platformAdmin !== true;
+export function shouldEnforceClientWorkspaceClientsGuard(
+  user: User | null,
+  memberships: MembershipSummary[] | null = null
+): boolean {
+  return resolveSidebarNavVariant(user, memberships) === "client_workspace" && user?.platformAdmin !== true;
 }
 
 export function getActiveMembership(
@@ -82,6 +100,7 @@ export function isPathAllowedForAgencyClientPortal(pathname: string): boolean {
   if (p === "/marketing" || p === "/marketing/captacao" || p === "/marketing/conversao" || p === "/marketing/receita")
     return true;
   if (p === "/perfil") return true;
+  if (p === "/configuracoes" || p.startsWith("/configuracoes/")) return true;
   return false;
 }
 
@@ -119,10 +138,22 @@ export function isPathAllowedForAgencyBranch(pathname: string): boolean {
   if (p === "/ads/metas-alertas" || p === "/ads/metas-operacao") return true;
   if (p === "/configuracoes" || p.startsWith("/configuracoes/")) return true;
   if (p === "/perfil") return true;
+  if (isAgencyBranchExpandedOpsEnabled()) {
+    if (p === "/marketing" || p === "/marketing/captacao" || p === "/marketing/conversao" || p === "/marketing/receita") {
+      return true;
+    }
+    if (p.startsWith("/projetos")) return true;
+    if (p.startsWith("/lancamentos")) return true;
+    if (p === "/usuarios") return true;
+  }
   return false;
 }
 
+/** Workspace cliente final: sem carteira multi-conta nem projetos/lançamentos operacionais da agência. */
 export function isPathBlockedForClientWorkspaceClients(pathname: string): boolean {
   const p = pathname.replace(/\/$/, "") || "/";
-  return p === "/clientes";
+  if (p === "/clientes") return true;
+  if (p.startsWith("/projetos")) return true;
+  if (p.startsWith("/lancamentos")) return true;
+  return false;
 }

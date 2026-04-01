@@ -50,6 +50,7 @@ import {
   metaCampaignStatusBodySchema,
   googleCampaignStatusContractSchema,
   metaCampaignBudgetContractSchema,
+  marketingCampaignRollbackBodySchema,
 } from "../validators/marketing-extended.validator.js";
 import type { MarketingDashboardPayload } from "../services/marketing-dashboard.service.js";
 import { appendAuditLog } from "../services/audit-log.service.js";
@@ -570,6 +571,79 @@ export async function patchGoogleCampaignStatusContractHandler(req: Request, res
     userAgent: req.get("user-agent") ?? undefined,
   }).catch((err) => console.error("[audit] media.google.campaign.status", err));
   return res.json({ ok: true });
+}
+
+/** POST /marketing/campaign-mutations/rollback — desfazer pausas/orçamentos em lote. */
+export async function postMarketingCampaignRollbackHandler(req: Request, res: Response) {
+  const { userId, organizationId } = (req as AuthRequest).user;
+  const parsed = marketingCampaignRollbackBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Dados inválidos" });
+  }
+  try {
+    await assertCanMutateAds(userId, organizationId);
+    await assertCampaignWriteOnPlan(organizationId);
+  } catch (e) {
+    return res.status(403).json(jsonMutateForbidden(e));
+  }
+  const errors: string[] = [];
+  for (const item of parsed.data.items) {
+    if (item.channel === "meta") {
+      if (item.metaStatus != null) {
+        const out = await updateMetaCampaignStatus(organizationId, item.externalId, item.metaStatus);
+        if (!out.ok) errors.push(`${item.externalId}: ${out.message}`);
+        else {
+          await appendAuditLog({
+            actorUserId: userId,
+            organizationId,
+            action: "media.meta.campaign.status.rollback",
+            entityType: "MetaCampaign",
+            entityId: item.externalId,
+            metadata: { status: item.metaStatus },
+            ip: req.ip,
+            userAgent: req.get("user-agent") ?? undefined,
+          }).catch((err) => console.error("[audit] rollback meta status", err));
+        }
+      } else if (item.dailyBudget != null) {
+        const out = await updateMetaCampaignDailyBudget(organizationId, item.externalId, item.dailyBudget);
+        if (!out.ok) errors.push(`${item.externalId}: ${out.message ?? "orçamento"}`);
+        else {
+          await appendAuditLog({
+            actorUserId: userId,
+            organizationId,
+            action: "media.meta.campaign.budget.rollback",
+            entityType: "MetaCampaign",
+            entityId: item.externalId,
+            metadata: { dailyBudget: item.dailyBudget },
+            ip: req.ip,
+            userAgent: req.get("user-agent") ?? undefined,
+          }).catch((err) => console.error("[audit] rollback meta budget", err));
+        }
+      }
+    } else if (item.googleStatus != null) {
+      const enabled = item.googleStatus === "ENABLED";
+      const out = await mutateGoogleCampaignStatus(
+        organizationId,
+        item.externalId,
+        enabled,
+        googleAdsQueryContextFromReq(req)
+      );
+      if (!out.ok) errors.push(`${item.externalId}: ${out.message ?? "status"}`);
+      else {
+        await appendAuditLog({
+          actorUserId: userId,
+          organizationId,
+          action: "media.google.campaign.status.rollback",
+          entityType: "GoogleAdsCampaign",
+          entityId: item.externalId,
+          metadata: { status: item.googleStatus },
+          ip: req.ip,
+          userAgent: req.get("user-agent") ?? undefined,
+        }).catch((err) => console.error("[audit] rollback google status", err));
+      }
+    }
+  }
+  return res.json({ ok: true, applied: parsed.data.items.length - errors.length, errors: errors.length ? errors : undefined });
 }
 
 export async function getGoogleAdGroupsHandler(req: Request, res: Response) {

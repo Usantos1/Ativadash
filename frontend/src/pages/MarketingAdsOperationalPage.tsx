@@ -1,4 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+  Component,
+  type ErrorInfo,
+  type ReactNode,
+} from "react";
 import { Link } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -58,6 +69,7 @@ import { canUserEditMarketingSettings } from "@/lib/marketing-ads-permissions";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
 import { useMarketingMetrics } from "@/hooks/useMarketingMetrics";
+import { formatPageTitle, usePageTitle } from "@/hooks/usePageTitle";
 import {
   buildGoogleChannelTotals,
   buildInsightTotals,
@@ -544,14 +556,371 @@ function countWhatsappOn(w: ChannelWhatsappAlertsDto): number {
   return n;
 }
 
+type OperationalGoalsForm = ReturnType<typeof goalsToStrings>;
+
+/** Painel por canal no nível do módulo — evita remount a cada render do pai (corrige glitches ao rolar nas abas). */
+function AdsOperationalChannelPanel({
+  ch,
+  goals,
+  setGoals,
+  auto,
+  onPatchAutomations,
+  wa,
+  onPatchWhatsapp,
+  live,
+  connected,
+  crmLastAlertAt,
+  crmLastTestAt,
+  crmHub,
+  crmPhone,
+  crmToken,
+  canEdit,
+  testBusy,
+  onTestWhatsapp,
+}: {
+  ch: AdsChannelKey;
+  goals: OperationalGoalsForm;
+  setGoals: Dispatch<SetStateAction<OperationalGoalsForm>>;
+  auto: ChannelAutomationsDto;
+  onPatchAutomations: (patch: Partial<ChannelAutomationsDto>) => void;
+  wa: ChannelWhatsappAlertsDto;
+  onPatchWhatsapp: (patch: Partial<ChannelWhatsappAlertsDto>) => void;
+  live: { cpl: number | null; roas: number | null; spend: number };
+  connected: boolean;
+  crmLastAlertAt: string | null;
+  crmLastTestAt: string | null;
+  crmHub: boolean;
+  crmPhone: string | null;
+  crmToken: boolean;
+  canEdit: boolean;
+  testBusy: boolean;
+  onTestWhatsapp: () => void;
+}) {
+  const lastAlertRel = formatDistanceSafe(crmLastAlertAt);
+  const lastTestRel = formatDistanceSafe(crmLastTestAt);
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-xl border border-border/50 bg-muted/20 px-3 py-2">
+          <p className="text-[10px] font-bold uppercase text-muted-foreground">CPL atual</p>
+          <p className="text-lg font-bold tabular-nums">{formatBrl(live.cpl)}</p>
+        </div>
+        <div className="rounded-xl border border-border/50 bg-muted/20 px-3 py-2">
+          <p className="text-[10px] font-bold uppercase text-muted-foreground">ROAS atual</p>
+          <p className="text-lg font-bold tabular-nums">{formatRoas(live.roas)}</p>
+        </div>
+        <div className="rounded-xl border border-border/50 bg-muted/20 px-3 py-2">
+          <p className="text-[10px] font-bold uppercase text-muted-foreground">Gasto</p>
+          <p className="text-lg font-bold tabular-nums">{formatBrl(live.spend)}</p>
+        </div>
+        <div className="rounded-xl border border-border/50 bg-muted/20 px-3 py-2">
+          <p className="text-[10px] font-bold uppercase text-muted-foreground">Integração</p>
+          <p className="text-sm font-semibold">{connected ? "Conectada" : "Não conectada"}</p>
+        </div>
+      </div>
+
+      <Card className="border-border/50 bg-card/40">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-bold">Metas do canal</CardTitle>
+          <p className="text-xs text-muted-foreground">Somente {CH_LABEL[ch]} — não mistura com o outro canal.</p>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <MoneyField
+            id={`${ch}-target`}
+            label="CPL alvo"
+            value={goals.targetCpaBrl}
+            disabled={!canEdit}
+            onChange={(v) => setGoals((g) => ({ ...g, targetCpaBrl: v }))}
+          />
+          <MoneyField
+            id={`${ch}-max`}
+            label="CPL máximo"
+            value={goals.maxCpaBrl}
+            disabled={!canEdit}
+            onChange={(v) => setGoals((g) => ({ ...g, maxCpaBrl: v }))}
+          />
+          <div className="space-y-1.5">
+            <Label className="text-[11px] font-semibold uppercase text-muted-foreground">ROAS mínimo</Label>
+            <Input
+              inputMode="decimal"
+              value={goals.targetRoas}
+              disabled={!canEdit}
+              onChange={(e) => setGoals((g) => ({ ...g, targetRoas: e.target.value }))}
+              className="h-10 rounded-xl"
+            />
+          </div>
+          <MoneyField
+            id={`${ch}-minspend`}
+            label="Gasto mínimo p/ alertas"
+            value={goals.minSpendForAlertsBrl}
+            disabled={!canEdit}
+            onChange={(v) => setGoals((g) => ({ ...g, minSpendForAlertsBrl: v }))}
+          />
+          <div className="space-y-1.5">
+            <Label className="text-[11px] font-semibold uppercase text-muted-foreground">Mín. resultados p/ CPA</Label>
+            <Input
+              inputMode="numeric"
+              value={goals.minResultsForCpa}
+              disabled={!canEdit}
+              onChange={(e) => setGoals((g) => ({ ...g, minResultsForCpa: e.target.value }))}
+              className="h-10 rounded-xl"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/50 bg-card/40">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-bold">Automações</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Preferências gravadas · execução no painel/campanhas evolui conforme o produto.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <AutomationCard
+            title="Pausar campanha se CPL passar do máximo"
+            description="Sinaliza pausa quando o CPL ultrapassa o teto configurado nas metas."
+            checked={auto.pauseIfCplAboveMax}
+            disabled={!canEdit}
+            onCheckedChange={(v) => onPatchAutomations({ pauseIfCplAboveMax: v })}
+          >
+            <Label className="text-xs">Considerar só após N resultados (opcional)</Label>
+            <Input
+              className="mt-1 h-9 max-w-[120px] rounded-lg"
+              inputMode="numeric"
+              placeholder="ex: 20"
+              value={auto.pauseIfCplAboveMaxMinResults ?? ""}
+              disabled={!canEdit}
+              onChange={(e) => {
+                const t = e.target.value.trim();
+                onPatchAutomations({
+                  pauseIfCplAboveMaxMinResults: t === "" ? null : Number.parseInt(t, 10) || null,
+                });
+              }}
+            />
+          </AutomationCard>
+          <AutomationCard
+            title="Reduzir orçamento se CPL acima da meta"
+            description="Marca necessidade de redução quando CPL piora vs. alvo."
+            checked={auto.reduceBudgetIfCplAboveTarget}
+            disabled={!canEdit}
+            onCheckedChange={(v) => onPatchAutomations({ reduceBudgetIfCplAboveTarget: v })}
+          >
+            <Label className="text-xs">% de redução sugerido (opcional)</Label>
+            <Input
+              className="mt-1 h-9 max-w-[100px] rounded-lg"
+              inputMode="decimal"
+              value={auto.reduceBudgetPercent ?? ""}
+              disabled={!canEdit}
+              onChange={(e) => {
+                const t = e.target.value.trim();
+                onPatchAutomations({
+                  reduceBudgetPercent: t === "" ? null : Number(t.replace(",", ".")) || null,
+                });
+              }}
+            />
+          </AutomationCard>
+          <AutomationCard
+            title="Aumentar orçamento se CPL abaixo da meta"
+            description="Indica folga para escalar quando CPL está melhor que o alvo."
+            checked={auto.increaseBudgetIfCplBelowTarget}
+            disabled={!canEdit}
+            onCheckedChange={(v) => onPatchAutomations({ increaseBudgetIfCplBelowTarget: v })}
+          >
+            <Label className="text-xs">% de aumento sugerido (opcional)</Label>
+            <Input
+              className="mt-1 h-9 max-w-[100px] rounded-lg"
+              inputMode="decimal"
+              value={auto.increaseBudgetPercent ?? ""}
+              disabled={!canEdit}
+              onChange={(e) => {
+                const t = e.target.value.trim();
+                onPatchAutomations({
+                  increaseBudgetPercent: t === "" ? null : Number(t.replace(",", ".")) || null,
+                });
+              }}
+            />
+          </AutomationCard>
+          <AutomationCard
+            title="Sinalizar escala (CPL muito bom)"
+            description="Destaca quando o CPL está confortável abaixo da meta."
+            checked={auto.flagScaleIfCplGood}
+            disabled={!canEdit}
+            onCheckedChange={(v) => onPatchAutomations({ flagScaleIfCplGood: v })}
+          />
+          <AutomationCard
+            title="Sinalizar revisão (gasto sobe e conversão cai)"
+            description="Marca campanhas para revisão operacional quando o padrão aparecer nos dados."
+            checked={auto.flagReviewSpendUpConvDown}
+            disabled={!canEdit}
+            onCheckedChange={(v) => onPatchAutomations({ flagReviewSpendUpConvDown: v })}
+          />
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/50 bg-card/40">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-bold">Alertas via WhatsApp</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Ativa CRM · eventos abaixo disparam mensagem quando a integração estiver ativa.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/40 bg-muted/10 px-3 py-2 text-sm">
+            <MessageCircle className="h-4 w-4 text-primary" />
+            <span className={crmHub ? "font-medium text-emerald-600" : "text-muted-foreground"}>
+              {crmHub ? "WhatsApp / CRM pronto" : "Configure token e número em Integrações"}
+            </span>
+            {lastAlertRel ? (
+              <span className="text-xs text-muted-foreground">Último alerta: {lastAlertRel}</span>
+            ) : null}
+            {lastTestRel ? (
+              <span className="text-xs text-muted-foreground">Último teste: {lastTestRel}</span>
+            ) : null}
+          </div>
+          <div className="space-y-2">
+            {(
+              [
+                ["cplAboveMax", "CPL acima do máximo", "cplAboveMax"],
+                ["cplAboveTarget", "CPL acima da meta", "cplAboveTarget"],
+                ["roasBelowMin", "ROAS abaixo do mínimo", "roasBelowMin"],
+                ["minSpendNoResults", "Gasto mínimo sem resultado suficiente", "minSpendNoResults"],
+                ["scaleOpportunity", "Oportunidade de escala (CPL muito bom)", "scaleOpportunity"],
+                ["sharpPerformanceDrop", "Queda brusca de desempenho", "sharpPerformanceDrop"],
+                ["clearAdjustmentOpportunity", "Oportunidade clara de ajuste", "clearAdjustmentOpportunity"],
+              ] as const
+            ).map(([key, label, field]) => (
+              <div
+                key={key}
+                className="flex items-center justify-between gap-3 rounded-lg border border-border/40 bg-background/50 px-3 py-2"
+              >
+                <span className="text-sm">{label}</span>
+                <Switch
+                  checked={Boolean(wa[field as keyof ChannelWhatsappAlertsDto])}
+                  disabled={!canEdit}
+                  onCheckedChange={(v) => onPatchWhatsapp({ [field]: v } as Partial<ChannelWhatsappAlertsDto>)}
+                />
+              </div>
+            ))}
+          </div>
+          <Separator />
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium">Usar número padrão da integração</p>
+              <p className="text-xs text-muted-foreground">{crmPhone ?? "—"}</p>
+            </div>
+            <Switch
+              checked={wa.useIntegrationPhone}
+              disabled={!canEdit}
+              onCheckedChange={(v) => onPatchWhatsapp({ useIntegrationPhone: v })}
+            />
+          </div>
+          {!wa.useIntegrationPhone ? (
+            <div className="space-y-1">
+              <Label className="text-xs">Número alternativo (DDD + número)</Label>
+              <Input
+                value={wa.overridePhone ?? ""}
+                disabled={!canEdit}
+                onChange={(e) => onPatchWhatsapp({ overridePhone: e.target.value.trim() || null })}
+                className="h-10 max-w-xs rounded-xl"
+              />
+            </div>
+          ) : null}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Silêncio UTC — início (0–23)</Label>
+              <Input
+                inputMode="numeric"
+                value={wa.muteStartHourUtc ?? ""}
+                disabled={!canEdit}
+                onChange={(e) => {
+                  const t = e.target.value.trim();
+                  onPatchWhatsapp({ muteStartHourUtc: t === "" ? null : Number.parseInt(t, 10) });
+                }}
+                className="h-10 rounded-xl"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Silêncio UTC — fim (0–23)</Label>
+              <Input
+                inputMode="numeric"
+                value={wa.muteEndHourUtc ?? ""}
+                disabled={!canEdit}
+                onChange={(e) => {
+                  const t = e.target.value.trim();
+                  onPatchWhatsapp({ muteEndHourUtc: t === "" ? null : Number.parseInt(t, 10) });
+                }}
+                className="h-10 rounded-xl"
+              />
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="rounded-xl"
+            disabled={testBusy || !crmToken}
+            onClick={() => void onTestWhatsapp()}
+          >
+            {testBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Testar envio WhatsApp
+          </Button>
+        </CardContent>
+      </Card>
+
+      <OperationalAlertRulesCard channel={ch} canEdit={canEdit} />
+    </div>
+  );
+}
+
+class MetasOperacaoChannelErrorBoundary extends Component<
+  { children: ReactNode; channelLabel: string },
+  { hasError: boolean }
+> {
+  constructor(props: { children: ReactNode; channelLabel: string }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(err: Error, info: ErrorInfo) {
+    console.error("[MetasOperacaoChannel]", this.props.channelLabel, err, info.componentStack);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div
+          role="alert"
+          className="rounded-xl border border-destructive/40 bg-destructive/[0.07] p-4 text-sm text-destructive"
+        >
+          Algo falhou ao renderizar o painel de {this.props.channelLabel}. Atualize a página ou volte à aba Geral. Se
+          persistir, entre em contato com o suporte.
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+
+
 export function MarketingAdsOperationalPage() {
   const user = useAuthStore((s) => s.user);
   const memberships = useAuthStore((s) => s.memberships);
+  const workspaceName = user?.organization?.name?.trim() || null;
+  usePageTitle(formatPageTitle(workspaceName ? ["Operação por canal", workspaceName] : ["Operação por canal"]));
   const canEdit = useMemo(() => {
     if (!user?.organizationId) return false;
     const r = memberships?.find((m) => m.organizationId === user.organizationId)?.role;
     return canUserEditMarketingSettings(r);
   }, [user?.organizationId, memberships]);
+
+  const formRef = useRef<HTMLFormElement>(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -709,6 +1078,15 @@ export function MarketingAdsOperationalPage() {
     window.addEventListener(MARKETING_SETTINGS_REFRESH_EVENT, onRefresh);
     return () => window.removeEventListener(MARKETING_SETTINGS_REFRESH_EVENT, onRefresh);
   }, [applyDto]);
+
+  useEffect(() => {
+    const onHotkeySave = () => {
+      if (!canEdit || saving) return;
+      formRef.current?.requestSubmit();
+    };
+    window.addEventListener("ativadash:save-active-form", onHotkeySave);
+    return () => window.removeEventListener("ativadash:save-active-form", onHotkeySave);
+  }, [canEdit, saving]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -878,299 +1256,18 @@ export function MarketingAdsOperationalPage() {
     }
   }
 
-  function ChannelPanel({ ch }: { ch: AdsChannelKey }) {
-    const goals = ch === "meta" ? metaGoals : googleGoals;
-    const setGoals = ch === "meta" ? setMetaGoals : setGoogleGoals;
-    const auto = (ch === "meta" ? automationsMeta : automationsGoogle) as ChannelAutomationsDto;
-    const wa = (ch === "meta" ? whatsappMeta : whatsappGoogle) as ChannelWhatsappAlertsDto;
-    const live = ch === "meta" ? metaLive : googleLive;
-    const connected = ch === "meta" ? hasMeta : hasGoogle;
-    const lastAlertRel = formatDistanceSafe(crmLastAlertAt);
-    const lastTestRel = formatDistanceSafe(crmLastTestAt);
-
-    return (
-      <div className="space-y-6">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-xl border border-border/50 bg-muted/20 px-3 py-2">
-            <p className="text-[10px] font-bold uppercase text-muted-foreground">CPL atual</p>
-            <p className="text-lg font-bold tabular-nums">{formatBrl(live.cpl)}</p>
-          </div>
-          <div className="rounded-xl border border-border/50 bg-muted/20 px-3 py-2">
-            <p className="text-[10px] font-bold uppercase text-muted-foreground">ROAS atual</p>
-            <p className="text-lg font-bold tabular-nums">{formatRoas(live.roas)}</p>
-          </div>
-          <div className="rounded-xl border border-border/50 bg-muted/20 px-3 py-2">
-            <p className="text-[10px] font-bold uppercase text-muted-foreground">Gasto</p>
-            <p className="text-lg font-bold tabular-nums">{formatBrl(live.spend)}</p>
-          </div>
-          <div className="rounded-xl border border-border/50 bg-muted/20 px-3 py-2">
-            <p className="text-[10px] font-bold uppercase text-muted-foreground">Integração</p>
-            <p className="text-sm font-semibold">{connected ? "Conectada" : "Não conectada"}</p>
-          </div>
-        </div>
-
-        <Card className="border-border/50 bg-card/40">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-bold">Metas do canal</CardTitle>
-            <p className="text-xs text-muted-foreground">Somente {CH_LABEL[ch]} — não mistura com o outro canal.</p>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <MoneyField
-              id={`${ch}-target`}
-              label="CPL alvo"
-              value={goals.targetCpaBrl}
-              disabled={!canEdit}
-              onChange={(v) => setGoals((g) => ({ ...g, targetCpaBrl: v }))}
-            />
-            <MoneyField
-              id={`${ch}-max`}
-              label="CPL máximo"
-              value={goals.maxCpaBrl}
-              disabled={!canEdit}
-              onChange={(v) => setGoals((g) => ({ ...g, maxCpaBrl: v }))}
-            />
-            <div className="space-y-1.5">
-              <Label className="text-[11px] font-semibold uppercase text-muted-foreground">ROAS mínimo</Label>
-              <Input
-                inputMode="decimal"
-                value={goals.targetRoas}
-                disabled={!canEdit}
-                onChange={(e) => setGoals((g) => ({ ...g, targetRoas: e.target.value }))}
-                className="h-10 rounded-xl"
-              />
-            </div>
-            <MoneyField
-              id={`${ch}-minspend`}
-              label="Gasto mínimo p/ alertas"
-              value={goals.minSpendForAlertsBrl}
-              disabled={!canEdit}
-              onChange={(v) => setGoals((g) => ({ ...g, minSpendForAlertsBrl: v }))}
-            />
-            <div className="space-y-1.5">
-              <Label className="text-[11px] font-semibold uppercase text-muted-foreground">Mín. resultados p/ CPA</Label>
-              <Input
-                inputMode="numeric"
-                value={goals.minResultsForCpa}
-                disabled={!canEdit}
-                onChange={(e) => setGoals((g) => ({ ...g, minResultsForCpa: e.target.value }))}
-                className="h-10 rounded-xl"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50 bg-card/40">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-bold">Automações</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Preferências gravadas · execução no painel/campanhas evolui conforme o produto.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <AutomationCard
-              title="Pausar campanha se CPL passar do máximo"
-              description="Sinaliza pausa quando o CPL ultrapassa o teto configurado nas metas."
-              checked={auto.pauseIfCplAboveMax}
-              disabled={!canEdit}
-              onCheckedChange={(v) => patchAuto(ch, { pauseIfCplAboveMax: v })}
-            >
-              <Label className="text-xs">Considerar só após N resultados (opcional)</Label>
-              <Input
-                className="mt-1 h-9 max-w-[120px] rounded-lg"
-                inputMode="numeric"
-                placeholder="ex: 20"
-                value={auto.pauseIfCplAboveMaxMinResults ?? ""}
-                disabled={!canEdit}
-                onChange={(e) => {
-                  const t = e.target.value.trim();
-                  patchAuto(ch, {
-                    pauseIfCplAboveMaxMinResults: t === "" ? null : Number.parseInt(t, 10) || null,
-                  });
-                }}
-              />
-            </AutomationCard>
-            <AutomationCard
-              title="Reduzir orçamento se CPL acima da meta"
-              description="Marca necessidade de redução quando CPL piora vs. alvo."
-              checked={auto.reduceBudgetIfCplAboveTarget}
-              disabled={!canEdit}
-              onCheckedChange={(v) => patchAuto(ch, { reduceBudgetIfCplAboveTarget: v })}
-            >
-              <Label className="text-xs">% de redução sugerido (opcional)</Label>
-              <Input
-                className="mt-1 h-9 max-w-[100px] rounded-lg"
-                inputMode="decimal"
-                value={auto.reduceBudgetPercent ?? ""}
-                disabled={!canEdit}
-                onChange={(e) => {
-                  const t = e.target.value.trim();
-                  patchAuto(ch, {
-                    reduceBudgetPercent: t === "" ? null : Number(t.replace(",", ".")) || null,
-                  });
-                }}
-              />
-            </AutomationCard>
-            <AutomationCard
-              title="Aumentar orçamento se CPL abaixo da meta"
-              description="Indica folga para escalar quando CPL está melhor que o alvo."
-              checked={auto.increaseBudgetIfCplBelowTarget}
-              disabled={!canEdit}
-              onCheckedChange={(v) => patchAuto(ch, { increaseBudgetIfCplBelowTarget: v })}
-            >
-              <Label className="text-xs">% de aumento sugerido (opcional)</Label>
-              <Input
-                className="mt-1 h-9 max-w-[100px] rounded-lg"
-                inputMode="decimal"
-                value={auto.increaseBudgetPercent ?? ""}
-                disabled={!canEdit}
-                onChange={(e) => {
-                  const t = e.target.value.trim();
-                  patchAuto(ch, {
-                    increaseBudgetPercent: t === "" ? null : Number(t.replace(",", ".")) || null,
-                  });
-                }}
-              />
-            </AutomationCard>
-            <AutomationCard
-              title="Sinalizar escala (CPL muito bom)"
-              description="Destaca quando o CPL está confortável abaixo da meta."
-              checked={auto.flagScaleIfCplGood}
-              disabled={!canEdit}
-              onCheckedChange={(v) => patchAuto(ch, { flagScaleIfCplGood: v })}
-            />
-            <AutomationCard
-              title="Sinalizar revisão (gasto sobe e conversão cai)"
-              description="Marca campanhas para revisão operacional quando o padrão aparecer nos dados."
-              checked={auto.flagReviewSpendUpConvDown}
-              disabled={!canEdit}
-              onCheckedChange={(v) => patchAuto(ch, { flagReviewSpendUpConvDown: v })}
-            />
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50 bg-card/40">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-bold">Alertas via WhatsApp</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Ativa CRM · eventos abaixo disparam mensagem quando a integração estiver ativa.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/40 bg-muted/10 px-3 py-2 text-sm">
-              <MessageCircle className="h-4 w-4 text-primary" />
-              <span className={crmHub ? "font-medium text-emerald-600" : "text-muted-foreground"}>
-                {crmHub ? "WhatsApp / CRM pronto" : "Configure token e número em Integrações"}
-              </span>
-              {lastAlertRel ? (
-                <span className="text-xs text-muted-foreground">Último alerta: {lastAlertRel}</span>
-              ) : null}
-              {lastTestRel ? (
-                <span className="text-xs text-muted-foreground">Último teste: {lastTestRel}</span>
-              ) : null}
-            </div>
-            <div className="space-y-2">
-              {(
-                [
-                  ["cplAboveMax", "CPL acima do máximo", "cplAboveMax"],
-                  ["cplAboveTarget", "CPL acima da meta", "cplAboveTarget"],
-                  ["roasBelowMin", "ROAS abaixo do mínimo", "roasBelowMin"],
-                  ["minSpendNoResults", "Gasto mínimo sem resultado suficiente", "minSpendNoResults"],
-                  ["scaleOpportunity", "Oportunidade de escala (CPL muito bom)", "scaleOpportunity"],
-                  ["sharpPerformanceDrop", "Queda brusca de desempenho", "sharpPerformanceDrop"],
-                  ["clearAdjustmentOpportunity", "Oportunidade clara de ajuste", "clearAdjustmentOpportunity"],
-                ] as const
-              ).map(([key, label, field]) => (
-                <div
-                  key={key}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-border/40 bg-background/50 px-3 py-2"
-                >
-                  <span className="text-sm">{label}</span>
-                  <Switch
-                    checked={Boolean(wa[field as keyof ChannelWhatsappAlertsDto])}
-                    disabled={!canEdit}
-                    onCheckedChange={(v) => patchWa(ch, { [field]: v } as Partial<ChannelWhatsappAlertsDto>)}
-                  />
-                </div>
-              ))}
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium">Usar número padrão da integração</p>
-                <p className="text-xs text-muted-foreground">{crmPhone ?? "—"}</p>
-              </div>
-              <Switch
-                checked={wa.useIntegrationPhone}
-                disabled={!canEdit}
-                onCheckedChange={(v) => patchWa(ch, { useIntegrationPhone: v })}
-              />
-            </div>
-            {!wa.useIntegrationPhone ? (
-              <div className="space-y-1">
-                <Label className="text-xs">Número alternativo (DDD + número)</Label>
-                <Input
-                  value={wa.overridePhone ?? ""}
-                  disabled={!canEdit}
-                  onChange={(e) => patchWa(ch, { overridePhone: e.target.value.trim() || null })}
-                  className="h-10 max-w-xs rounded-xl"
-                />
-              </div>
-            ) : null}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Silêncio UTC — início (0–23)</Label>
-                <Input
-                  inputMode="numeric"
-                  value={wa.muteStartHourUtc ?? ""}
-                  disabled={!canEdit}
-                  onChange={(e) => {
-                    const t = e.target.value.trim();
-                    patchWa(ch, { muteStartHourUtc: t === "" ? null : Number.parseInt(t, 10) });
-                  }}
-                  className="h-10 rounded-xl"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Silêncio UTC — fim (0–23)</Label>
-                <Input
-                  inputMode="numeric"
-                  value={wa.muteEndHourUtc ?? ""}
-                  disabled={!canEdit}
-                  onChange={(e) => {
-                    const t = e.target.value.trim();
-                    patchWa(ch, { muteEndHourUtc: t === "" ? null : Number.parseInt(t, 10) });
-                  }}
-                  className="h-10 rounded-xl"
-                />
-              </div>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="rounded-xl"
-              disabled={testBusy || !crmToken}
-              onClick={() => void handleTestWhatsapp()}
-            >
-              {testBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Testar envio WhatsApp
-            </Button>
-          </CardContent>
-        </Card>
-
-        <OperationalAlertRulesCard channel={ch} canEdit={canEdit} />
-      </div>
-    );
-  }
 
   return (
-    <form onSubmit={handleSave} className="w-full space-y-6 pb-28">
+    <form ref={formRef} onSubmit={handleSave} className="w-full space-y-6 pb-28">
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="ghost" size="sm" className="h-9 gap-1.5 text-muted-foreground" asChild>
           <Link to="/marketing">
             <ArrowLeft className="h-4 w-4" />
             Painel ADS
           </Link>
+        </Button>
+        <Button variant="outline" size="sm" className="h-9 text-xs sm:text-sm" asChild>
+          <Link to="/ads/metas-alertas">Alertas e regras operacionais</Link>
         </Button>
       </div>
 
@@ -1491,12 +1588,52 @@ export function MarketingAdsOperationalPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="meta" className="mt-6">
-          <ChannelPanel ch="meta" />
+        <TabsContent value="meta" forceMount className="mt-6 data-[state=inactive]:hidden">
+          <MetasOperacaoChannelErrorBoundary channelLabel="Meta Ads">
+            <AdsOperationalChannelPanel
+              ch="meta"
+              goals={metaGoals}
+              setGoals={setMetaGoals}
+              auto={automationsMeta}
+              onPatchAutomations={(patch) => patchAuto("meta", patch)}
+              wa={whatsappMeta}
+              onPatchWhatsapp={(patch) => patchWa("meta", patch)}
+              live={metaLive}
+              connected={hasMeta}
+              crmLastAlertAt={crmLastAlertAt}
+              crmLastTestAt={crmLastTestAt}
+              crmHub={crmHub}
+              crmPhone={crmPhone}
+              crmToken={crmToken}
+              canEdit={canEdit}
+              testBusy={testBusy}
+              onTestWhatsapp={() => void handleTestWhatsapp()}
+            />
+          </MetasOperacaoChannelErrorBoundary>
         </TabsContent>
 
-        <TabsContent value="google" className="mt-6">
-          <ChannelPanel ch="google" />
+        <TabsContent value="google" forceMount className="mt-6 data-[state=inactive]:hidden">
+          <MetasOperacaoChannelErrorBoundary channelLabel="Google Ads">
+            <AdsOperationalChannelPanel
+              ch="google"
+              goals={googleGoals}
+              setGoals={setGoogleGoals}
+              auto={automationsGoogle}
+              onPatchAutomations={(patch) => patchAuto("google", patch)}
+              wa={whatsappGoogle}
+              onPatchWhatsapp={(patch) => patchWa("google", patch)}
+              live={googleLive}
+              connected={hasGoogle}
+              crmLastAlertAt={crmLastAlertAt}
+              crmLastTestAt={crmLastTestAt}
+              crmHub={crmHub}
+              crmPhone={crmPhone}
+              crmToken={crmToken}
+              canEdit={canEdit}
+              testBusy={testBusy}
+              onTestWhatsapp={() => void handleTestWhatsapp()}
+            />
+          </MetasOperacaoChannelErrorBoundary>
         </TabsContent>
       </Tabs>
 
@@ -1511,3 +1648,4 @@ export function MarketingAdsOperationalPage() {
     </form>
   );
 }
+

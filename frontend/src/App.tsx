@@ -32,6 +32,7 @@ import { RevendaModulesPage } from "@/pages/revenda/RevendaModulesPage";
 import { RevendaHealthPage } from "@/pages/revenda/RevendaHealthPage";
 import { RevendaAuditPage } from "@/pages/revenda/RevendaAuditPage";
 import { AdminPage } from "@/pages/AdminPage";
+import { AdminSettingsPage } from "@/pages/AdminSettingsPage";
 import { PlatformPage } from "@/pages/PlatformPage";
 import { PublicDashboardSharePage } from "@/pages/PublicDashboardSharePage";
 
@@ -45,7 +46,7 @@ function ProtectedLayout() {
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
@@ -73,6 +74,7 @@ export default function App() {
           <Route path="lancamentos" element={<LaunchesPage />} />
           <Route path="configuracoes" element={<SettingsHubPage />} />
           <Route path="configuracoes/empresa" element={<CompanySettingsPage />} />
+          <Route path="configuracoes/admin" element={<AdminSettingsPage />} />
           <Route path="perfil" element={<ProfilePage />} />
           <Route path="usuarios" element={<TeamPage />} />
           <Route path="revenda" element={<RevendaLayout />}>

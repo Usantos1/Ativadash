@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { formatPageTitle, usePageTitle } from "@/hooks/usePageTitle";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -36,7 +37,13 @@ import {
   type MemberRow,
   type ClientAccount,
 } from "@/lib/workspace-api";
-import { resolveSidebarNavVariant, canAccessMatrizResellerNav } from "@/lib/navigation-mode";
+import {
+  resolveSidebarNavVariant,
+  canAccessMatrizResellerNav,
+  resolveAppNavMode,
+  canAccessAdminPage,
+  isAgencyBranchExpandedOpsEnabled,
+} from "@/lib/navigation-mode";
 
 const ROLE_QUICK: Record<string, string> = {
   owner: "Proprietário",
@@ -96,6 +103,7 @@ function pickIntegration(list: IntegrationFromApi[], slug: string): IntegrationF
 }
 
 export function SettingsHubPage() {
+  usePageTitle(formatPageTitle(["Configurações"]));
   const location = useLocation();
   const navigate = useNavigate();
   const authUser = useAuthStore((s) => s.user);
@@ -110,8 +118,20 @@ export function SettingsHubPage() {
     return opts.size > 1;
   }, [memberships, managed]);
 
-  const sidebarVariant = useMemo(() => resolveSidebarNavVariant(authUser ?? null), [authUser]);
+  const sidebarVariant = useMemo(
+    () => resolveSidebarNavVariant(authUser ?? null, memberships ?? null),
+    [authUser, memberships]
+  );
   const isAgencyBranchNav = sidebarVariant === "agency_branch";
+  const agencyExpandedOps = isAgencyBranchExpandedOpsEnabled();
+  const agencySlimHub = isAgencyBranchNav && !agencyExpandedOps;
+  const isClientWorkspaceNav = sidebarVariant === "client_workspace";
+  const isPortalNav = sidebarVariant === "agency_client_portal";
+  const appNavMode = useMemo(() => resolveAppNavMode(authUser ?? null), [authUser]);
+  const showAdminHubLink = useMemo(
+    () => canAccessAdminPage(authUser ?? null, memberships ?? null, appNavMode) && !isPortalNav,
+    [authUser, memberships, appNavMode, isPortalNav]
+  );
 
   const [ctx, setCtx] = useState<OrganizationContext | null>(null);
   const [members, setMembers] = useState<MemberRow[] | null>(null);
@@ -306,20 +326,29 @@ export function SettingsHubPage() {
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   <Button size="sm" className="h-8 rounded-md text-xs" asChild>
-                    <Link to="/configuracoes/empresa">Editar empresa</Link>
-                  </Button>
-                  <Button variant="outline" size="sm" className="h-8 rounded-md text-xs" asChild>
-                    <Link to="/marketing" className="inline-flex items-center gap-1.5">
-                      <LineChart className="h-3.5 w-3.5" />
-                      Painel ADS
+                    <Link to="/configuracoes/empresa">
+                      {isPortalNav || isAgencyBranchNav ? "Ver empresa" : "Editar empresa"}
                     </Link>
                   </Button>
+                  {!agencySlimHub ? (
+                    <Button variant="outline" size="sm" className="h-8 rounded-md text-xs" asChild>
+                      <Link to="/marketing" className="inline-flex items-center gap-1.5">
+                        <LineChart className="h-3.5 w-3.5" />
+                        Painel ADS
+                      </Link>
+                    </Button>
+                  ) : null}
                   <Button variant="secondary" size="sm" className="h-8 rounded-md text-xs" asChild>
                     <Link to="/dashboard" className="inline-flex items-center gap-1.5">
                       <LayoutDashboard className="h-3.5 w-3.5" />
                       Dashboard
                     </Link>
                   </Button>
+                  {showAdminHubLink ? (
+                    <Button variant="outline" size="sm" className="h-8 rounded-md text-xs" asChild>
+                      <Link to="/configuracoes/admin">Admin técnico</Link>
+                    </Button>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -327,71 +356,91 @@ export function SettingsHubPage() {
         </div>
       </section>
 
-      {/* Equipe + Clientes */}
-      <SettingsHubSection kicker="Operação" title="Equipe e clientes">
-        <div className="grid lg:grid-cols-2 lg:divide-x lg:divide-border/50">
-          <div className="p-3 md:p-4">
-            <h3 className="text-xs font-semibold text-foreground">Equipe</h3>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <HubStat label="Membros" value={usage ? String(usage.directMembers) : loading ? "…" : "—"} />
-              <HubStat label="Convites" value={pendingInvites != null ? String(pendingInvites) : "—"} />
-            </div>
-            {previewMembers.length > 0 ? (
-              <ul className="mt-2 space-y-0.5 border-t border-border/40 pt-2">
-                {previewMembers.map((m) => (
-                  <li key={m.membershipId} className="flex items-center justify-between gap-2 text-xs">
-                    <span className="truncate font-medium">{m.name}</span>
-                    <span className="shrink-0 text-[11px] text-muted-foreground">{ROLE_QUICK[m.role] ?? m.role}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-2 text-xs text-muted-foreground">{loading ? "…" : "Nenhum membro."}</p>
-            )}
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              <Button size="sm" className="h-8 rounded-md text-xs" asChild>
-                <Link to="/usuarios">Equipe</Link>
-              </Button>
-              <Button variant="outline" size="sm" className="h-8 rounded-md text-xs" asChild>
-                <Link to="/usuarios">Convidar</Link>
-              </Button>
-            </div>
-          </div>
-          <div className="p-3 md:p-4">
-            <h3 className="text-xs font-semibold text-foreground">Clientes</h3>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <HubStat
-                label="Cadastrados"
-                value={
-                  clients != null ? String(clients.length) : usage ? String(usage.clientAccounts) : loading ? "…" : "—"
-                }
-              />
-              <HubStat label="Limite" value={limits ? formatPlanCap(limits.maxClientAccounts) : "—"} />
-            </div>
-            {previewClients.length > 0 ? (
-              <ul className="mt-2 space-y-0.5 border-t border-border/40 pt-2">
-                {previewClients.map((c) => (
-                  <li key={c.id} className="truncate text-xs font-medium">
-                    {c.name}
-                  </li>
-                ))}
-              </ul>
-            ) : !loading ? (
-              <p className="mt-2 text-xs text-muted-foreground">Nenhum cliente.</p>
+      {/* Equipe + Clientes — oculto no portal cliente; colunas conforme filial vs workspace cliente */}
+      {!isPortalNav ? (
+        <SettingsHubSection kicker="Operação" title="Equipe e clientes">
+          <div
+            className={
+              agencySlimHub || isClientWorkspaceNav
+                ? "p-3 md:p-4"
+                : "grid lg:grid-cols-2 lg:divide-x lg:divide-border/50"
+            }
+          >
+            {!agencySlimHub ? (
+              <div className={isClientWorkspaceNav ? "" : "p-3 md:p-4"}>
+                <h3 className="text-xs font-semibold text-foreground">Equipe</h3>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <HubStat label="Membros" value={usage ? String(usage.directMembers) : loading ? "…" : "—"} />
+                  <HubStat label="Convites" value={pendingInvites != null ? String(pendingInvites) : "—"} />
+                </div>
+                {previewMembers.length > 0 ? (
+                  <ul className="mt-2 space-y-0.5 border-t border-border/40 pt-2">
+                    {previewMembers.map((m) => (
+                      <li key={m.membershipId} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="truncate font-medium">{m.name}</span>
+                        <span className="shrink-0 text-[11px] text-muted-foreground">{ROLE_QUICK[m.role] ?? m.role}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-xs text-muted-foreground">{loading ? "…" : "Nenhum membro."}</p>
+                )}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <Button size="sm" className="h-8 rounded-md text-xs" asChild>
+                    <Link to="/usuarios">Equipe</Link>
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-8 rounded-md text-xs" asChild>
+                    <Link to="/usuarios">Convidar</Link>
+                  </Button>
+                </div>
+              </div>
             ) : null}
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              <Button size="sm" className="h-8 rounded-md text-xs" asChild>
-                <Link to="/projetos">Cadastro</Link>
-              </Button>
-              <Button variant="outline" size="sm" className="h-8 rounded-md text-xs" asChild>
-                <Link to="/clientes">Agência</Link>
-              </Button>
-            </div>
+            {!isClientWorkspaceNav ? (
+              <div className={agencySlimHub ? "" : "p-3 md:p-4"}>
+                <h3 className="text-xs font-semibold text-foreground">Clientes</h3>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <HubStat
+                    label="Cadastrados"
+                    value={
+                      clients != null ? String(clients.length) : usage ? String(usage.clientAccounts) : loading ? "…" : "—"
+                    }
+                  />
+                  <HubStat label="Limite" value={limits ? formatPlanCap(limits.maxClientAccounts) : "—"} />
+                </div>
+                {previewClients.length > 0 ? (
+                  <ul className="mt-2 space-y-0.5 border-t border-border/40 pt-2">
+                    {previewClients.map((c) => (
+                      <li key={c.id} className="truncate text-xs font-medium">
+                        {c.name}
+                      </li>
+                    ))}
+                  </ul>
+                ) : !loading ? (
+                  <p className="mt-2 text-xs text-muted-foreground">Nenhum cliente.</p>
+                ) : null}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {!agencySlimHub ? (
+                    <Button size="sm" className="h-8 rounded-md text-xs" asChild>
+                      <Link to="/projetos">Cadastro</Link>
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant={agencySlimHub ? "default" : "outline"}
+                    size="sm"
+                    className="h-8 rounded-md text-xs"
+                    asChild
+                  >
+                    <Link to="/clientes">{agencySlimHub ? "Clientes" : "Agência"}</Link>
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </div>
-        </div>
-      </SettingsHubSection>
+        </SettingsHubSection>
+      ) : null}
 
       {/* Integrações */}
+      {!isPortalNav ? (
       <SettingsHubSection
         kicker="Conexões"
         title="Integrações"
@@ -433,8 +482,10 @@ export function SettingsHubPage() {
           </>
         )}
       </SettingsHubSection>
+      ) : null}
 
       {/* Marketing | Automações */}
+      {!isPortalNav ? (
       <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
         <SettingsHubSection kicker="Performance" title="Marketing" className="h-full">
           <div className="p-3 md:p-4">
@@ -449,9 +500,9 @@ export function SettingsHubPage() {
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
               <Button size="sm" className="h-8 rounded-md text-xs" asChild>
-                <Link to="/marketing/configuracoes">Editar metas</Link>
+                <Link to="/marketing/configuracoes">Metas por canal</Link>
               </Button>
-              {!isAgencyBranchNav ? (
+              {!agencySlimHub ? (
                 <Button variant="outline" size="sm" className="h-8 rounded-md text-xs" asChild>
                   <Link to="/marketing">Painel ADS</Link>
                 </Button>
@@ -480,19 +531,21 @@ export function SettingsHubPage() {
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
               <Button size="sm" className="h-8 rounded-md text-xs" asChild>
-                <Link to="/marketing/configuracoes">Automações</Link>
+                <Link to="/marketing/configuracoes">Metas e automações</Link>
               </Button>
               <Button variant="outline" size="sm" className="h-8 rounded-md text-xs" asChild>
-                <Link to="/marketing/configuracoes">Alertas</Link>
+                <Link to="/ads/metas-alertas">Alertas e regras</Link>
               </Button>
             </div>
           </div>
         </SettingsHubSection>
       </div>
+      ) : null}
 
       {/* Plano | Segurança */}
       <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
-        {ctx?.parentOrganization ? (
+        {!isPortalNav ? (
+          ctx?.parentOrganization ? (
           <SettingsHubSection kicker="Assinatura" title="Plano e limites">
             <div className="p-3 text-sm leading-relaxed text-muted-foreground md:p-4">
               <p>
@@ -540,6 +593,16 @@ export function SettingsHubPage() {
                   </Button>
                 ) : null}
               </div>
+            </div>
+          </SettingsHubSection>
+        )
+        ) : (
+          <SettingsHubSection kicker="Conta" title="O seu acesso">
+            <div className="p-3 text-sm leading-relaxed text-muted-foreground md:p-4">
+              <p>
+                Este perfil é para <span className="font-medium text-foreground">consultar resultados</span>. Plano,
+                integrações e metas são tratados pela agência. Em dúvidas, contacte o responsável pela conta.
+              </p>
             </div>
           </SettingsHubSection>
         )}

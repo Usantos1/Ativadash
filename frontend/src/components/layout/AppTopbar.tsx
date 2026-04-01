@@ -6,6 +6,8 @@ import { SidebarHeaderControl } from "@/components/layout/Sidebar";
 import { WorkspaceSwitcher } from "@/components/layout/WorkspaceSwitcher";
 import { TopbarActions } from "@/components/layout/TopbarActions";
 import { resolveTopbarCrumbs } from "@/components/layout/topbar-crumbs";
+import { useAuthStore } from "@/stores/auth-store";
+import { resolveAppNavMode } from "@/lib/navigation-mode";
 
 export function AppTopbar({
   sidebarCollapsed,
@@ -18,6 +20,9 @@ export function AppTopbar({
 }) {
   const { pathname } = useLocation();
   const crumbs = useMemo(() => resolveTopbarCrumbs(pathname), [pathname]);
+  const user = useAuthStore((s) => s.user);
+  const showSupportBadge =
+    user?.platformAdmin === true && user.organizationId != null && resolveAppNavMode(user) !== "platform_full";
 
   const showCenterCrumbs = crumbs.length > 0;
 
@@ -38,6 +43,14 @@ export function AppTopbar({
           <div className="min-w-0 max-w-[min(100vw-10rem,360px)] sm:max-w-[min(100vw-12rem,380px)]">
             <WorkspaceSwitcher />
           </div>
+          {showSupportBadge ? (
+            <span
+              className="hidden shrink-0 rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary md:inline"
+              title="Administrador global a navegar no contexto de um tenant"
+            >
+              Modo suporte
+            </span>
+          ) : null}
         </div>
 
         {/* Centro: breadcrumb (sem duplicar saudação — ela fica só no seletor de workspace) */}

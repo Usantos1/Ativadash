@@ -8,6 +8,10 @@ import {
   postAlertRuleHandler,
 } from "../controllers/alert-rules.controller.js";
 import {
+  getAutomationExecutionLogsHandler,
+  postAutomationExecutionLogHandler,
+} from "../controllers/automation-execution-log.controller.js";
+import {
   getGoogleAdsMetricsHandler,
   getMetaAdsMetricsHandler,
   getMarketingDashboardHandler,
@@ -34,6 +38,7 @@ import {
   patchMetaCampaignStatusContractHandler,
   patchMetaCampaignBudgetContractHandler,
   patchGoogleCampaignStatusContractHandler,
+  postMarketingCampaignRollbackHandler,
   getGoogleAdGroupsHandler,
   getGoogleAdsAdsHandler,
   getGoogleSearchTermsHandler,
@@ -61,6 +66,9 @@ router.post("/alert-rules", ...authCtx, postAlertRuleHandler);
 router.patch("/alert-rules/:id", ...authCtx, patchAlertRuleHandler);
 router.delete("/alert-rules/:id", ...authCtx, deleteAlertRuleHandler);
 
+router.get("/automation-execution-logs", ...authCtx, getAutomationExecutionLogsHandler);
+router.post("/automation-execution-logs", ...authCtx, postAutomationExecutionLogHandler);
+
 router.get("/google-ads/metrics", ...authCtx, getGoogleAdsMetricsHandler);
 router.get("/google-ads/ad-groups", ...authCtx, getGoogleAdGroupsHandler);
 router.get("/google-ads/ads", ...authCtx, getGoogleAdsAdsHandler);
@@ -80,6 +88,7 @@ router.post("/meta-ads/campaigns/:campaignId/status", ...authCtx, postMetaCampai
 router.patch("/meta/campaigns/:externalId/status", ...authCtx, patchMetaCampaignStatusContractHandler);
 router.patch("/meta/campaigns/:externalId/budget", ...authCtx, patchMetaCampaignBudgetContractHandler);
 router.patch("/google/campaigns/:externalId/status", ...authCtx, patchGoogleCampaignStatusContractHandler);
+router.post("/campaign-mutations/rollback", ...authCtx, postMarketingCampaignRollbackHandler);
 
 router.get("/settings", ...authCtx, getMarketingSettingsHandler);
 router.put("/settings", ...authCtx, putMarketingSettingsHandler);

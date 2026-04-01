@@ -64,6 +64,12 @@ export function resolveTopbarCrumbs(pathname: string): TopbarCrumb[] {
       { label: "Empresa" },
     ];
   }
+  if (p === "/configuracoes/admin") {
+    return [
+      { label: "Configurações", href: "/configuracoes" },
+      { label: "Administração" },
+    ];
+  }
   if (p === "/perfil") return [{ label: "Perfil" }];
   if (p === "/revenda" || p === "/assinatura") return [{ label: "Revenda" }];
 
@@ -87,7 +93,12 @@ export function resolveTopbarCrumbs(pathname: string): TopbarCrumb[] {
     ];
   }
   if (p === "/plataforma") return [{ label: "Revenda", href: "/revenda" }];
-  if (p === "/admin") return [{ label: "Administração" }];
+  if (p === "/admin") {
+    return [
+      { label: "Configurações", href: "/configuracoes" },
+      { label: "Administração" },
+    ];
+  }
 
   return [];
 }

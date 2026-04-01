@@ -11,6 +11,8 @@ export type OperationalActionItem = {
   campaignName: string;
   /** Rótulo curto para o cockpit (sem parágrafo). */
   label: string;
+  /** Ritmo médio diário no período (gasto / dias), só em ações de orçamento Meta. */
+  estimatedDaily?: number;
 };
 
 function med(nums: number[]): number | null {
@@ -75,9 +77,12 @@ export function buildOperationalActions(params: {
   googleRows: GoogleAdsCampaignRow[];
   ctrLowCampaigns: { channel: "meta" | "google"; id: string; name: string }[];
   maxItems?: number;
+  /** Dias do período selecionado (para referência de ritmo diário em orçamento Meta). */
+  periodDays?: number;
 }): OperationalActionItem[] {
   const { goalMode, targetCpa, targetRoas, metaRows, googleRows, ctrLowCampaigns } = params;
   const maxItems = params.maxItems ?? 8;
+  const pd = Math.max(1, params.periodDays ?? 1);
   const out: OperationalActionItem[] = [];
   const usedCamp = new Set<string>();
 
@@ -166,6 +171,7 @@ export function buildOperationalActions(params: {
             campaignId: c.id,
             campaignName: c.name,
             label: "Orçamento · Meta: CPL abaixo da mediana",
+            estimatedDaily: c.spend / pd,
           });
         } else {
           push({
@@ -195,6 +201,7 @@ export function buildOperationalActions(params: {
           campaignId: c.id,
           campaignName: c.name,
           label: "Orçamento · Meta: ROAS acima da mediana",
+          estimatedDaily: c.spend / pd,
         });
       } else {
         push({

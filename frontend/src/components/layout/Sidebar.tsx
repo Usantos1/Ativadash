@@ -1,4 +1,5 @@
 import type React from "react";
+import { useMemo } from "react";
 import { NavLink } from "react-router-dom";
 import { useUIStore } from "@/stores/ui-store";
 import { useAuthStore } from "@/stores/auth-store";
@@ -16,19 +17,22 @@ import {
   Target,
   TrendingUp,
   DollarSign,
-  Wrench,
   X,
   Users2,
   Layers,
   SlidersHorizontal,
+  Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   resolveSidebarNavVariant,
   canAccessMatrizResellerNav,
+  isAgencyBranchExpandedOpsEnabled,
   type SidebarNavVariant,
 } from "@/lib/navigation-mode";
+import { filterNavGroupsByPlan } from "@/lib/nav-plan-features";
+import { useOrganizationPlanFeatures } from "@/components/layout/organization-plan-features-context";
 
 const SIDEBAR_WIDTH = 220;
 const SIDEBAR_COLLAPSED = 56;
@@ -62,7 +66,8 @@ const FULL_NAV_GROUPS: NavGroup[] = [
     label: "Conexões",
     items: [
       { to: "/marketing/integracoes", label: "Integrações", icon: Plug },
-      { to: "/ads/metas-alertas", label: "Metas e alertas", icon: Wrench },
+      { to: "/ads/metas-alertas", label: "Alertas e regras", icon: Bell },
+      { to: "/marketing/configuracoes", label: "Metas por canal", icon: SlidersHorizontal },
     ],
   },
   {
@@ -101,10 +106,43 @@ function buildNavGroups(
           { to: "/marketing/receita", label: "Receita", icon: DollarSign },
         ],
       },
+      {
+        label: "Conta",
+        items: [{ to: "/configuracoes", label: "Configurações", icon: Settings }],
+      },
     ];
   }
 
   if (variant === "agency_branch") {
+    const conexoes: NavGroup = {
+      label: "Conexões",
+      items: [
+        { to: "/marketing/integracoes", label: "Integrações", icon: Plug },
+        { to: "/ads/metas-alertas", label: "Alertas e regras", icon: Bell },
+        { to: "/marketing/configuracoes", label: "Metas por canal", icon: SlidersHorizontal },
+      ],
+    };
+    if (isAgencyBranchExpandedOpsEnabled()) {
+      const adsGroup = FULL_NAV_GROUPS[1];
+      return [
+        {
+          label: "Visão geral",
+          items: [{ to: "/dashboard", label: "Visão geral", icon: LayoutDashboard }],
+        },
+        adsGroup,
+        conexoes,
+        {
+          label: "Operação",
+          items: [
+            { to: "/clientes", label: "Clientes", icon: Users },
+            { to: "/projetos", label: "Projetos", icon: FolderKanban },
+            { to: "/lancamentos", label: "Lançamentos", icon: Rocket },
+            { to: "/usuarios", label: "Equipe", icon: Users2 },
+          ],
+        },
+        { label: "Conta", items: contaItems },
+      ];
+    }
     return [
       {
         label: "Visão geral",
@@ -114,14 +152,7 @@ function buildNavGroups(
         label: "Operação",
         items: [{ to: "/clientes", label: "Clientes", icon: Users }],
       },
-      {
-        label: "Conexões",
-        items: [
-          { to: "/marketing/integracoes", label: "Integrações", icon: Plug },
-          { to: "/ads/metas-alertas", label: "Metas e alertas", icon: Wrench },
-          { to: "/marketing/configuracoes", label: "Automações (Marketing)", icon: SlidersHorizontal },
-        ],
-      },
+      conexoes,
       { label: "Conta", items: contaItems },
     ];
   }
@@ -154,12 +185,22 @@ function NavBlock({
 }) {
   const user = useAuthStore((s) => s.user);
   const memberships = useAuthStore((s) => s.memberships);
+  const planFeatures = useOrganizationPlanFeatures();
   const showMatrizNav = canAccessMatrizResellerNav(user ?? null, memberships);
 
   const variant = resolveSidebarNavVariant(user ?? null, memberships ?? null);
-  const baseNav = buildNavGroups(variant, { showMatrizNav });
+  const baseNav = useMemo(
+    () => buildNavGroups(variant, { showMatrizNav }),
+    [variant, showMatrizNav]
+  );
 
-  const groups: NavGroup[] = baseNav;
+  const groups: NavGroup[] = useMemo(
+    () =>
+      filterNavGroupsByPlan(baseNav, planFeatures, {
+        bypassPlanFeatures: user?.platformAdmin === true,
+      }),
+    [baseNav, planFeatures, user?.platformAdmin]
+  );
 
   const navItemClass = (active: boolean) =>
     cn(

@@ -7,6 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fetchOrganizationContext, patchOrganizationName } from "@/lib/organization-api";
 import type { OrganizationContext } from "@/lib/organization-api";
+import { useAuthStore } from "@/stores/auth-store";
+import { isAgencyClientPortalUser } from "@/lib/navigation-mode";
+
 export function CompanySettingsPage() {
   const [ctx, setCtx] = useState<OrganizationContext | null>(null);
   const [name, setName] = useState("");
@@ -14,6 +17,13 @@ export function CompanySettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+
+  const user = useAuthStore((s) => s.user);
+  const memberships = useAuthStore((s) => s.memberships);
+  const portalReadOnly = isAgencyClientPortalUser(user ?? null, memberships ?? null);
+  /** Filial sob matriz: nome só a matriz / staff global altera (exceto platformAdmin em suporte). */
+  const branchNameReadOnly = Boolean(ctx?.parentOrganization) && user?.platformAdmin !== true;
+  const readOnlyOrgName = portalReadOnly || branchNameReadOnly;
 
   const load = useCallback(async () => {
     setError(null);
@@ -35,6 +45,7 @@ export function CompanySettingsPage() {
 
   async function handleSaveCompany(e: React.FormEvent) {
     e.preventDefault();
+    if (readOnlyOrgName) return;
     const n = name.trim();
     if (n.length < 2) return;
     setSaving(true);
@@ -133,12 +144,23 @@ export function CompanySettingsPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="rounded-lg"
+                readOnly={readOnlyOrgName}
+                aria-readonly={readOnlyOrgName}
               />
               <p className="text-xs text-muted-foreground">Slug interno: {ctx?.slug}</p>
+              {readOnlyOrgName ? (
+                <p className="text-xs text-muted-foreground">
+                  {portalReadOnly
+                    ? "Para alterar dados da empresa, contacte a agência responsável."
+                    : "O nome deste workspace é alinhado com a matriz. Peça alteração ao administrador da rede."}
+                </p>
+              ) : null}
             </div>
-            <Button type="submit" disabled={saving || name.trim().length < 2} className="rounded-lg">
-              {saving ? "Salvando…" : "Salvar nome"}
-            </Button>
+            {readOnlyOrgName ? null : (
+              <Button type="submit" disabled={saving || name.trim().length < 2} className="rounded-lg">
+                {saving ? "Salvando…" : "Salvar nome"}
+              </Button>
+            )}
           </form>
         </CardContent>
       </Card>
