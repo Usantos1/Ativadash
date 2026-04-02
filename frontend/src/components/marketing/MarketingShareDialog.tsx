@@ -15,6 +15,7 @@ import { getApiErrorMessage } from "@/lib/api";
 const SECTION_DEFS: { key: keyof DashboardShareSections; label: string; hint: string }[] = [
   { key: "kpis", label: "Indicadores (KPIs)", hint: "Resumo numérico do período" },
   { key: "channels", label: "Canais", hint: "Blocos Meta / Google quando existirem no painel" },
+  { key: "funnel", label: "Funil de etapas", hint: "Impressões → Cliques → LPV → Leads com gargalo" },
   { key: "chart", label: "Gráficos de tendência", hint: "Séries e visualizações principais" },
   { key: "table", label: "Tabela de campanhas (top)", hint: "Até 15 linhas no link público" },
   { key: "insights", label: "Insights e destaques", hint: "Textos e alertas do painel" },
@@ -52,6 +53,7 @@ export function MarketingShareDialog({
   const [sections, setSections] = useState<DashboardShareSections>({
     kpis: true,
     channels: true,
+    funnel: true,
     chart: true,
     table: true,
     insights: true,

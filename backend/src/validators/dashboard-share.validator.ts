@@ -5,6 +5,7 @@ const PAGE = z.enum(["painel", "captacao", "conversao", "receita"]);
 const SECTIONS = z.object({
   kpis: z.boolean().optional(),
   channels: z.boolean().optional(),
+  funnel: z.boolean().optional(),
   chart: z.boolean().optional(),
   table: z.boolean().optional(),
   insights: z.boolean().optional(),

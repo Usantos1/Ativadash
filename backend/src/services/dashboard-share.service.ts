@@ -13,6 +13,7 @@ export type DashboardShareSections = {
   chart: boolean;
   table: boolean;
   insights: boolean;
+  funnel: boolean;
 };
 
 const DEFAULT_SECTIONS: DashboardShareSections = {
@@ -21,13 +22,14 @@ const DEFAULT_SECTIONS: DashboardShareSections = {
   chart: true,
   table: false,
   insights: true,
+  funnel: true,
 };
 
 function normalizeSections(raw: unknown): DashboardShareSections {
   const out = { ...DEFAULT_SECTIONS };
   if (!raw || typeof raw !== "object") return out;
   const o = raw as Record<string, unknown>;
-  for (const key of ["kpis", "channels", "chart", "table", "insights"] as const) {
+  for (const key of ["kpis", "channels", "chart", "table", "insights", "funnel"] as const) {
     if (o[key] === true) out[key] = true;
     if (o[key] === false) out[key] = false;
   }

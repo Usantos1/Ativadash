@@ -9,6 +9,7 @@ export type DashboardShareSections = {
   chart: boolean;
   table: boolean;
   insights: boolean;
+  funnel?: boolean;
 };
 
 export type ShareExpirationOption = "never" | "7d" | "30d" | "90d";

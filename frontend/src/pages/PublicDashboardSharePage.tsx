@@ -267,7 +267,9 @@ export function PublicDashboardSharePage() {
         ) : null}
 
         {/* ── Funil (mesmo componente do dashboard) ────────────────── */}
-        {(sections.kpis || sections.chart) && (snap.hasGoogle || snap.hasMeta) ? (
+        {sections.funnel !== false &&
+          (sections.kpis || sections.chart) &&
+          funnelBlock.steps.some((s) => s.volume > 0) ? (
           <div>
             <CockpitSectionTitle kicker="Funil">Etapas</CockpitSectionTitle>
             <MarketingFunnelStrip steps={funnelBlock.steps} worstKey={funnelBlock.worstKey} />

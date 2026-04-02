@@ -3,6 +3,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { eachDayOfInterval, format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ArrowRight, BarChart3, RefreshCw } from "lucide-react";
+import { formatSpend, formatNumber } from "@/lib/metrics-format";
+import { downloadPainelAdsReportPdf, type PainelAdsKpiRow } from "@/lib/export-pdf";
+import { downloadCsv } from "@/lib/export-csv";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -10,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
+import { useAuthStore } from "@/stores/auth-store";
 import { useMarketingMetrics } from "@/hooks/useMarketingMetrics";
 import type { MarketingDashboardPerfRow, MarketingDashboardSummary } from "@/lib/marketing-dashboard-api";
 import type { MetaAdsMetricsSummary } from "@/lib/integrations-api";
@@ -80,6 +84,7 @@ type GoogleTableLevel = "campaign" | "adgroup" | "ad";
 export function DashboardSingleClient() {
   const navigate = useNavigate();
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
+  const wsName = useAuthStore((s) => s.user?.organization?.name?.trim()) ?? "Dashboard";
 
   const [dashboardSummaryForInsights, setDashboardSummaryForInsights] = useState<
     MarketingDashboardSummary | undefined
@@ -520,6 +525,118 @@ export function DashboardSingleClient() {
       ? "Sem receita"
       : null;
 
+  const handleExportPdf = useCallback(() => {
+    const fmtS = (v: number) => formatSpend(v);
+    const fmtN = (v: number) => formatNumber(Math.round(v));
+    const fmtPct = (v: number | null) => v != null ? `${v.toFixed(2)}%` : "—";
+    const goalLabel =
+      goalCtx.businessGoalMode === "SALES" ? "Vendas / ROAS"
+        : goalCtx.businessGoalMode === "HYBRID" ? "Híbrido (leads + vendas)"
+        : "Captação de leads";
+
+    const totalSpend = metaSpend + googleSpendBrl;
+    const metaLeads = summary ? summary.leads + summary.messagingConversations : 0;
+    const googleConv = googleOk && metrics?.ok ? metrics.summary.conversions : 0;
+    const totalLeads = metaLeads + googleConv;
+    const cpl = totalLeads > 0 ? totalSpend / totalLeads : 0;
+    const metaRev = summary?.purchaseValue ?? 0;
+    const googleRev = googleOk && metrics?.ok ? metrics.summary.conversionsValue ?? 0 : 0;
+    const totalRev = metaRev + googleRev;
+    const roas = totalSpend > 0 && totalRev > 0 ? totalRev / totalSpend : null;
+    const totalImpr = (summary?.impressions ?? 0) + (googleOk && metrics?.ok ? metrics.summary.impressions : 0);
+    const totalClicks = (summary?.clicks ?? 0) + (googleOk && metrics?.ok ? metrics.summary.clicks : 0);
+    const ctr = totalImpr > 0 ? (totalClicks / totalImpr) * 100 : null;
+
+    const consolidated: PainelAdsKpiRow[] = [
+      { label: "Investimento total", value: fmtS(totalSpend) },
+      { label: "Leads / conversões", value: fmtN(totalLeads) },
+      { label: "CPL médio", value: cpl > 0 ? fmtS(cpl) : "—" },
+      { label: "Impressões", value: fmtN(totalImpr) },
+      { label: "Cliques", value: fmtN(totalClicks) },
+      { label: "CTR", value: fmtPct(ctr) },
+    ];
+    if (goalCtx.businessGoalMode !== "LEADS") {
+      consolidated.push(
+        { label: "Receita atribuída", value: totalRev > 0 ? fmtS(totalRev) : "—" },
+        { label: "ROAS", value: roas != null ? `${roas.toFixed(2)}x` : "—" },
+      );
+    }
+
+    const metaSection = summary ? {
+      title: "Meta Ads",
+      rows: [
+        { label: "Investimento", value: fmtS(metaSpend) },
+        { label: "Leads", value: fmtN(metaLeads) },
+        { label: "CPL", value: summary.derived.cplLeads != null ? fmtS(summary.derived.cplLeads) : "—" },
+        { label: "Impressões", value: fmtN(summary.impressions) },
+        { label: "Cliques", value: fmtN(summary.clicks) },
+        ...(goalCtx.businessGoalMode !== "LEADS" ? [
+          { label: "Receita", value: metaRev > 0 ? fmtS(metaRev) : "—" },
+          { label: "ROAS", value: metaSpend > 0 && metaRev > 0 ? `${(metaRev / metaSpend).toFixed(2)}x` : "—" },
+        ] : []),
+      ] as PainelAdsKpiRow[],
+    } : undefined;
+
+    const googleSection = googleOk && metrics?.ok ? {
+      title: "Google Ads",
+      rows: [
+        { label: "Investimento", value: fmtS(googleSpendBrl) },
+        { label: "Conversões", value: fmtN(googleConv) },
+        { label: "CPA", value: googleDerived?.costPerConv != null ? fmtS(googleDerived.costPerConv) : "—" },
+        { label: "Impressões", value: fmtN(metrics.summary.impressions) },
+        { label: "Cliques", value: fmtN(metrics.summary.clicks) },
+        ...(goalCtx.businessGoalMode !== "LEADS" ? [
+          { label: "Receita", value: googleRev > 0 ? fmtS(googleRev) : "—" },
+          { label: "ROAS", value: googleSpendBrl > 0 && googleRev > 0 ? `${(googleRev / googleSpendBrl).toFixed(2)}x` : "—" },
+        ] : []),
+      ] as PainelAdsKpiRow[],
+    } : undefined;
+
+    downloadPainelAdsReportPdf({
+      filename: `dashboard-${dateRange.startDate}.pdf`,
+      workspaceName: wsName,
+      periodLabel: dateRangeLabel,
+      startDate: dateRange.startDate,
+      endDate: dateRange.endDate,
+      objectiveLabel: goalLabel,
+      consolidated,
+      metaSection,
+      googleSection,
+    });
+  }, [wsName, dateRange, dateRangeLabel, goalCtx.businessGoalMode, summary, metaSpend, googleSpendBrl, googleOk, metrics, googleDerived]);
+
+  const handleExportXls = useCallback(() => {
+    const rows: Record<string, unknown>[] = [];
+    if (summary) {
+      rows.push({
+        canal: "Meta",
+        investimento: metaSpend,
+        impressoes: summary.impressions,
+        cliques: summary.clicks,
+        leads: summary.leads + summary.messagingConversations,
+        cpl: summary.derived.cplLeads,
+        compras: summary.purchases,
+        receita: summary.purchaseValue,
+        ctr_pct: summary.derived.ctrPct,
+      });
+    }
+    if (googleOk && metrics?.ok) {
+      const s = metrics.summary;
+      rows.push({
+        canal: "Google",
+        investimento: s.costMicros / 1_000_000,
+        impressoes: s.impressions,
+        cliques: s.clicks,
+        leads: s.conversions,
+        cpl: s.conversions > 0 ? (s.costMicros / 1_000_000) / s.conversions : null,
+        compras: s.conversions,
+        receita: s.conversionsValue ?? 0,
+        ctr_pct: s.impressions > 0 ? (s.clicks / s.impressions) * 100 : null,
+      });
+    }
+    if (rows.length) downloadCsv(`dashboard-${dateRange.startDate}.csv`, rows);
+  }, [summary, metaSpend, googleOk, metrics, dateRange.startDate]);
+
   return (
     <TooltipProvider delayDuration={180}>
       <div
@@ -540,6 +657,9 @@ export function DashboardSingleClient() {
           onRefresh={() => void refresh()}
           refreshDisabled={anyRefreshing || metaMetricsLoading}
           showRefresh={hasMeta}
+          hasData={hasAnyChannel && (metaOk || googleOk)}
+          onExportPdf={handleExportPdf}
+          onExportXls={handleExportXls}
         />
 
         {!hasAnyChannel ? (

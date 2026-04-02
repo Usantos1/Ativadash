@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { CalendarRange, RefreshCw } from "lucide-react";
+import { CalendarRange, FileDown, FileSpreadsheet, Loader2, RefreshCw, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarketingDateRangeDialog } from "@/components/marketing/MarketingDateRangeDialog";
+import { MarketingShareDialog } from "@/components/marketing/MarketingShareDialog";
 import type { DateFilterApplyPayload } from "@/components/marketing/MarketingDateRangeDialog";
 import type { MetricsDateRange } from "@/lib/integrations-api";
 import type { MarketingPresetId } from "@/lib/marketing-date-presets";
@@ -31,6 +33,9 @@ export function DashboardHeader({
   onRefresh,
   refreshDisabled,
   showRefresh,
+  hasData,
+  onExportPdf,
+  onExportXls,
 }: {
   dateRange: MetricsDateRange;
   dateRangeLabel: string;
@@ -43,7 +48,13 @@ export function DashboardHeader({
   onRefresh: () => void;
   refreshDisabled?: boolean;
   showRefresh?: boolean;
+  hasData?: boolean;
+  onExportPdf?: () => void;
+  onExportXls?: () => void;
 }) {
+  const [shareOpen, setShareOpen] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+
   return (
     <div className="flex flex-col gap-3 border-b border-border/25 pb-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -88,6 +99,55 @@ export function DashboardHeader({
             />
             Atualizar
           </Button>
+        ) : null}
+        {hasData ? (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 rounded-xl border-border/40"
+              onClick={() => setShareOpen(true)}
+            >
+              <Share2 className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+              Compartilhar
+            </Button>
+            <MarketingShareDialog
+              open={shareOpen}
+              onOpenChange={setShareOpen}
+              page="painel"
+              startDate={dateRange.startDate}
+              endDate={dateRange.endDate}
+              periodLabel={dateRangeLabel}
+            />
+            {onExportPdf ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 rounded-xl border-border/40"
+                disabled={pdfBusy}
+                onClick={() => {
+                  setPdfBusy(true);
+                  try { onExportPdf(); } finally { setPdfBusy(false); }
+                }}
+              >
+                {pdfBusy
+                  ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />
+                  : <FileDown className="mr-1.5 h-3.5 w-3.5" aria-hidden />}
+                {pdfBusy ? "Gerando…" : "PDF"}
+              </Button>
+            ) : null}
+            {onExportXls ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 rounded-xl border-border/40"
+                onClick={onExportXls}
+              >
+                <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                XLS
+              </Button>
+            ) : null}
+          </>
         ) : null}
         <Button variant="ghost" size="sm" className="h-9 rounded-xl text-muted-foreground" asChild>
           <Link to="/ads/metas-alertas">Automação e Metas</Link>
