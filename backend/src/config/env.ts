@@ -35,6 +35,12 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
   return Math.floor(n);
 }
 
+/** Flags tipo PM2/systemd: aceita true, 1, yes, on (minúsculas). */
+function parseEnvBooleanTrue(raw: string | undefined): boolean {
+  const v = raw?.trim().toLowerCase();
+  return v === "true" || v === "1" || v === "yes" || v === "on";
+}
+
 if (!process.env.DATABASE_URL?.trim()) {
   console.error(
     "[ativadash] Nenhuma conexão PostgreSQL configurada.\n" +
@@ -86,7 +92,7 @@ export const env = {
    * Motor autónomo (node-cron, UTC): avalia `AlertRule` ativas, NOTIFY_ONLY, pausa/ativa/orçamento Meta & Google.
    * Plano: `performanceAlerts`; mutações na API exigem `campaignWrite`.
    */
-  AUTOMATION_WORKER_ENABLED: process.env.AUTOMATION_WORKER_ENABLED === "true",
+  AUTOMATION_WORKER_ENABLED: parseEnvBooleanTrue(process.env.AUTOMATION_WORKER_ENABLED),
   /** Expressão cron em UTC. Padrão no código: a cada 30 minutos (padrão node-cron de cinco campos). */
   AUTOMATION_WORKER_CRON: (process.env.AUTOMATION_WORKER_CRON ?? "*/30 * * * *").trim(),
   /**

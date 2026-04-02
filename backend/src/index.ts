@@ -118,5 +118,9 @@ app.listen(env.PORT, () => {
     import("./services/automation-worker.runner.js")
       .then((m) => m.startAutomationWorker())
       .catch((e) => console.error("[automation-worker] falha ao iniciar:", e));
+  } else {
+    console.info(
+      "[AutomationWorkerService] desligado — defina AUTOMATION_WORKER_ENABLED=true (ou 1) no .env do backend e reinicie o PM2 para o histórico/notificações do motor."
+    );
   }
 });
