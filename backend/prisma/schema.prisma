@@ -325,6 +325,7 @@ model MarketingSettings {
 enum AutomationActionType {
   NOTIFY_ONLY
   PAUSE_ASSET
+  ACTIVATE_ASSET
   INCREASE_BUDGET_20
   DECREASE_BUDGET_20
 }
@@ -373,6 +374,17 @@ model AlertRule {
   evaluationTimeLocal String? @db.VarChar(5)
   /// IANA (ex.: America/Sao_Paulo), enviado pelo browser ao salvar
   evaluationTimezone String? @db.VarChar(80)
+
+  /// Última vez que a regra executou uma ação (notify/pausa/orçamento) neste workspace.
+  lastExecutedAt DateTime?
+  /// Controle do worker: mínimo de minutos entre avaliações completas quando preenchido.
+  lastEvaluationAt DateTime?
+  /// Percentual para SCALE_UP / SCALE_DOWN (ex.: 20 → ±20%). Null = 20.
+  actionValue Decimal? @db.Decimal(10, 4)
+  /// Cooldown por ativo (mesma regra + asset + tipo de ação), em minutos. Padrão 24h.
+  cooldownMinutes Int @default(1440)
+  /// Opcional: intervalo mínimo entre ticks do worker para esta regra (minutos). Null = só janela legada (`checkFrequency` / `passesTimeWindow`).
+  checkFrequencyMinutes Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

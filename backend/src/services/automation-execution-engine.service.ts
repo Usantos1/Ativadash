@@ -1,10 +1,11 @@
-import type { AlertRule, AutomationActionType } from "@prisma/client";
+import type { AlertRule, AutomationActionType, MarketingSettings } from "@prisma/client";
 import { prisma } from "../utils/prisma.js";
 import { appendAutomationExecutionLog } from "./automation-execution-log.service.js";
 import {
   entityMatchesAlertRule,
+  getAutomationEntityMetricSnapshot,
+  resolveDynamicThreshold,
   type AutomationEntityMetricInput,
-  type RuleEvaluatingChannel,
 } from "./alert-rule-insights.service.js";
 import { getEffectivePlanFeatures } from "./effective-plan-features.service.js";
 import { formatMoney } from "./marketing-settings-format.js";
@@ -41,7 +42,6 @@ import {
 import type { InsightAlert } from "../types/marketing-insight.types.js";
 
 const PERIOD_KEY = "7d";
-const COOLDOWN_HOURS = 24;
 
 function defaultDateRange(): { start: string; end: string } {
   const end = new Date();
@@ -59,13 +59,51 @@ function ruleAppliesToChannel(rule: AlertRule, ch: "meta" | "google"): boolean {
   return scope === "all" || scope === ch;
 }
 
+function ruleCooldownMinutes(rule: AlertRule): number {
+  const n = rule.cooldownMinutes;
+  return n != null && Number.isFinite(n) && n > 0 ? n : 1440;
+}
+
+function scalePercentFromRule(rule: AlertRule): number {
+  const raw = rule.actionValue != null ? Number(rule.actionValue) : 20;
+  if (!Number.isFinite(raw)) return 20;
+  return Math.min(90, Math.max(1, raw));
+}
+
+function budgetMultiplierIncrease(rule: AlertRule): number {
+  return 1 + scalePercentFromRule(rule) / 100;
+}
+
+function budgetMultiplierDecrease(rule: AlertRule): number {
+  return 1 - scalePercentFromRule(rule) / 100;
+}
+
+function formatMetricForAutomation(metric: string, v: number): string {
+  if (metric === "roas") return v.toFixed(2);
+  if (metric === "ctr") return `${v.toFixed(2)}%`;
+  return formatMoney(v);
+}
+
+function formatThresholdForAutomation(metric: string, t: number | null): string {
+  if (t == null || !Number.isFinite(t)) return "—";
+  return formatMetricForAutomation(metric, t);
+}
+
+function passesWorkerEvaluationGate(rule: AlertRule, now = Date.now()): boolean {
+  if (rule.checkFrequencyMinutes == null) return true;
+  const last = rule.lastEvaluationAt;
+  if (!last) return true;
+  return now - last.getTime() >= rule.checkFrequencyMinutes * 60_000;
+}
+
 async function wasRecentlyExecuted(
   organizationId: string,
   ruleId: string,
   assetId: string,
-  actionTaken: AutomationActionType
+  actionTaken: AutomationActionType,
+  cooldownMinutes: number
 ): Promise<boolean> {
-  const since = new Date(Date.now() - COOLDOWN_HOURS * 3600_000);
+  const since = new Date(Date.now() - cooldownMinutes * 60_000);
   const hit = await prisma.automationExecutionLog.findFirst({
     where: {
       organizationId,
@@ -198,14 +236,17 @@ async function executeMetaForRule(
       if (!id) continue;
       const entity = metaCampaignToEntity(row);
       if (!entityMatchesAlertRule(rule, settingsRow, "meta", PERIOD_KEY, entity)) continue;
-      if (await wasRecentlyExecuted(organizationId, rule.id, id, rule.actionType)) continue;
+      if (await wasRecentlyExecuted(organizationId, rule.id, id, rule.actionType, ruleCooldownMinutes(rule)))
+        continue;
       const n = await runMetaMutation(
         organizationId,
         rule,
         "campaign",
         id,
         row.campaignName || id,
-        row.entityStatus
+        row.entityStatus,
+        settingsRow,
+        entity
       );
       actions += n;
     }
@@ -220,14 +261,17 @@ async function executeMetaForRule(
       if (!id) continue;
       const entity = metaAdsetToEntity(row);
       if (!entityMatchesAlertRule(rule, settingsRow, "meta", PERIOD_KEY, entity)) continue;
-      if (await wasRecentlyExecuted(organizationId, rule.id, id, rule.actionType)) continue;
+      if (await wasRecentlyExecuted(organizationId, rule.id, id, rule.actionType, ruleCooldownMinutes(rule)))
+        continue;
       const n = await runMetaMutation(
         organizationId,
         rule,
         "ad_set",
         id,
         row.adsetName || id,
-        undefined
+        undefined,
+        settingsRow,
+        entity
       );
       actions += n;
     }
@@ -241,8 +285,9 @@ async function executeMetaForRule(
     if (!id) continue;
     const entity = metaAdToEntity(row);
     if (!entityMatchesAlertRule(rule, settingsRow, "meta", PERIOD_KEY, entity)) continue;
-    if (await wasRecentlyExecuted(organizationId, rule.id, id, rule.actionType)) continue;
-    const n = await runMetaMutation(organizationId, rule, "ad", id, row.adName || id, undefined);
+    if (await wasRecentlyExecuted(organizationId, rule.id, id, rule.actionType, ruleCooldownMinutes(rule)))
+      continue;
+    const n = await runMetaMutation(organizationId, rule, "ad", id, row.adName || id, undefined, settingsRow, entity);
     actions += n;
   }
   return actions;
@@ -254,9 +299,34 @@ async function runMetaMutation(
   kind: "campaign" | "ad_set" | "ad",
   externalId: string,
   label: string,
-  entityStatus: string | undefined
+  entityStatus: string | undefined,
+  settingsRow: MarketingSettings | null,
+  entity: AutomationEntityMetricInput
 ): Promise<number> {
   const action = rule.actionType;
+  const cd = ruleCooldownMinutes(rule);
+
+  if (action === "NOTIFY_ONLY") {
+    if (await wasRecentlyExecuted(organizationId, rule.id, externalId, action, cd)) return 0;
+    const snap = getAutomationEntityMetricSnapshot(rule, settingsRow, "meta", PERIOD_KEY, entity);
+    if (snap == null) return 0;
+    const thr = resolveDynamicThreshold(rule, settingsRow, "meta");
+    const mv = formatMetricForAutomation(rule.metric, snap);
+    const tv = formatThresholdForAutomation(rule.metric, thr);
+    const msg = `*${rule.name}* — *${label}* (Meta): ${rule.metric.toUpperCase()} = ${mv} (limiar ${tv}).`;
+    const log = await appendAutomationExecutionLog(organizationId, {
+      ruleId: rule.id,
+      assetId: externalId,
+      assetLabel: label,
+      actionTaken: "NOTIFY_ONLY",
+      previousValue: mv,
+      newValue: tv,
+    });
+    if (!log) return 0;
+    await persistOccurrence(organizationId, rule, msg);
+    await notifyAutomationWhatsApp(organizationId, rule, msg, "meta");
+    return 1;
+  }
 
   if (action === "PAUSE_ASSET") {
     if (entityStatus === "PAUSED") return 0;
@@ -284,12 +354,39 @@ async function runMetaMutation(
     return 1;
   }
 
+  if (action === "ACTIVATE_ASSET") {
+    if (entityStatus === "ACTIVE") return 0;
+    let out: { ok: true } | { ok: false; message: string };
+    if (kind === "campaign") out = await updateMetaCampaignStatus(organizationId, externalId, "ACTIVE");
+    else if (kind === "ad_set") out = await updateMetaAdsetStatus(organizationId, externalId, "ACTIVE");
+    else out = await updateMetaAdStatus(organizationId, externalId, "ACTIVE");
+    if (!out.ok) {
+      console.warn(`[automation] Meta ativar falhou ${externalId}:`, out.message);
+      return 0;
+    }
+    const prev = entityStatus ?? "PAUSED";
+    const log = await appendAutomationExecutionLog(organizationId, {
+      ruleId: rule.id,
+      assetId: externalId,
+      assetLabel: label,
+      actionTaken: "ACTIVATE_ASSET",
+      previousValue: prev,
+      newValue: "ACTIVE",
+    });
+    if (!log) return 0;
+    const msg = `Ativação automática (${kind}) em *${label}*.`;
+    await persistOccurrence(organizationId, rule, msg);
+    await notifyAutomationWhatsApp(organizationId, rule, msg, "meta");
+    return 1;
+  }
+
   if (action === "INCREASE_BUDGET_20" || action === "DECREASE_BUDGET_20") {
     if (kind === "ad") {
       console.info(`[automation] Orçamento em anúncio ignorado (regra ${rule.id}); use campanha ou conjunto.`);
       return 0;
     }
-    const mult = action === "INCREASE_BUDGET_20" ? 1.2 : 0.8;
+    const mult =
+      action === "INCREASE_BUDGET_20" ? budgetMultiplierIncrease(rule) : budgetMultiplierDecrease(rule);
     if (kind === "campaign") {
       if (entityStatus === "PAUSED") return 0;
       const cur = await fetchMetaCampaignBudgetMeta(organizationId, externalId);
@@ -312,7 +409,7 @@ async function runMetaMutation(
         newValue: formatMoney(next),
       });
       if (!log) return 0;
-      const msg = `Orçamento diário (campanha) *${label}*: ${formatMoney(cur.dailyBudgetMajorBrl)} → ${formatMoney(next)}.`;
+      const msg = `Orçamento diário (campanha) *${label}*: ${formatMoney(cur.dailyBudgetMajorBrl)} → ${formatMoney(next)} (${scalePercentFromRule(rule)}%).`;
       await persistOccurrence(organizationId, rule, msg);
       await notifyAutomationWhatsApp(organizationId, rule, msg, "meta");
       return 1;
@@ -337,7 +434,7 @@ async function runMetaMutation(
       newValue: formatMoney(next),
     });
     if (!log) return 0;
-    const msg = `Orçamento diário (conjunto) *${label}*: ${formatMoney(cur.dailyBudgetMajorBrl)} → ${formatMoney(next)}.`;
+    const msg = `Orçamento diário (conjunto) *${label}*: ${formatMoney(cur.dailyBudgetMajorBrl)} → ${formatMoney(next)} (${scalePercentFromRule(rule)}%).`;
     await persistOccurrence(organizationId, rule, msg);
     await notifyAutomationWhatsApp(organizationId, rule, msg, "meta");
     return 1;
@@ -367,7 +464,8 @@ async function executeGoogleForRule(
       const assetKey = `${agId}~${adId}`;
       const entity = googleAdsAdRowToEntity(row);
       if (!entityMatchesAlertRule(rule, settingsRow, "google", PERIOD_KEY, entity)) continue;
-      if (await wasRecentlyExecuted(organizationId, rule.id, assetKey, rule.actionType)) continue;
+      if (await wasRecentlyExecuted(organizationId, rule.id, assetKey, rule.actionType, ruleCooldownMinutes(rule)))
+        continue;
       const adLabel = row.adName?.trim() || adId;
       const n = await runGoogleAdMutation(
         organizationId,
@@ -380,6 +478,8 @@ async function executeGoogleForRule(
         campId,
         row.campaignName || campId || "—",
         row.entityStatus,
+        settingsRow,
+        entity,
         adMutationMetrics
       );
       actions += n;
@@ -402,7 +502,8 @@ async function executeGoogleForRule(
       if (!agId || !campId) continue;
       const entity = googleAdGroupToEntity(row);
       if (!entityMatchesAlertRule(rule, settingsRow, "google", PERIOD_KEY, entity)) continue;
-      if (await wasRecentlyExecuted(organizationId, rule.id, agId, rule.actionType)) continue;
+      if (await wasRecentlyExecuted(organizationId, rule.id, agId, rule.actionType, ruleCooldownMinutes(rule)))
+        continue;
       const n = await runGoogleAdGroupMutation(
         organizationId,
         rule,
@@ -410,7 +511,9 @@ async function executeGoogleForRule(
         row.adGroupName || agId,
         campId,
         row.campaignName || campId,
-        row.entityStatus
+        row.entityStatus,
+        settingsRow,
+        entity
       );
       actions += n;
     }
@@ -426,8 +529,17 @@ async function executeGoogleForRule(
     if (!id) continue;
     const entity = googleCampaignToEntity(row);
     if (!entityMatchesAlertRule(rule, settingsRow, "google", PERIOD_KEY, entity)) continue;
-    if (await wasRecentlyExecuted(organizationId, rule.id, id, rule.actionType)) continue;
-    const n = await runGoogleMutation(organizationId, rule, id, row.campaignName || id, row.entityStatus);
+    if (await wasRecentlyExecuted(organizationId, rule.id, id, rule.actionType, ruleCooldownMinutes(rule)))
+      continue;
+    const n = await runGoogleMutation(
+      organizationId,
+      rule,
+      id,
+      row.campaignName || id,
+      row.entityStatus,
+      settingsRow,
+      entity
+    );
     actions += n;
   }
   return actions;
@@ -440,9 +552,34 @@ async function runGoogleAdGroupMutation(
   adGroupLabel: string,
   campaignId: string,
   campaignLabel: string,
-  entityStatus: string | undefined
+  entityStatus: string | undefined,
+  settingsRow: MarketingSettings | null,
+  entity: AutomationEntityMetricInput
 ): Promise<number> {
   const action = rule.actionType;
+  const cd = ruleCooldownMinutes(rule);
+
+  if (action === "NOTIFY_ONLY") {
+    if (await wasRecentlyExecuted(organizationId, rule.id, adGroupId, action, cd)) return 0;
+    const snap = getAutomationEntityMetricSnapshot(rule, settingsRow, "google", PERIOD_KEY, entity);
+    if (snap == null) return 0;
+    const thr = resolveDynamicThreshold(rule, settingsRow, "google");
+    const mv = formatMetricForAutomation(rule.metric, snap);
+    const tv = formatThresholdForAutomation(rule.metric, thr);
+    const msg = `*${rule.name}* — *${adGroupLabel}* (Google Ads): ${rule.metric.toUpperCase()} = ${mv} (limiar ${tv}).`;
+    const log = await appendAutomationExecutionLog(organizationId, {
+      ruleId: rule.id,
+      assetId: adGroupId,
+      assetLabel: `${adGroupLabel} · ${campaignLabel}`,
+      actionTaken: "NOTIFY_ONLY",
+      previousValue: mv,
+      newValue: tv,
+    });
+    if (!log) return 0;
+    await persistOccurrence(organizationId, rule, msg);
+    await notifyAutomationWhatsApp(organizationId, rule, msg, "google");
+    return 1;
+  }
 
   if (action === "PAUSE_ASSET") {
     if (entityStatus === "PAUSED") return 0;
@@ -466,9 +603,32 @@ async function runGoogleAdGroupMutation(
     return 1;
   }
 
+  if (action === "ACTIVATE_ASSET") {
+    if (entityStatus !== "PAUSED") return 0;
+    const out = await mutateGoogleAdGroupStatus(organizationId, adGroupId, true, undefined);
+    if (!out.ok) {
+      console.warn(`[automation] Google ativar ad_group ${adGroupId}:`, out.message);
+      return 0;
+    }
+    const log = await appendAutomationExecutionLog(organizationId, {
+      ruleId: rule.id,
+      assetId: adGroupId,
+      assetLabel: `${adGroupLabel} · ${campaignLabel}`,
+      actionTaken: "ACTIVATE_ASSET",
+      previousValue: entityStatus ?? "PAUSED",
+      newValue: "ENABLED",
+    });
+    if (!log) return 0;
+    const msg = `Ativação automática (Google) no conjunto *${adGroupLabel}* (campanha *${campaignLabel}*).`;
+    await persistOccurrence(organizationId, rule, msg);
+    await notifyAutomationWhatsApp(organizationId, rule, msg, "google");
+    return 1;
+  }
+
   if (action === "INCREASE_BUDGET_20" || action === "DECREASE_BUDGET_20") {
     if (entityStatus === "PAUSED") return 0;
-    const mult = action === "INCREASE_BUDGET_20" ? 1.2 : 0.8;
+    const mult =
+      action === "INCREASE_BUDGET_20" ? budgetMultiplierIncrease(rule) : budgetMultiplierDecrease(rule);
     const cur = await fetchGoogleCampaignBudgetMicros(organizationId, campaignId, undefined);
     if (!cur.ok) {
       console.warn(`[automation] Google orçamento (campanha pai) ${campaignId}:`, cur.message);
@@ -490,7 +650,7 @@ async function runGoogleAdGroupMutation(
       newValue: formatMoney(nextMajor),
     });
     if (!log) return 0;
-    const msg = `Orçamento diário da campanha *${campaignLabel}* (gatilho no conjunto *${adGroupLabel}*): ${formatMoney(prevMajor)} → ${formatMoney(nextMajor)}.`;
+    const msg = `Orçamento diário da campanha *${campaignLabel}* (gatilho no conjunto *${adGroupLabel}*): ${formatMoney(prevMajor)} → ${formatMoney(nextMajor)} (${scalePercentFromRule(rule)}%).`;
     await persistOccurrence(organizationId, rule, msg);
     await notifyAutomationWhatsApp(organizationId, rule, msg, "google");
     return 1;
@@ -510,10 +670,35 @@ async function runGoogleAdMutation(
   campaignId: string | undefined,
   campaignLabel: string,
   entityStatus: string | undefined,
+  settingsRow: MarketingSettings | null,
+  entity: AutomationEntityMetricInput,
   metrics?: { skippedBudgetMissingCampaign: number }
 ): Promise<number> {
   const action = rule.actionType;
   const fullLabel = `${adLabel} · ${adGroupLabel} · ${campaignLabel}`;
+  const cd = ruleCooldownMinutes(rule);
+
+  if (action === "NOTIFY_ONLY") {
+    if (await wasRecentlyExecuted(organizationId, rule.id, assetKey, action, cd)) return 0;
+    const snap = getAutomationEntityMetricSnapshot(rule, settingsRow, "google", PERIOD_KEY, entity);
+    if (snap == null) return 0;
+    const thr = resolveDynamicThreshold(rule, settingsRow, "google");
+    const mv = formatMetricForAutomation(rule.metric, snap);
+    const tv = formatThresholdForAutomation(rule.metric, thr);
+    const msg = `*${rule.name}* — *${fullLabel}* (Google Ads): ${rule.metric.toUpperCase()} = ${mv} (limiar ${tv}).`;
+    const log = await appendAutomationExecutionLog(organizationId, {
+      ruleId: rule.id,
+      assetId: assetKey,
+      assetLabel: fullLabel,
+      actionTaken: "NOTIFY_ONLY",
+      previousValue: mv,
+      newValue: tv,
+    });
+    if (!log) return 0;
+    await persistOccurrence(organizationId, rule, msg);
+    await notifyAutomationWhatsApp(organizationId, rule, msg, "google");
+    return 1;
+  }
 
   if (action === "PAUSE_ASSET") {
     if (entityStatus === "PAUSED") return 0;
@@ -537,13 +722,36 @@ async function runGoogleAdMutation(
     return 1;
   }
 
+  if (action === "ACTIVATE_ASSET") {
+    if (entityStatus !== "PAUSED") return 0;
+    const out = await mutateGoogleAdGroupAdStatus(organizationId, adGroupId, adId, true, undefined);
+    if (!out.ok) {
+      console.warn(`[automation] Google ativar ad ${adGroupId}~${adId}:`, out.message);
+      return 0;
+    }
+    const log = await appendAutomationExecutionLog(organizationId, {
+      ruleId: rule.id,
+      assetId: assetKey,
+      assetLabel: fullLabel,
+      actionTaken: "ACTIVATE_ASSET",
+      previousValue: entityStatus ?? "PAUSED",
+      newValue: "ENABLED",
+    });
+    if (!log) return 0;
+    const msg = `Ativação automática (Google) no anúncio *${adLabel}* (conjunto *${adGroupLabel}*, campanha *${campaignLabel}*).`;
+    await persistOccurrence(organizationId, rule, msg);
+    await notifyAutomationWhatsApp(organizationId, rule, msg, "google");
+    return 1;
+  }
+
   if (action === "INCREASE_BUDGET_20" || action === "DECREASE_BUDGET_20") {
     if (!campaignId) {
       if (metrics) metrics.skippedBudgetMissingCampaign += 1;
       return 0;
     }
     if (entityStatus === "PAUSED") return 0;
-    const mult = action === "INCREASE_BUDGET_20" ? 1.2 : 0.8;
+    const mult =
+      action === "INCREASE_BUDGET_20" ? budgetMultiplierIncrease(rule) : budgetMultiplierDecrease(rule);
     const cur = await fetchGoogleCampaignBudgetMicros(organizationId, campaignId, undefined);
     if (!cur.ok) {
       console.warn(`[automation] Google orçamento (campanha pai, gatilho anúncio) ${campaignId}:`, cur.message);
@@ -565,7 +773,7 @@ async function runGoogleAdMutation(
       newValue: formatMoney(nextMajor),
     });
     if (!log) return 0;
-    const msg = `Orçamento diário da campanha *${campaignLabel}* (gatilho no anúncio *${adLabel}*): ${formatMoney(prevMajor)} → ${formatMoney(nextMajor)}.`;
+    const msg = `Orçamento diário da campanha *${campaignLabel}* (gatilho no anúncio *${adLabel}*): ${formatMoney(prevMajor)} → ${formatMoney(nextMajor)} (${scalePercentFromRule(rule)}%).`;
     await persistOccurrence(organizationId, rule, msg);
     await notifyAutomationWhatsApp(organizationId, rule, msg, "google");
     return 1;
@@ -579,9 +787,34 @@ async function runGoogleMutation(
   rule: AlertRule,
   campaignId: string,
   label: string,
-  entityStatus: string | undefined
+  entityStatus: string | undefined,
+  settingsRow: MarketingSettings | null,
+  entity: AutomationEntityMetricInput
 ): Promise<number> {
   const action = rule.actionType;
+  const cd = ruleCooldownMinutes(rule);
+
+  if (action === "NOTIFY_ONLY") {
+    if (await wasRecentlyExecuted(organizationId, rule.id, campaignId, action, cd)) return 0;
+    const snap = getAutomationEntityMetricSnapshot(rule, settingsRow, "google", PERIOD_KEY, entity);
+    if (snap == null) return 0;
+    const thr = resolveDynamicThreshold(rule, settingsRow, "google");
+    const mv = formatMetricForAutomation(rule.metric, snap);
+    const tv = formatThresholdForAutomation(rule.metric, thr);
+    const msg = `*${rule.name}* — *${label}* (Google Ads): ${rule.metric.toUpperCase()} = ${mv} (limiar ${tv}).`;
+    const log = await appendAutomationExecutionLog(organizationId, {
+      ruleId: rule.id,
+      assetId: campaignId,
+      assetLabel: label,
+      actionTaken: "NOTIFY_ONLY",
+      previousValue: mv,
+      newValue: tv,
+    });
+    if (!log) return 0;
+    await persistOccurrence(organizationId, rule, msg);
+    await notifyAutomationWhatsApp(organizationId, rule, msg, "google");
+    return 1;
+  }
 
   if (action === "PAUSE_ASSET") {
     if (entityStatus === "PAUSED") return 0;
@@ -605,9 +838,32 @@ async function runGoogleMutation(
     return 1;
   }
 
+  if (action === "ACTIVATE_ASSET") {
+    if (entityStatus !== "PAUSED") return 0;
+    const out = await mutateGoogleCampaignStatus(organizationId, campaignId, true, undefined);
+    if (!out.ok) {
+      console.warn(`[automation] Google ativar campanha ${campaignId}:`, out.message);
+      return 0;
+    }
+    const log = await appendAutomationExecutionLog(organizationId, {
+      ruleId: rule.id,
+      assetId: campaignId,
+      assetLabel: label,
+      actionTaken: "ACTIVATE_ASSET",
+      previousValue: entityStatus ?? "PAUSED",
+      newValue: "ENABLED",
+    });
+    if (!log) return 0;
+    const msg = `Ativação automática (Google) na campanha *${label}*.`;
+    await persistOccurrence(organizationId, rule, msg);
+    await notifyAutomationWhatsApp(organizationId, rule, msg, "google");
+    return 1;
+  }
+
   if (action === "INCREASE_BUDGET_20" || action === "DECREASE_BUDGET_20") {
     if (entityStatus === "PAUSED") return 0;
-    const mult = action === "INCREASE_BUDGET_20" ? 1.2 : 0.8;
+    const mult =
+      action === "INCREASE_BUDGET_20" ? budgetMultiplierIncrease(rule) : budgetMultiplierDecrease(rule);
     const cur = await fetchGoogleCampaignBudgetMicros(organizationId, campaignId, undefined);
     if (!cur.ok) {
       console.warn(`[automation] Google orçamento ${campaignId}:`, cur.message);
@@ -629,7 +885,7 @@ async function runGoogleMutation(
       newValue: formatMoney(nextMajor),
     });
     if (!log) return 0;
-    const msg = `Orçamento diário (Google) *${label}*: ${formatMoney(prevMajor)} → ${formatMoney(nextMajor)}.`;
+    const msg = `Orçamento diário (Google) *${label}*: ${formatMoney(prevMajor)} → ${formatMoney(nextMajor)} (${scalePercentFromRule(rule)}%).`;
     await persistOccurrence(organizationId, rule, msg);
     await notifyAutomationWhatsApp(organizationId, rule, msg, "google");
     return 1;
@@ -644,13 +900,12 @@ async function runGoogleMutation(
  */
 export async function runAutomationForOrganization(organizationId: string): Promise<number> {
   const features = await getEffectivePlanFeatures(organizationId);
-  if (!features.performanceAlerts || !features.campaignWrite) return 0;
+  if (!features.performanceAlerts) return 0;
 
   const rules = await prisma.alertRule.findMany({
     where: {
       organizationId,
       active: true,
-      actionType: { not: "NOTIFY_ONLY" },
     },
     orderBy: { createdAt: "asc" },
   });
@@ -663,17 +918,38 @@ export async function runAutomationForOrganization(organizationId: string): Prom
 
   const range = defaultDateRange();
   let total = 0;
+  const now = Date.now();
 
   for (const rule of rules) {
+    if (!passesWorkerEvaluationGate(rule, now)) continue;
+
+    const needsCampaignWrite = rule.actionType !== "NOTIFY_ONLY";
+    if (needsCampaignWrite && !features.campaignWrite) continue;
+
+    let actionsThisRule = 0;
     try {
       if (ruleAppliesToChannel(rule, "meta")) {
-        total += await executeMetaForRule(organizationId, rule, settingsRow, range);
+        actionsThisRule += await executeMetaForRule(organizationId, rule, settingsRow, range);
       }
       if (ruleAppliesToChannel(rule, "google")) {
-        total += await executeGoogleForRule(organizationId, rule, settingsRow, range);
+        actionsThisRule += await executeGoogleForRule(organizationId, rule, settingsRow, range);
+      }
+      total += actionsThisRule;
+      if (actionsThisRule > 0) {
+        await prisma.alertRule.update({
+          where: { id: rule.id },
+          data: { lastExecutedAt: new Date() },
+        });
       }
     } catch (e) {
       console.error(`[automation] regra ${rule.id} org ${organizationId}:`, e);
+    } finally {
+      if (rule.checkFrequencyMinutes != null) {
+        await prisma.alertRule.update({
+          where: { id: rule.id },
+          data: { lastEvaluationAt: new Date() },
+        });
+      }
     }
   }
 

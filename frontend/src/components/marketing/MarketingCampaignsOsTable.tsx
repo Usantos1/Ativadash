@@ -210,7 +210,7 @@ export function MarketingCampaignsOsTable({
   /** Meta + Google na mesma lista — oculta alternância de plataforma/nível. */
   combinedCampaignMode?: boolean;
   /** Callback disparado quando uma receita manual é salva/removida. */
-  onManualRevenueChange?: () => void;
+  onManualRevenueChange?: (campaignId?: string, amount?: number) => void;
   /** Forçar exibição das colunas ROAS/Receita mesmo em goalMode LEADS (ex.: página /receita). */
   forceShowRevenue?: boolean;
 }) {
@@ -287,7 +287,7 @@ export function MarketingCampaignsOsTable({
     try {
       await upsertManualRevenue(row.externalId, row.channel, val);
       setRevToast("Receita offline atribuída com sucesso. ROAS recalculado.");
-      onManualRevenueChange?.();
+      onManualRevenueChange?.(row.externalId, val);
     } catch {
       setRevToast("Erro ao salvar receita manual.");
     } finally {

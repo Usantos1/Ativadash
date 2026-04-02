@@ -40,6 +40,7 @@ export const alertRuleCheckFrequencySchema = z.enum(["1h", "3h", "12h", "daily"]
 export const automationActionTypeSchema = z.enum([
   "NOTIFY_ONLY",
   "PAUSE_ASSET",
+  "ACTIVATE_ASSET",
   "INCREASE_BUDGET_20",
   "DECREASE_BUDGET_20",
 ]);
@@ -81,6 +82,12 @@ export const createAlertRuleSchema = z.object({
   routing: z.union([routingObjectSchema, z.null()]).optional(),
   evaluationTimeLocal: hhmmSchema,
   evaluationTimezone: z.string().trim().max(80).optional().nullable(),
+  /** Percentual para INCREASE/DECREASE (1–90). Omisso = 20. */
+  actionValue: z.number().finite().min(1).max(90).optional().nullable(),
+  /** Cooldown por ativo (minutos). Omisso = 1440 (24h). */
+  cooldownMinutes: z.number().int().min(5).max(10080).optional(),
+  /** Mínimo entre avaliações completas no worker (minutos). Null = só regras de janela legada. */
+  checkFrequencyMinutes: z.number().int().min(5).max(10080).optional().nullable(),
 });
 
 export const patchAlertRuleSchema = createAlertRuleSchema.partial();

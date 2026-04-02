@@ -12,6 +12,11 @@
 #   cd /ativadash && git checkout -- deploy.sh && git pull origin main && ./deploy.sh
 # (Descarta edições locais só nesse ficheiro; não use se tiveres customizações a preservar — use stash.)
 #
+# Motor de automação (regras Meta/Google): em backend/.env defina pelo menos
+#   AUTOMATION_WORKER_ENABLED=true
+#   AUTOMATION_WORKER_CRON=*/30 * * * *
+# Ver backend/.env.example para AUTOMATION_INTERNAL_SECRET e restantes.
+#
 set -euo pipefail
 
 # Raiz do repo = pasta onde está este script (ex.: /ativadash)

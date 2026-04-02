@@ -225,6 +225,7 @@ function actionTypeLabelPt(action: string | undefined): string {
   const a = (action ?? "NOTIFY_ONLY").trim();
   if (a === "NOTIFY_ONLY") return "Notificar";
   if (a === "PAUSE_ASSET") return "Pausar";
+  if (a === "ACTIVATE_ASSET") return "Ativar";
   if (a === "INCREASE_BUDGET_20") return "+20% orç.";
   if (a === "DECREASE_BUDGET_20") return "−20% orç.";
   return a;

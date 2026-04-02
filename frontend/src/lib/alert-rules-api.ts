@@ -20,6 +20,7 @@ export type AlertRuleCheckFrequency = "1h" | "3h" | "12h" | "daily";
 export type AlertRuleActionType =
   | "NOTIFY_ONLY"
   | "PAUSE_ASSET"
+  | "ACTIVATE_ASSET"
   | "INCREASE_BUDGET_20"
   | "DECREASE_BUDGET_20";
 
@@ -51,6 +52,11 @@ export type AlertRuleDto = {
   evaluationTimeLocal: string | null;
   evaluationTimezone: string | null;
   thresholdRef: string | null;
+  actionValue?: number | null;
+  cooldownMinutes?: number;
+  checkFrequencyMinutes?: number | null;
+  lastExecutedAt?: string | null;
+  lastEvaluationAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -71,6 +77,7 @@ export type CreateAlertRulePayload = {
   threshold: number;
   severity: AlertRuleSeverity;
   active?: boolean;
+  /** Silêncio UTC 0–23 (legado); use com cuidado junto da janela local. */
   muteStartHour?: number | null;
   muteEndHour?: number | null;
   appliesToChannel?: "meta" | "google" | "all";
@@ -85,6 +92,9 @@ export type CreateAlertRulePayload = {
   evaluationTimeLocal?: string | null;
   evaluationTimezone?: string | null;
   thresholdRef?: AlertRuleThresholdRef | null;
+  actionValue?: number | null;
+  cooldownMinutes?: number;
+  checkFrequencyMinutes?: number | null;
 };
 
 export async function createAlertRule(payload: CreateAlertRulePayload): Promise<AlertRuleDto> {

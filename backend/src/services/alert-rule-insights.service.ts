@@ -259,7 +259,7 @@ function channelGoalSnapshot(
   };
 }
 
-function resolveDynamicThreshold(
+export function resolveDynamicThreshold(
   rule: { thresholdRef: string | null; threshold: unknown },
   row: MarketingSettings | null,
   evaluatingChannel: RuleEvaluatingChannel
@@ -316,18 +316,18 @@ export type AutomationEntityMetricInput = {
 };
 
 /**
- * Avalia SE a regra dispara para uma entidade (mesma semântica que `appendCustomRuleAlerts` agregado).
- * Usado pelo worker de automação por campanha/conjunto/anúncio.
+ * Valor numérico da métrica da regra para a entidade (após filtros mínimos), ou null se não aplicável.
+ * Usado pelo motor de automação para mensagens e logs (mantém paridade com `entityMatchesAlertRule`).
  */
-export function entityMatchesAlertRule(
+export function getAutomationEntityMetricSnapshot(
   rule: AlertRule,
   settingsRow: MarketingSettings | null,
   scope: RuleEvaluatingChannel,
   periodKey: string,
   entity: AutomationEntityMetricInput
-): boolean {
-  if (!ruleMatchesEvalScope(rule.appliesToChannel, scope)) return false;
-  if (!passesTimeWindow(rule)) return false;
+): number | null {
+  if (!ruleMatchesEvalScope(rule.appliesToChannel, scope)) return null;
+  if (!passesTimeWindow(rule)) return null;
 
   const minSpend =
     settingsRow?.minSpendForAlertsBrl != null ? Number(settingsRow.minSpendForAlertsBrl) : null;
@@ -336,13 +336,13 @@ export function entityMatchesAlertRule(
   let value: number | null = null;
   switch (rule.metric) {
     case "cpa": {
-      if (minSpend != null && entity.spendBrl < minSpend) return false;
-      if (entity.resultsForCpa < minRes) return false;
+      if (minSpend != null && entity.spendBrl < minSpend) return null;
+      if (entity.resultsForCpa < minRes) return null;
       value = entity.spendBrl / entity.resultsForCpa;
       break;
     }
     case "roas": {
-      if (entity.spendBrl <= 0) return false;
+      if (entity.spendBrl <= 0) return null;
       value = entity.purchaseValueBrl / entity.spendBrl;
       break;
     }
@@ -357,15 +357,32 @@ export function entityMatchesAlertRule(
       break;
     }
     case "ctr": {
-      if (entity.impressions <= 0) return false;
+      if (entity.impressions <= 0) return null;
       value = (entity.clicks / entity.impressions) * 100;
       break;
     }
     default:
-      return false;
+      return null;
   }
 
-  if (value == null || !Number.isFinite(value)) return false;
+  if (value == null || !Number.isFinite(value)) return null;
+  if (rule.metric === "cpa") return Math.round(value * 100) / 100;
+  return value;
+}
+
+/**
+ * Avalia SE a regra dispara para uma entidade (mesma semântica que `appendCustomRuleAlerts` agregado).
+ * Usado pelo worker de automação por campanha/conjunto/anúncio.
+ */
+export function entityMatchesAlertRule(
+  rule: AlertRule,
+  settingsRow: MarketingSettings | null,
+  scope: RuleEvaluatingChannel,
+  periodKey: string,
+  entity: AutomationEntityMetricInput
+): boolean {
+  const value = getAutomationEntityMetricSnapshot(rule, settingsRow, scope, periodKey, entity);
+  if (value == null) return false;
 
   let v = value;
   const tResolved = resolveDynamicThreshold(rule, settingsRow, scope);

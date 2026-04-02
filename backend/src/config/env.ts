@@ -83,12 +83,16 @@ export const env = {
   /** Tentativas de login com falha (4xx/5xx) por IP; acertos não consomem o contador. */
   AUTH_LOGIN_RATE_LIMIT_MAX: parsePositiveInt(process.env.AUTH_LOGIN_RATE_LIMIT_MAX, 60),
   /**
-   * Motor autónomo: avalia regras com ação ≠ NOTIFY_ONLY e executa na Meta/Google.
-   * Requer integrações conectadas, plano com performanceAlerts + campaignWrite.
+   * Motor autónomo (node-cron, UTC): avalia `AlertRule` ativas, NOTIFY_ONLY, pausa/ativa/orçamento Meta & Google.
+   * Plano: `performanceAlerts`; mutações na API exigem `campaignWrite`.
    */
   AUTOMATION_WORKER_ENABLED: process.env.AUTOMATION_WORKER_ENABLED === "true",
-  /** Padrão 1 hora (ms). */
-  AUTOMATION_WORKER_INTERVAL_MS: parsePositiveInt(process.env.AUTOMATION_WORKER_INTERVAL_MS, 60 * 60 * 1000),
+  /** Expressão cron em UTC. Padrão no código: a cada 30 minutos (padrão node-cron de cinco campos). */
+  AUTOMATION_WORKER_CRON: (process.env.AUTOMATION_WORKER_CRON ?? "*/30 * * * *").trim(),
+  /**
+   * Legado: não é usado pelo `AutomationWorkerService` (agendamento via `AUTOMATION_WORKER_CRON`).
+   */
+  AUTOMATION_WORKER_INTERVAL_MS: parsePositiveInt(process.env.AUTOMATION_WORKER_INTERVAL_MS, 30 * 60 * 1000),
   /**
    * Se definido, `POST /api/internal/automation-tick` com header `X-Automation-Secret`
    * executa uma passagem do motor (útil com cron externo sem worker embutido).

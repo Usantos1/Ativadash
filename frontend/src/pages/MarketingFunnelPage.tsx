@@ -315,17 +315,33 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
     return Math.max(1, differenceInDays(b, a) + 1);
   }, [dateRange.startDate, dateRange.endDate]);
 
+  const { metaManualRevenue, googleManualRevenue, totalManualRevenue } = useMemo(() => {
+    let metaTotal = 0;
+    let googleTotal = 0;
+    for (const r of metaCampaignsFiltered) {
+      const mr = r.campaignId ? manualRevMap.get(r.campaignId) : undefined;
+      if (mr) metaTotal += mr;
+    }
+    for (const r of googleCampaignsFiltered) {
+      const mr = r.campaignId ? manualRevMap.get(r.campaignId) : undefined;
+      if (mr) googleTotal += mr;
+    }
+    return { metaManualRevenue: metaTotal, googleManualRevenue: googleTotal, totalManualRevenue: metaTotal + googleTotal };
+  }, [manualRevMap, metaCampaignsFiltered, googleCampaignsFiltered]);
+
   const googleSpendAgg = aggG.costMicros / 1_000_000;
   const metaLeadishAgg = aggM.leads + aggM.messagingConversationsStarted;
   const metaCplChannel =
     aggM.spend > 0 && metaLeadishAgg > 0 ? aggM.spend / metaLeadishAgg : null;
+  const metaRevenueWithManual = aggM.purchaseValue + metaManualRevenue;
   const metaRoasChannel =
-    aggM.spend > 0 && aggM.purchaseValue > 0 ? aggM.purchaseValue / aggM.spend : null;
+    aggM.spend > 0 && metaRevenueWithManual > 0 ? metaRevenueWithManual / aggM.spend : null;
   const googleCplChannel =
     googleSpendAgg > 0 && aggG.conversions > 0 ? googleSpendAgg / aggG.conversions : null;
+  const googleRevenueWithManual = (aggG.conversionsValue ?? 0) + googleManualRevenue;
   const googleRoasChannel =
-    googleSpendAgg > 0 && (aggG.conversionsValue ?? 0) > 0
-      ? (aggG.conversionsValue ?? 0) / googleSpendAgg
+    googleSpendAgg > 0 && googleRevenueWithManual > 0
+      ? googleRevenueWithManual / googleSpendAgg
       : null;
 
   const metaCtr = aggM.impressions > 0 ? (aggM.clicks / aggM.impressions) * 100 : null;
@@ -359,12 +375,13 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
     aggM.spend,
   ]);
 
+  const revenueWithManual = attributedRevenue + totalManualRevenue;
   const roasBlend =
-    filteredSpend > 0 && attributedRevenue > 0 ? attributedRevenue / filteredSpend : null;
+    filteredSpend > 0 && revenueWithManual > 0 ? revenueWithManual / filteredSpend : null;
   const cpaTrafego = leadsReais > 0 ? filteredSpend / leadsReais : 0;
   const totalPurchases = aggM.purchases + aggG.conversions;
   const ticketMedio =
-    totalPurchases > 0 && attributedRevenue > 0 ? attributedRevenue / totalPurchases : null;
+    totalPurchases > 0 && revenueWithManual > 0 ? revenueWithManual / totalPurchases : null;
   const cpaCompra =
     totalPurchases > 0 && filteredSpend > 0 ? filteredSpend / totalPurchases : null;
   const convRatePct = clicksT > 0 ? (leadsReais / clicksT) * 100 : null;
@@ -405,7 +422,8 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
       const impr = r.impressions;
       const clicks = r.clicks;
       const spend = r.spend;
-      const revenue = r.purchaseValue ?? 0;
+      const mr = r.campaignId ? manualRevMap.get(r.campaignId) ?? 0 : 0;
+      const revenue = (r.purchaseValue ?? 0) + mr;
       out.push({
         channel: "Meta",
         name: r.campaignName,
@@ -426,7 +444,8 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
       const leads = r.conversions;
       const impr = r.impressions;
       const clicks = r.clicks;
-      const revenue = r.conversionsValue ?? 0;
+      const mr = r.campaignId ? manualRevMap.get(r.campaignId) ?? 0 : 0;
+      const revenue = (r.conversionsValue ?? 0) + mr;
       out.push({
         channel: "Google",
         name: r.campaignName,
@@ -443,7 +462,7 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
       });
     }
     return out;
-  }, [metaCampaignsFiltered, googleCampaignsFiltered]);
+  }, [metaCampaignsFiltered, googleCampaignsFiltered, manualRevMap]);
 
   const rankCtr = useMemo(
     () =>
@@ -892,7 +911,7 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                 <KpiCardPremium
                   variant="primary"
                   label="Receita"
-                  value={attributedRevenue > 0 ? formatSpend(attributedRevenue) : "—"}
+                  value={revenueWithManual > 0 ? formatSpend(revenueWithManual) : "—"}
                   hideSource
                   loading={kpiLoading}
                 />
@@ -922,7 +941,7 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
             )}
           </div>
 
-          {variant === "receita" && attributedRevenue <= 0 ? (
+          {variant === "receita" && revenueWithManual <= 0 ? (
             <div
               className={cn(
                 "rounded-2xl border px-5 py-6",
@@ -1066,7 +1085,7 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                               : "mid"
                           : "mid"
                       }
-                      revenue={aggM.purchaseValue}
+                      revenue={metaRevenueWithManual}
                       roas={metaRoasChannel}
                       spend={aggM.spend}
                       mixPct={filteredSpend > 0 ? (aggM.spend / filteredSpend) * 100 : null}
@@ -1086,7 +1105,7 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                               : "mid"
                           : "mid"
                       }
-                      revenue={aggG.conversionsValue ?? 0}
+                      revenue={googleRevenueWithManual}
                       roas={googleRoasChannel}
                       spend={googleSpendAgg}
                       mixPct={filteredSpend > 0 ? (googleSpendAgg / filteredSpend) * 100 : null}
@@ -1363,7 +1382,16 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                   combinedCampaignMode
                   hasMeta={hasMeta}
                   hasGoogle={hasGoogle}
-                  onManualRevenueChange={reloadManualRevenues}
+                  onManualRevenueChange={(campaignId, amount) => {
+                    if (campaignId != null && amount != null) {
+                      setManualRevMap((prev) => {
+                        const next = new Map(prev);
+                        next.set(campaignId, amount);
+                        return next;
+                      });
+                    }
+                    reloadManualRevenues();
+                  }}
                   forceShowRevenue={variant === "receita"}
                 />
               ) : (

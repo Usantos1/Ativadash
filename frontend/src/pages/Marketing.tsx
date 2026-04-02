@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { differenceInDays, parseISO } from "date-fns";
 import { BarChart3, FileDown, Mail, RefreshCw, Share2, CalendarRange, Loader2 } from "lucide-react";
@@ -24,6 +24,7 @@ import {
 } from "@/components/marketing/MarketingCockpit";
 import { AppMainRouteBody } from "@/components/layout/AppMainRouteBody";
 import { cn } from "@/lib/utils";
+import { formatSpend, formatNumber } from "@/lib/metrics-format";
 import type {
   GoogleAdsAdGroupRow,
   GoogleAdsAdRow,
@@ -56,7 +57,7 @@ import {
   patchMarketingMetaCampaignStatus,
 } from "@/lib/marketing-contract-api";
 import { appendCampaignActionLog } from "@/lib/campaign-local-actions";
-import { downloadScreenshotPdf } from "@/lib/export-pdf";
+import { downloadPainelAdsReportPdf, type PainelAdsKpiRow, type PainelAdsCampaignPdfRow } from "@/lib/export-pdf";
 import { openMailtoWithReportNote } from "@/lib/export-csv";
 import { fetchManualRevenues } from "@/lib/manual-revenue-api";
 import { canUserMutateMarketingAds } from "@/lib/marketing-ads-permissions";
@@ -77,7 +78,6 @@ export function Marketing() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const ws = user?.organization?.name?.trim();
-  const pdfAreaRef = useRef<HTMLDivElement>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
   usePageTitle(formatPageTitle(ws ? ["Painel ADS", ws] : ["Painel ADS"]));
   const {
@@ -324,10 +324,26 @@ export function Marketing() {
   );
 
   const leadsReais = aggG.conversions + aggM.leads + aggM.messagingConversationsStarted;
-  const attributedRevenue = aggG.conversionsValue + aggM.purchaseValue;
+  const attributedRevenueApi = aggG.conversionsValue + aggM.purchaseValue;
   const impressionsT = aggG.impressions + aggM.impressions;
   const clicksT = aggG.clicks + aggM.clicks;
   const ctrT = impressionsT > 0 ? (clicksT / impressionsT) * 100 : null;
+
+  const { metaManualRevenue, googleManualRevenue, totalManualRevenue } = useMemo(() => {
+    let metaTotal = 0;
+    let googleTotal = 0;
+    for (const r of metaCampaignsFiltered) {
+      const mr = r.campaignId ? manualRevMap.get(r.campaignId) : undefined;
+      if (mr) metaTotal += mr;
+    }
+    for (const r of googleCampaignsFiltered) {
+      const mr = r.campaignId ? manualRevMap.get(r.campaignId) : undefined;
+      if (mr) googleTotal += mr;
+    }
+    return { metaManualRevenue: metaTotal, googleManualRevenue: googleTotal, totalManualRevenue: metaTotal + googleTotal };
+  }, [manualRevMap, metaCampaignsFiltered, googleCampaignsFiltered]);
+
+  const attributedRevenue = attributedRevenueApi + totalManualRevenue;
   const roasBlend = filteredSpend > 0 && attributedRevenue > 0 ? attributedRevenue / filteredSpend : null;
   const goalCtx = useMemo(() => {
     if (!settings) return defaultMarketingGoalContext();
@@ -603,15 +619,17 @@ export function Marketing() {
   const metaLeadishAgg = aggM.leads + aggM.messagingConversationsStarted;
   const metaCplChannel =
     aggM.spend > 0 && metaLeadishAgg > 0 ? aggM.spend / metaLeadishAgg : null;
+  const metaRevenueWithManual = aggM.purchaseValue + metaManualRevenue;
   const metaRoasChannel =
-    aggM.spend > 0 && aggM.purchaseValue > 0 ? aggM.purchaseValue / aggM.spend : null;
+    aggM.spend > 0 && metaRevenueWithManual > 0 ? metaRevenueWithManual / aggM.spend : null;
 
   const googleSpendAgg = aggG.costMicros / 1_000_000;
   const googleCplChannel =
     googleSpendAgg > 0 && aggG.conversions > 0 ? googleSpendAgg / aggG.conversions : null;
+  const googleRevenueWithManual = (aggG.conversionsValue ?? 0) + googleManualRevenue;
   const googleRoasChannel =
-    googleSpendAgg > 0 && (aggG.conversionsValue ?? 0) > 0
-      ? (aggG.conversionsValue ?? 0) / googleSpendAgg
+    googleSpendAgg > 0 && googleRevenueWithManual > 0
+      ? googleRevenueWithManual / googleSpendAgg
       : null;
 
   const ctrLowCampaigns = useMemo(
@@ -712,7 +730,7 @@ export function Marketing() {
 
   return (
     <AppMainRouteBody className="space-y-6">
-      <div ref={pdfAreaRef} id="pdf-export-area">
+      <div>
       <PageHeaderPremium
         eyebrow="ADS"
         title="Painel ADS"
@@ -802,12 +820,128 @@ export function Marketing() {
                   className="h-9 rounded-lg border-border/70 bg-background/80 shadow-sm"
                   disabled={!dataHealthy || pdfBusy}
                   onClick={() => {
-                    if (!pdfAreaRef.current) return;
                     setPdfBusy(true);
-                    void downloadScreenshotPdf(
-                      pdfAreaRef.current,
-                      `painel-ads-${dateRange.startDate}.pdf`
-                    ).finally(() => setPdfBusy(false));
+                    try {
+                      const fmtS = (v: number) => formatSpend(v);
+                      const fmtN = (v: number) => formatNumber(Math.round(v));
+                      const fmtPct = (v: number | null) => v != null ? `${v.toFixed(2)}%` : "—";
+                      const fmtRoas = (v: number | null) => v != null ? `${v.toFixed(2)}x` : "—";
+
+                      const goalLabel =
+                        goalMode === "SALES" ? "Vendas / ROAS"
+                          : goalMode === "HYBRID" ? "Híbrido (leads + vendas)"
+                          : "Captação de leads";
+
+                      const consolidated: PainelAdsKpiRow[] = [
+                        { label: "Investimento total", value: fmtS(filteredSpend) },
+                        { label: "Leads / conversões", value: fmtN(leadsReais) },
+                        { label: "CPL médio", value: cpaTrafego > 0 ? fmtS(cpaTrafego) : "—" },
+                        { label: "Impressões", value: fmtN(impressionsT) },
+                        { label: "Cliques", value: fmtN(clicksT) },
+                        { label: "CTR", value: fmtPct(ctrT) },
+                      ];
+                      if (goalMode !== "LEADS") {
+                        consolidated.push(
+                          { label: "Receita atribuída", value: attributedRevenue > 0 ? fmtS(attributedRevenue) : "—" },
+                          { label: "ROAS", value: fmtRoas(roasBlend) },
+                        );
+                      }
+
+                      const metaSection = hasMeta && metaMetrics?.ok ? {
+                        title: "Meta Ads",
+                        rows: [
+                          { label: "Investimento", value: fmtS(aggM.spend) },
+                          { label: "Leads", value: fmtN(aggM.leads + aggM.messagingConversationsStarted) },
+                          { label: "CPL", value: metaCplChannel != null ? fmtS(metaCplChannel) : "—" },
+                          { label: "Impressões", value: fmtN(aggM.impressions) },
+                          { label: "Cliques", value: fmtN(aggM.clicks) },
+                          ...(goalMode !== "LEADS" ? [
+                            { label: "Receita", value: metaRevenueWithManual > 0 ? fmtS(metaRevenueWithManual) : "—" },
+                            { label: "ROAS", value: fmtRoas(metaRoasChannel) },
+                          ] : []),
+                        ] as PainelAdsKpiRow[],
+                      } : undefined;
+
+                      const googleSection = hasGoogle && metrics?.ok ? {
+                        title: "Google Ads",
+                        rows: [
+                          { label: "Investimento", value: fmtS(googleSpendAgg) },
+                          { label: "Conversões", value: fmtN(aggG.conversions) },
+                          { label: "CPA", value: googleCplChannel != null ? fmtS(googleCplChannel) : "—" },
+                          { label: "Impressões", value: fmtN(aggG.impressions) },
+                          { label: "Cliques", value: fmtN(aggG.clicks) },
+                          ...(goalMode !== "LEADS" ? [
+                            { label: "Receita", value: googleRevenueWithManual > 0 ? fmtS(googleRevenueWithManual) : "—" },
+                            { label: "ROAS", value: fmtRoas(googleRoasChannel) },
+                          ] : []),
+                        ] as PainelAdsKpiRow[],
+                      } : undefined;
+
+                      const trend = mergedChartData.map((p) => ({
+                        label: p.date,
+                        gasto: p.gasto,
+                        leads: p.leads,
+                        isoDate: p.isoDate,
+                      }));
+
+                      const funnelPdf = funnelStripSteps.map((s) => ({
+                        key: s.key,
+                        title: s.title,
+                        volume: s.volume,
+                        volumeLabel: fmtN(s.volume),
+                        rateLabel: s.ratePct != null ? `${s.ratePct.toFixed(1)}%` : null,
+                      }));
+
+                      const allCampaigns = [
+                        ...metaCampaignsFiltered.map((r) => ({
+                          channel: "Meta",
+                          name: r.campaignName,
+                          spend: r.spend,
+                          impressions: r.impressions,
+                          clicks: r.clicks,
+                          leads: r.leads + (r.messagingConversationsStarted ?? 0),
+                        })),
+                        ...googleCampaignsFiltered.map((r) => ({
+                          channel: "Google",
+                          name: r.campaignName,
+                          spend: r.costMicros / 1_000_000,
+                          impressions: r.impressions,
+                          clicks: r.clicks,
+                          leads: r.conversions,
+                        })),
+                      ]
+                        .sort((a, b) => b.spend - a.spend)
+                        .slice(0, 15);
+
+                      const topCampaigns: PainelAdsCampaignPdfRow[] = allCampaigns.map((c) => ({
+                        channel: c.channel,
+                        name: c.name,
+                        gasto: fmtS(c.spend),
+                        impressoes: fmtN(c.impressions),
+                        cliques: fmtN(c.clicks),
+                        ctr: c.impressions > 0 ? `${((c.clicks / c.impressions) * 100).toFixed(2)}%` : "—",
+                        cpc: c.clicks > 0 ? fmtS(c.spend / c.clicks) : "—",
+                        leads: fmtN(c.leads),
+                      }));
+
+                      downloadPainelAdsReportPdf({
+                        filename: `painel-ads-${dateRange.startDate}.pdf`,
+                        workspaceName: ws || "Workspace",
+                        periodLabel: dateRangeLabel,
+                        startDate: dateRange.startDate,
+                        endDate: dateRange.endDate,
+                        objectiveLabel: goalLabel,
+                        consolidated,
+                        metaSection,
+                        googleSection,
+                        funnelSteps: funnelPdf,
+                        funnelWorstKey,
+                        trend,
+                        topCampaigns,
+                      });
+                    } finally {
+                      setPdfBusy(false);
+                    }
                   }}
                 >
                   {pdfBusy ? (
@@ -947,7 +1081,7 @@ export function Marketing() {
                                   : "mid"
                               : "mid"
                           }
-                          revenue={aggM.purchaseValue}
+                          revenue={metaRevenueWithManual}
                           roas={metaRoasChannel}
                           spend={aggM.spend}
                           mixPct={
@@ -971,7 +1105,7 @@ export function Marketing() {
                                   : "mid"
                               : "mid"
                           }
-                          revenue={aggG.conversionsValue ?? 0}
+                          revenue={googleRevenueWithManual}
                           roas={googleRoasChannel}
                           spend={googleSpendAgg}
                           mixPct={
@@ -1082,7 +1216,16 @@ export function Marketing() {
                   onLevelChange={setOsLevel}
                   hasMeta={hasMeta}
                   hasGoogle={hasGoogle}
-                  onManualRevenueChange={reloadManualRevenues}
+                  onManualRevenueChange={(campaignId, amount) => {
+                    if (campaignId != null && amount != null) {
+                      setManualRevMap((prev) => {
+                        const next = new Map(prev);
+                        next.set(campaignId, amount);
+                        return next;
+                      });
+                    }
+                    reloadManualRevenues();
+                  }}
                 />
               ) : (
                 <p className="py-10 text-center text-sm text-muted-foreground">
@@ -1109,7 +1252,7 @@ export function Marketing() {
             )}
         </div>
       )}
-      </div>{/* /pdf-export-area */}
+      </div>
 
       <Dialog
         open={budgetDialogOpen}

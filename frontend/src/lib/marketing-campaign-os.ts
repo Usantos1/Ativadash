@@ -133,19 +133,23 @@ export function computeOsSignals(
     }
   }
 
-  if (mode === "SALES" || (mode === "HYBRID" && row.sales > 0 && roas != null)) {
+  const hasRevenue = row.revenue > 0;
+  if (mode === "SALES" || (mode === "HYBRID" && hasRevenue && roas != null)) {
     const tgtR = opts.targetRoas;
-    if (roas != null && tgtR != null && row.sales > 0) {
+    if (roas != null && tgtR != null && hasRevenue) {
       if (roas >= tgtR * 1.05) {
         smart = "escalar";
         suggested = "ROAS forte — escalar investimento";
         score = Math.max(score, 80);
         upliftHint = `+20% orçamento → revisar estoque de conversões`;
+        lossEstimateBrl = null;
       } else if (roas <= tgtR * 0.82) {
         smart = "pausar";
         suggested = "Pausar ou cortar orçamento (ROAS fraco)";
         score = Math.min(score, 32);
         lossEstimateBrl = Math.max(0, row.spend - row.revenue / Math.max(tgtR, 0.01));
+      } else {
+        lossEstimateBrl = null;
       }
     }
   }

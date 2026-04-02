@@ -39,6 +39,11 @@ export type AlertRuleDto = {
   evaluationTimeLocal: string | null;
   evaluationTimezone: string | null;
   thresholdRef: string | null;
+  actionValue: number | null;
+  cooldownMinutes: number;
+  checkFrequencyMinutes: number | null;
+  lastExecutedAt: string | null;
+  lastEvaluationAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -77,6 +82,11 @@ function toDto(row: AlertRule): AlertRuleDto {
     evaluationTimeLocal: row.evaluationTimeLocal ?? null,
     evaluationTimezone: row.evaluationTimezone ?? null,
     thresholdRef: row.thresholdRef?.trim() || null,
+    actionValue: row.actionValue != null ? decToNumber(row.actionValue) : null,
+    cooldownMinutes: row.cooldownMinutes ?? 1440,
+    checkFrequencyMinutes: row.checkFrequencyMinutes ?? null,
+    lastExecutedAt: row.lastExecutedAt?.toISOString() ?? null,
+    lastEvaluationAt: row.lastEvaluationAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -215,6 +225,11 @@ export async function createAlertRule(
               input.routing === null ? Prisma.JsonNull : (input.routing as Prisma.InputJsonValue),
           }
         : {}),
+      ...(input.actionValue !== undefined ? { actionValue: input.actionValue } : {}),
+      ...(input.cooldownMinutes !== undefined ? { cooldownMinutes: input.cooldownMinutes } : {}),
+      ...(input.checkFrequencyMinutes !== undefined
+        ? { checkFrequencyMinutes: input.checkFrequencyMinutes }
+        : {}),
     },
   });
   return toDto(row);
@@ -268,6 +283,13 @@ export async function updateAlertRule(
   }
   if (input.actionWindowEndLocal !== undefined) {
     data.actionWindowEndLocal = input.actionWindowEndLocal?.trim() || null;
+  }
+  if (input.actionValue !== undefined) {
+    data.actionValue = input.actionValue === null ? null : input.actionValue;
+  }
+  if (input.cooldownMinutes !== undefined) data.cooldownMinutes = input.cooldownMinutes;
+  if (input.checkFrequencyMinutes !== undefined) {
+    data.checkFrequencyMinutes = input.checkFrequencyMinutes;
   }
 
   const row = await prisma.alertRule.update({
