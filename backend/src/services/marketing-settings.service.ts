@@ -854,19 +854,6 @@ export async function maybeSendAtivaCrmAlerts(
     });
     if (passed.length === 0) return null;
 
-    const nextMap = { ...lastMap };
-    for (const a of passed) {
-      nextMap[alertWhatsappDedupeKey(a)] = new Date().toISOString();
-    }
-
-    await tx.marketingSettings.update({
-      where: { organizationId },
-      data: {
-        whatsappLastOutboundByCode: nextMap,
-        lastAtivaCrmAlertSentAt: new Date(),
-      },
-    });
-
     const byPhone = new Map<string, InsightAlert[]>();
     for (const a of passed) {
       const dests = await destinationsForInsightAlert(tx, organizationId, row, a);
@@ -882,6 +869,26 @@ export async function maybeSendAtivaCrmAlerts(
       }
     }
 
+    if (byPhone.size === 0) {
+      console.warn(
+        `[Ativa CRM] org=${organizationId}: há alerta(s) elegível(is) mas nenhum destino WhatsApp (telefone na integração Ativa CRM, routing da regra, números nos membros/cargos, ou janela "receber alertas" do membro).`
+      );
+      return null;
+    }
+
+    const nextMap = { ...lastMap };
+    for (const a of passed) {
+      nextMap[alertWhatsappDedupeKey(a)] = new Date().toISOString();
+    }
+
+    await tx.marketingSettings.update({
+      where: { organizationId },
+      data: {
+        whatsappLastOutboundByCode: nextMap,
+        lastAtivaCrmAlertSentAt: new Date(),
+      },
+    });
+
     const templates = parseMessageTemplatesJson(row.whatsappMessageTemplates);
     return { byPhone, token, templates } satisfies TxOut;
   });
@@ -889,7 +896,6 @@ export async function maybeSendAtivaCrmAlerts(
   if (!outcome) return;
 
   const { byPhone } = outcome;
-  if (byPhone.size === 0) return;
 
   for (const [phone, list] of byPhone) {
     const header = `*Ativa Dash* — Alertas (${result.periodLabel})\n\n`;
