@@ -129,6 +129,11 @@ export function RuleBuilderSheet({
                 />
               </div>
               <p className="text-[10px] text-muted-foreground">Fuso: {tz}.</p>
+              <p className="text-[10px] text-amber-800 dark:text-amber-200/90">
+                Com <strong>das / às</strong> preenchidos, o motor <strong>só corre esta regra dentro desta janela</strong> (horário
+                local). Fora disso não há avaliação nem WhatsApp. Para <strong>24 horas</strong>, limpe os dois campos de hora e clique
+                em Salvar automações.
+              </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">

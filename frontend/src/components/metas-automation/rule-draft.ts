@@ -510,7 +510,11 @@ export function formatRuleCardSummary(r: RuleDraft): string {
         ? "(faixa CPL)"
         : r.thresholdRef
           ? "var. metas"
-          : `R$ ${r.thresholdStr || "—"}`;
+          : r.metric === "roas"
+            ? `${r.thresholdStr || "—"} (ROAS)`
+            : r.metric === "ctr"
+              ? `${r.thresholdStr || "—"}%`
+              : `R$ ${r.thresholdStr || "—"}`;
   const act = ACTION_OPTIONS.find((a) => a.value === r.actionType)?.label ?? r.actionType;
   const cdH = Math.max(1, Math.round((parseInt(r.cooldownMinutesStr, 10) || 1440) / 60));
   return `[${ch}] SE ${metric} ${opLab} ${thr} → ${act} · Cooldown ${cdH}h`;
