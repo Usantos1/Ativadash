@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { MARKETING_SITE_ORIGIN } from "@/lib/marketing-site";
 
 /** Página de referência para o campo "User Data Deletion" em apps Meta / políticas de privacidade. */
 export function DataDeletionPage() {
@@ -27,9 +28,9 @@ export function DataDeletionPage() {
           Política de Privacidade
         </Link>
         {" · "}
-        <Link to="/" className="font-semibold text-primary underline-offset-4 hover:underline">
+        <a href={MARKETING_SITE_ORIGIN} className="font-semibold text-primary underline-offset-4 hover:underline">
           Início
-        </Link>
+        </a>
       </p>
     </article>
   );

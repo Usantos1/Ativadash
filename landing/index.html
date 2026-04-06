@@ -3,99 +3,563 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Ativa Dash - Dashboard de marketing e performance para agências e lançadores. Google Ads, métricas e relatórios em um só lugar." />
-    <title>Ativa Dash - Dashboard para agências e lançadores</title>
+    <meta
+      name="description"
+      content="Ativa Dash — painel de marketing e performance: Meta Ads, Google Ads, funil, metas, alertas e relatórios. Para agências e times de growth."
+    />
+    <title>Ativa Dash — Painel de marketing e performance</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <style>
-      * { box-sizing: border-box; margin: 0; padding: 0; }
+      :root {
+        --bg: #faf8ff;
+        --card: #ffffff;
+        --text: #0f172a;
+        --muted: #64748b;
+        --primary: #6d28d9;
+        --primary-hover: #5b21b6;
+        --border: rgba(15, 23, 42, 0.08);
+        --radius: 1rem;
+        --max: 64rem;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
       body {
-        font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
-        background: linear-gradient(180deg, #f8f7fc 0%, #fff 60%);
-        color: #1e293b;
+        font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+        background: linear-gradient(180deg, var(--bg) 0%, #fff 45%);
+        color: var(--text);
         min-height: 100vh;
+        line-height: 1.5;
+      }
+      a {
+        color: var(--primary);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      .wrap {
+        max-width: var(--max);
+        margin: 0 auto;
+        padding: 0 1rem;
+      }
+      /* Header */
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        border-bottom: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(10px);
+      }
+      .header-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        min-height: 3.5rem;
+        max-width: var(--max);
+        margin: 0 auto;
+        padding: 0 1rem;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-weight: 800;
+        color: var(--text);
+        text-decoration: none;
+      }
+      .brand:hover {
+        text-decoration: none;
+      }
+      .brand img {
+        height: 2.25rem;
+        width: auto;
+        display: block;
+      }
+      .nav {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.25rem 0.75rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+      }
+      .nav a {
+        color: var(--muted);
+        padding: 0.35rem 0.5rem;
+        border-radius: 0.5rem;
+        text-decoration: none;
+      }
+      .nav a:hover {
+        background: rgba(15, 23, 42, 0.06);
+        color: var(--text);
+        text-decoration: none;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 0.875rem;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        border: 1px solid var(--border);
+        background: var(--card);
+        color: var(--text);
+        text-decoration: none;
+        transition: background 0.2s, border-color 0.2s;
+      }
+      .btn:hover {
+        background: rgba(109, 40, 217, 0.06);
+        border-color: rgba(109, 40, 217, 0.25);
+        text-decoration: none;
+      }
+      .btn-primary {
+        background: var(--primary);
+        color: #fff;
+        border-color: var(--primary);
+      }
+      .btn-primary:hover {
+        background: var(--primary-hover);
+        border-color: var(--primary-hover);
+        color: #fff;
+      }
+      /* Hero */
+      .hero {
+        padding: 2.5rem 0 3rem;
+      }
+      @media (min-width: 640px) {
+        .hero {
+          padding: 3rem 0 4rem;
+        }
+      }
+      .hero-card {
+        position: relative;
+        overflow: hidden;
+        border-radius: 1.5rem;
+        border: 1px solid rgba(109, 40, 217, 0.2);
+        background: linear-gradient(135deg, rgba(109, 40, 217, 0.08) 0%, var(--card) 55%);
+        padding: 2rem 1.5rem;
+      }
+      @media (min-width: 640px) {
+        .hero-card {
+          padding: 3rem 2.5rem;
+        }
+      }
+      .eyebrow {
+        font-size: 0.6875rem;
+        font-weight: 800;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--primary);
+      }
+      .hero h1 {
+        margin-top: 0.75rem;
+        font-size: clamp(1.75rem, 5vw, 3rem);
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1.15;
+        max-width: 42rem;
+      }
+      .hero p.lead {
+        margin-top: 1.25rem;
+        font-size: 1rem;
+        color: var(--muted);
+        max-width: 36rem;
+      }
+      @media (min-width: 640px) {
+        .hero p.lead {
+          font-size: 1.125rem;
+        }
+      }
+      .hero-actions {
+        margin-top: 2rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+      .hero-actions .btn-primary {
+        padding: 0.75rem 1.75rem;
+        font-size: 1rem;
+      }
+      /* Sections */
+      section.block {
+        padding: 2.5rem 0;
+      }
+      .section-title {
+        text-align: center;
+        font-size: clamp(1.375rem, 3vw, 1.875rem);
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+      .section-sub {
+        text-align: center;
+        margin: 0.75rem auto 0;
+        max-width: 36rem;
+        font-size: 0.9375rem;
+        color: var(--muted);
+      }
+      .grid {
+        display: grid;
+        gap: 1rem;
+        margin-top: 2.5rem;
+      }
+      @media (min-width: 640px) {
+        .grid.cols-2 {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      @media (min-width: 1024px) {
+        .grid.cols-3 {
+          grid-template-columns: repeat(3, 1fr);
+        }
+      }
+      .card {
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.9);
+        padding: 1.5rem;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+      }
+      .card h3 {
+        font-size: 1.0625rem;
+        font-weight: 700;
+        margin-top: 0.75rem;
+      }
+      .card p {
+        margin-top: 0.5rem;
+        font-size: 0.875rem;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+      .icon {
+        width: 2.75rem;
+        height: 2.75rem;
+        border-radius: 0.75rem;
+        background: rgba(109, 40, 217, 0.1);
+        color: var(--primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.125rem;
+        font-weight: 700;
+      }
+      .band {
+        margin-top: 2.5rem;
+        border-radius: 1.5rem;
+        border: 1px solid var(--border);
+        background: rgba(15, 23, 42, 0.04);
+        padding: 2rem 1.5rem;
+      }
+      @media (min-width: 1024px) {
+        .band-inner {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 2rem;
+        }
+      }
+      .tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 1rem;
+      }
+      @media (min-width: 1024px) {
+        .tags {
+          margin-top: 0;
+        }
+      }
+      .tag {
+        font-size: 0.8125rem;
+        font-weight: 600;
+        padding: 0.5rem 1rem;
+        border-radius: 9999px;
+        border: 1px solid var(--border);
+        background: var(--card);
+      }
+      .cta-box {
+        margin-top: 2.5rem;
+        text-align: center;
+        border-radius: 1.5rem;
+        border: 1px solid rgba(109, 40, 217, 0.25);
+        background: rgba(109, 40, 217, 0.06);
+        padding: 2.5rem 1.5rem;
+      }
+      .cta-box h2 {
+        font-size: clamp(1.25rem, 3vw, 1.75rem);
+        font-weight: 800;
+      }
+      .cta-box p {
+        margin-top: 0.75rem;
+        font-size: 0.9375rem;
+        color: var(--muted);
+        max-width: 28rem;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .cta-box .btn-primary {
+        margin-top: 1.5rem;
+        padding: 0.875rem 2rem;
+        font-size: 1rem;
+      }
+      .footnote {
+        margin-top: 1rem;
+        font-size: 0.75rem;
+        color: var(--muted);
+      }
+      footer {
+        border-top: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.6);
+        padding: 1.5rem 0;
+        margin-top: 2rem;
+        font-size: 0.875rem;
+        color: var(--muted);
+      }
+      .footer-inner {
+        max-width: var(--max);
+        margin: 0 auto;
+        padding: 0 1rem;
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
-        padding: 2rem 1rem;
+        gap: 1rem;
         text-align: center;
       }
-      .logo {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        margin-bottom: 1.5rem;
+      @media (min-width: 640px) {
+        .footer-inner {
+          flex-direction: row;
+          justify-content: space-between;
+          text-align: left;
+        }
       }
-      .logo img { height: 48px; width: auto; display: block; }
-      h1 {
-        font-size: clamp(1.75rem, 5vw, 2.25rem);
-        font-weight: 700;
-        color: #0f172a;
-        margin-bottom: 0.75rem;
-        line-height: 1.2;
+      .footer-links {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.75rem 1.25rem;
       }
-      .tagline {
-        font-size: 1.125rem;
-        color: #64748b;
-        max-width: 420px;
-        margin: 0 auto 2rem;
-        line-height: 1.5;
-      }
-      .cta {
-        display: inline-block;
-        background: #6d28d9;
-        color: #fff;
+      .footer-links a {
+        color: var(--muted);
         text-decoration: none;
-        font-weight: 600;
-        font-size: 1rem;
-        padding: 0.875rem 1.75rem;
-        border-radius: 0.5rem;
-        transition: background 0.2s;
       }
-      .cta:hover { background: #5b21b6; }
-      .cta-outline {
-        display: inline-block;
+      .footer-links a:hover {
+        color: var(--text);
+        text-decoration: underline;
+      }
+      .three-col {
+        display: grid;
+        gap: 1rem;
+        margin-top: 2rem;
+      }
+      @media (min-width: 768px) {
+        .three-col {
+          grid-template-columns: repeat(3, 1fr);
+        }
+      }
+      .mini {
+        text-align: center;
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        background: var(--card);
+        padding: 1.5rem;
+      }
+      .mini strong {
+        display: block;
         margin-top: 0.75rem;
-        color: #6d28d9;
-        text-decoration: none;
-        font-weight: 600;
-        font-size: 0.9375rem;
-        padding: 0.75rem 1.5rem;
-        border: 2px solid #6d28d9;
-        border-radius: 0.5rem;
-        transition: background 0.2s, color 0.2s;
+        font-size: 1rem;
       }
-      .cta-outline:hover { background: #6d28d9; color: #fff; }
-      .footer {
-        margin-top: 3rem;
-        font-size: 0.875rem;
-        color: #94a3b8;
+      .mini span {
+        display: block;
+        margin-top: 0.5rem;
+        font-size: 0.75rem;
+        color: var(--muted);
       }
-      .footer a { color: #6d28d9; text-decoration: none; }
-      .footer a:hover { text-decoration: underline; }
     </style>
   </head>
   <body>
-    <div class="logo">
-      <img src="logo-ativa-dash.png" alt="Ativa Dash - Analytics &amp; Performance" />
-    </div>
-    <h1>Dashboard de marketing e performance</h1>
-    <p class="tagline">Para agências e lançadores. Conecte o Google Ads e veja métricas, campanhas e relatórios em um só lugar.</p>
-    <a href="https://app.ativadash.com/login" class="cta">Entrar no app</a>
-    <div>
-      <a href="https://app.ativadash.com/produto" class="cta-outline">Ver página do produto</a>
-    </div>
-    <p class="footer">
-      <a href="https://app.ativadash.com/login">app.ativadash.com</a> · Analytics &amp; performance
-    </p>
-    <p class="footer" style="margin-top: 1rem; max-width: 28rem; line-height: 1.5">
-      <a href="politica-privacidade/">Política de Privacidade</a>
-      ·
-      <a href="termos-de-servico/">Termos de Serviço</a>
-      ·
-      <a href="exclusao-dados/">Exclusão de dados</a>
-    </p>
+    <header>
+      <div class="header-inner">
+        <a class="brand" href="/" aria-current="page">
+          <img src="logo-ativa-dash.png" alt="Ativa Dash — Analytics &amp; performance" />
+        </a>
+        <nav class="nav" aria-label="Principal">
+          <a href="politica-privacidade/">Privacidade</a>
+          <a href="termos-de-servico/">Termos</a>
+          <a class="btn btn-primary" href="https://app.ativadash.com/login">Entrar</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="wrap hero">
+        <div class="hero-card">
+          <p class="eyebrow">Plataforma</p>
+          <h1>Tudo o que a sua operação de tráfego precisa num só lugar</h1>
+          <p class="lead">
+            O Ativa Dash foi desenhado para gestores de tráfego, agências e times de growth que conectam
+            <strong> Meta Ads</strong>, <strong> Google Ads</strong> e operações de CRM — com metas, alertas e relatórios
+            prontos para decisão, não para planilhas soltas.
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="https://app.ativadash.com/login">Entrar no painel</a>
+          </div>
+        </div>
+      </div>
+
+      <section class="block wrap" aria-labelledby="sec-ganha">
+        <h2 id="sec-ganha" class="section-title">O que você ganha</h2>
+        <p class="section-sub">Módulos que conversam entre si: do investimento ao ROAS, do funil ao WhatsApp.</p>
+        <div class="grid cols-2 cols-3">
+          <div class="card">
+            <div class="icon">📈</div>
+            <h3>Painel ADS &amp; cockpit</h3>
+            <p>
+              Visão consolidada de gasto, leads, CPL, CTR, canais Meta/Google e status da conta — com insights e fila de
+              ações sugeridas.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">🥧</div>
+            <h3>Funil e jornadas</h3>
+            <p>
+              Impressões, cliques, LPV e conversões no período; identificação da etapa com maior perda para priorizar
+              otimização.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">💰</div>
+            <h3>Receita &amp; ROAS reais</h3>
+            <p>
+              Quando a venda acontece fora das plataformas, atribua receita manualmente por campanha e recalcule o ROAS
+              automaticamente.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">🎯</div>
+            <h3>Automação e metas</h3>
+            <p>
+              Metas globais, regras por canal, alertas customizados e histórico de execuções — transparência para o time
+              e para o cliente.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">🔔</div>
+            <h3>Alertas e WhatsApp</h3>
+            <p>
+              Integração opcional com fluxos de notificação para não perder pico de CPA, queda de ROAS ou eventos
+              críticos.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">🔗</div>
+            <h3>Links compartilháveis</h3>
+            <p>
+              Gere links somente leitura do painel para clientes ou stakeholders — período fixo, sem login nas redes.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="block wrap" aria-labelledby="sec-central">
+        <div class="band">
+          <div class="band-inner">
+            <div>
+              <h2 id="sec-central" class="section-title" style="text-align: left">Central de controle</h2>
+              <p class="section-sub" style="text-align: left; margin-left: 0">
+                Tabela operacional por campanha (e níveis quando disponível): ordenação, filtros, exportação CSV, ações em
+                massa nas integrações permitidas pelo plano — tudo alinhado ao período que você escolher.
+              </p>
+            </div>
+            <div class="tags">
+              <span class="tag">PDF &amp; CSV</span>
+              <span class="tag">Score operacional</span>
+              <span class="tag">Ações rápidas</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="block wrap" aria-labelledby="sec-int">
+        <h2 id="sec-int" class="section-title">Integrações</h2>
+        <p class="section-sub">Conecte as fontes de dados que já usa; o painel unifica a leitura.</p>
+        <div class="grid cols-2">
+          <div class="card">
+            <div class="icon">⚡</div>
+            <h3>Google Ads &amp; Meta Ads</h3>
+            <p>
+              OAuth e contas vinculadas ao workspace: métricas oficiais, campanhas e — conforme permissões — ajustes de
+              status e orçamento.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">📦</div>
+            <h3>CRM, WhatsApp e webhooks</h3>
+            <p>
+              Alertas e automações podem integrar com o seu ecossistema; webhooks para eventos customizados quando o
+              plano permitir.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="block wrap" aria-labelledby="sec-quem">
+        <h2 id="sec-quem" class="section-title">Para quem é</h2>
+        <div class="three-col">
+          <div class="mini">
+            <span style="font-size: 1.75rem" aria-hidden="true">👥</span>
+            <strong>Agências</strong>
+            <span>Multi-workspace, revenda e visão matriz quando contratado.</span>
+          </div>
+          <div class="mini">
+            <span style="font-size: 1.75rem" aria-hidden="true">📊</span>
+            <strong>Times internos</strong>
+            <span>Marketing e growth com um único painel de verdade.</span>
+          </div>
+          <div class="mini">
+            <span style="font-size: 1.75rem" aria-hidden="true">🛡️</span>
+            <strong>Compliance</strong>
+            <span>Política de privacidade, termos e exclusão de dados documentados.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="wrap" style="padding-bottom: 3rem">
+        <div class="cta-box">
+          <p class="eyebrow" style="margin-bottom: 0.5rem">Acesso</p>
+          <h2>Já utiliza o Ativa Dash?</h2>
+          <p>Entre com a sua conta para conectar integrações e ver os dashboards com o período e os filtros que importam.</p>
+          <a class="btn btn-primary" href="https://app.ativadash.com/login">Entrar no app</a>
+          <p class="footnote">Acesso seguro · dados isolados por organização</p>
+        </div>
+        <p style="text-align: center; margin-top: 2rem; font-size: 0.875rem; color: var(--muted)">
+          <a href="politica-privacidade/">Política de Privacidade</a>
+          ·
+          <a href="termos-de-servico/">Termos de Serviço</a>
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <div class="footer-inner">
+        <p>© <span id="y"></span> Ativa Dash · Analytics &amp; performance</p>
+        <div class="footer-links">
+          <a href="politica-privacidade/">Política de Privacidade</a>
+          <a href="termos-de-servico/">Termos de Serviço</a>
+          <a href="exclusao-dados/">Exclusão de dados</a>
+          <a href="https://app.ativadash.com/login">Acesso ao painel</a>
+        </div>
+      </div>
+    </footer>
+    <script>
+      document.getElementById("y").textContent = new Date().getFullYear();
+    </script>
   </body>
 </html>

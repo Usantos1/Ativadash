@@ -34,11 +34,10 @@ import { AdminSettingsPage } from "@/pages/AdminSettingsPage";
 import { PlatformPage } from "@/pages/PlatformPage";
 import { PublicDashboardSharePage } from "@/pages/PublicDashboardSharePage";
 import { PublicSiteLayout } from "@/components/marketing-site/PublicSiteLayout";
-import { LandingPage } from "@/pages/marketing-site/LandingPage";
 import { PrivacyPolicyPage } from "@/pages/marketing-site/PrivacyPolicyPage";
 import { TermsOfServicePage } from "@/pages/marketing-site/TermsOfServicePage";
 import { DataDeletionPage } from "@/pages/marketing-site/DataDeletionPage";
-import { ProdutoPage } from "@/pages/marketing-site/ProdutoPage";
+import { MarketingSiteHomeRedirect } from "@/pages/marketing-site/MarketingSiteHomeRedirect";
 
 function ProtectedLayout() {
   return (
@@ -58,11 +57,11 @@ export default function App() {
         <Route path="/share/d/:token" element={<PublicDashboardSharePage />} />
         <Route path="/s/:token" element={<PublicDashboardSharePage />} />
         <Route path="/" element={<PublicSiteLayout />}>
-          <Route index element={<LandingPage />} />
+          <Route index element={<Navigate to="/login" replace />} />
           <Route path="politica-privacidade" element={<PrivacyPolicyPage />} />
           <Route path="termos-de-servico" element={<TermsOfServicePage />} />
           <Route path="exclusao-dados" element={<DataDeletionPage />} />
-          <Route path="produto" element={<ProdutoPage />} />
+          <Route path="produto" element={<MarketingSiteHomeRedirect />} />
         </Route>
         <Route element={<ProtectedLayout />}>
           <Route path="dashboard" element={<Dashboard />} />

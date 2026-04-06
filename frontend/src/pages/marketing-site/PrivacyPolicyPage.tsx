@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { MARKETING_SITE_ORIGIN } from "@/lib/marketing-site";
 
 const LAST_UPDATED = "1º de abril de 2026";
 
@@ -138,9 +139,9 @@ export function PrivacyPolicyPage() {
         </p>
 
         <p className="mt-10 text-sm">
-          <Link to="/" className="font-semibold text-primary underline-offset-4 hover:underline">
+          <a href={MARKETING_SITE_ORIGIN} className="font-semibold text-primary underline-offset-4 hover:underline">
             Voltar ao início
-          </Link>
+          </a>
           {" · "}
           <Link to="/termos-de-servico" className="font-semibold text-primary underline-offset-4 hover:underline">
             Termos de Serviço
