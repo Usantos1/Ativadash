@@ -33,6 +33,11 @@ import { AdminPage } from "@/pages/AdminPage";
 import { AdminSettingsPage } from "@/pages/AdminSettingsPage";
 import { PlatformPage } from "@/pages/PlatformPage";
 import { PublicDashboardSharePage } from "@/pages/PublicDashboardSharePage";
+import { PublicSiteLayout } from "@/components/marketing-site/PublicSiteLayout";
+import { LandingPage } from "@/pages/marketing-site/LandingPage";
+import { PrivacyPolicyPage } from "@/pages/marketing-site/PrivacyPolicyPage";
+import { TermsOfServicePage } from "@/pages/marketing-site/TermsOfServicePage";
+import { DataDeletionPage } from "@/pages/marketing-site/DataDeletionPage";
 
 function ProtectedLayout() {
   return (
@@ -51,8 +56,13 @@ export default function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/share/d/:token" element={<PublicDashboardSharePage />} />
         <Route path="/s/:token" element={<PublicDashboardSharePage />} />
-        <Route path="/" element={<ProtectedLayout />}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<PublicSiteLayout />}>
+          <Route index element={<LandingPage />} />
+          <Route path="politica-privacidade" element={<PrivacyPolicyPage />} />
+          <Route path="termos-de-servico" element={<TermsOfServicePage />} />
+          <Route path="exclusao-dados" element={<DataDeletionPage />} />
+        </Route>
+        <Route element={<ProtectedLayout />}>
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="marketing" element={<Marketing />} />
           <Route path="marketing/captacao" element={<MarketingFunnelPage variant="captacao" />} />
