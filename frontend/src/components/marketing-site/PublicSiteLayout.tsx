@@ -15,6 +15,12 @@ export function PublicSiteLayout() {
           </Link>
           <nav className="flex flex-wrap items-center justify-end gap-1 text-sm font-medium sm:gap-2">
             <Link
+              to="/produto"
+              className="rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              Produto
+            </Link>
+            <Link
               to="/politica-privacidade"
               className="rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
@@ -44,6 +50,9 @@ export function PublicSiteLayout() {
         <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 px-4 sm:flex-row sm:px-6">
           <p className="text-center sm:text-left">© {new Date().getFullYear()} Ativa Dash · Analytics & performance</p>
           <div className="flex flex-wrap items-center justify-center gap-4">
+            <Link to="/produto" className="underline-offset-4 hover:text-foreground hover:underline">
+              Produto
+            </Link>
             <Link to="/politica-privacidade" className="underline-offset-4 hover:text-foreground hover:underline">
               Política de Privacidade
             </Link>

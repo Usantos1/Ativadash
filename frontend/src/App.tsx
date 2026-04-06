@@ -38,6 +38,7 @@ import { LandingPage } from "@/pages/marketing-site/LandingPage";
 import { PrivacyPolicyPage } from "@/pages/marketing-site/PrivacyPolicyPage";
 import { TermsOfServicePage } from "@/pages/marketing-site/TermsOfServicePage";
 import { DataDeletionPage } from "@/pages/marketing-site/DataDeletionPage";
+import { ProdutoPage } from "@/pages/marketing-site/ProdutoPage";
 
 function ProtectedLayout() {
   return (
@@ -61,6 +62,7 @@ export default function App() {
           <Route path="politica-privacidade" element={<PrivacyPolicyPage />} />
           <Route path="termos-de-servico" element={<TermsOfServicePage />} />
           <Route path="exclusao-dados" element={<DataDeletionPage />} />
+          <Route path="produto" element={<ProdutoPage />} />
         </Route>
         <Route element={<ProtectedLayout />}>
           <Route path="dashboard" element={<Dashboard />} />

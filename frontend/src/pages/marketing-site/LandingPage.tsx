@@ -32,6 +32,9 @@ export function LandingPage() {
           <Button asChild variant="outline" size="lg" className="rounded-xl px-8 font-semibold">
             <Link to="/login">Já tenho conta</Link>
           </Button>
+          <Button asChild variant="secondary" size="lg" className="rounded-xl px-8 font-semibold">
+            <Link to="/produto">Conhecer o produto</Link>
+          </Button>
         </div>
       </section>
 
