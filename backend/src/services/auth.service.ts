@@ -605,8 +605,8 @@ async function createTokens(
     payload.impersonationSessionId = impersonation.impersonationSessionId;
     payload.sourceOrganizationId = impersonation.sourceOrganizationId;
   }
-  const accessOpts: SignOptions = { expiresIn: env.JWT_EXPIRES_IN as string };
-  const refreshOpts: SignOptions = { expiresIn: env.JWT_REFRESH_EXPIRES_IN as string };
+  const accessOpts = { expiresIn: env.JWT_EXPIRES_IN } as SignOptions;
+  const refreshOpts = { expiresIn: env.JWT_REFRESH_EXPIRES_IN } as SignOptions;
   const accessToken = jwt.sign(payload, env.JWT_SECRET, accessOpts);
   const refreshToken = jwt.sign(
     {
