@@ -15,16 +15,6 @@ router.post("/clients", workspace.clientsCreate);
 router.patch("/clients/:id", workspace.clientsUpdate);
 router.delete("/clients/:id", workspace.clientsDelete);
 
-router.get("/projects", workspace.projectsList);
-router.post("/projects", workspace.projectsCreate);
-router.patch("/projects/:id", workspace.projectsUpdate);
-router.delete("/projects/:id", workspace.projectsDelete);
-
-router.get("/launches", workspace.launchesList);
-router.post("/launches", workspace.launchesCreate);
-router.patch("/launches/:id", workspace.launchesUpdate);
-router.delete("/launches/:id", workspace.launchesDelete);
-
 router.get("/goals", workspace.goalsList);
 
 router.get("/members", workspace.membersList);

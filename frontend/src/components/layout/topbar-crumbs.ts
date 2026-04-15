@@ -52,8 +52,6 @@ export function resolveTopbarCrumbs(pathname: string): TopbarCrumb[] {
   }
 
   if (p === "/clientes") return [{ label: "Clientes" }];
-  if (p === "/projetos") return [{ label: "Projetos" }];
-  if (p === "/lancamentos") return [{ label: "Lançamentos" }];
   if (p === "/usuarios") return [{ label: "Equipe" }];
   if (p === "/atividades") return [{ label: "Log de Atividades" }];
 

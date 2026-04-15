@@ -20,7 +20,7 @@ const ADMIN_PAGE_ROLES = new Set([
 const TRUTHY_ENV = new Set(["1", "true", "yes", "on"]);
 
 /**
- * Agência filial com operação alargada (ADS completos, Projetos, Lançamentos, Equipe).
+ * Agência filial com operação alargada (ADS completos, Equipe).
  * Build/deploy: `VITE_AGENCY_BRANCH_EXPANDED_OPS=1` (testes ou rollout futuro por tenant).
  */
 export function isAgencyBranchExpandedOpsEnabled(): boolean {
@@ -140,18 +140,14 @@ export function isPathAllowedForAgencyBranch(pathname: string): boolean {
     if (p === "/marketing" || p === "/marketing/captacao" || p === "/marketing/conversao" || p === "/marketing/receita") {
       return true;
     }
-    if (p.startsWith("/projetos")) return true;
-    if (p.startsWith("/lancamentos")) return true;
     if (p === "/usuarios") return true;
   }
   return false;
 }
 
-/** Workspace cliente final: sem carteira multi-conta nem projetos/lançamentos operacionais da agência. */
+/** Workspace cliente final: sem carteira multi-conta da agência. */
 export function isPathBlockedForClientWorkspaceClients(pathname: string): boolean {
   const p = pathname.replace(/\/$/, "") || "/";
   if (p === "/clientes") return true;
-  if (p.startsWith("/projetos")) return true;
-  if (p.startsWith("/lancamentos")) return true;
   return false;
 }

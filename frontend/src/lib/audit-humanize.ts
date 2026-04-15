@@ -122,18 +122,6 @@ export function auditActionDescription(action: string, metadata: unknown): strin
       return `Cliente atualizado: ${name(m.name) ?? "—"}`;
     case "client.deleted":
       return "Cliente removido";
-    case "project.created":
-      return `Projeto criado: ${name(m.name) ?? "—"}`;
-    case "project.updated":
-      return "Projeto atualizado";
-    case "project.deleted":
-      return "Projeto removido";
-    case "launch.created":
-      return `Lançamento criado: ${name(m.name) ?? "—"}`;
-    case "launch.updated":
-      return "Lançamento atualizado";
-    case "launch.deleted":
-      return "Lançamento removido";
     case "invitation.created":
       return `Convite enviado para ${name(m.email) ?? "—"}`;
     case "invitation.revoked":
@@ -207,12 +195,6 @@ export const NETWORK_ACTIVITY_ACTION_OPTIONS: { value: string; label: string }[]
   { value: "client.created", label: "Cliente criado" },
   { value: "client.updated", label: "Cliente atualizado" },
   { value: "client.deleted", label: "Cliente removido" },
-  { value: "project.created", label: "Projeto criado" },
-  { value: "project.updated", label: "Projeto atualizado" },
-  { value: "project.deleted", label: "Projeto removido" },
-  { value: "launch.created", label: "Lançamento criado" },
-  { value: "launch.updated", label: "Lançamento atualizado" },
-  { value: "launch.deleted", label: "Lançamento removido" },
   { value: "invitation.created", label: "Convite enviado" },
   { value: "invitation.revoked", label: "Convite revogado" },
   { value: "member.created", label: "Membro adicionado" },

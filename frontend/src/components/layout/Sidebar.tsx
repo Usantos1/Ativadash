@@ -7,8 +7,6 @@ import {
   LayoutDashboard,
   Megaphone,
   Users,
-  FolderKanban,
-  Rocket,
   Plug,
   Settings,
   ChevronLeft,
@@ -73,8 +71,6 @@ const FULL_NAV_GROUPS: NavGroup[] = [
     label: "Operação",
     items: [
       { to: "/clientes", label: "Clientes", icon: Users },
-      { to: "/projetos", label: "Projetos", icon: FolderKanban },
-      { to: "/lancamentos", label: "Lançamentos", icon: Rocket },
       { to: "/usuarios", label: "Equipe", icon: Users2 },
       { to: "/atividades", label: "Log de Atividades", icon: ScrollText },
     ],
@@ -134,8 +130,6 @@ function buildNavGroups(
           label: "Operação",
           items: [
             { to: "/clientes", label: "Clientes", icon: Users },
-            { to: "/projetos", label: "Projetos", icon: FolderKanban },
-            { to: "/lancamentos", label: "Lançamentos", icon: Rocket },
             { to: "/usuarios", label: "Equipe", icon: Users2 },
           ],
         },

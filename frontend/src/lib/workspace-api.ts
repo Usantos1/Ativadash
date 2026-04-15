@@ -10,29 +10,6 @@ export type ClientAccount = {
   deletedAt: string | null;
 };
 
-export type ProjectRow = {
-  id: string;
-  organizationId: string;
-  name: string;
-  clientAccountId: string | null;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string | null;
-  clientAccount: { id: string; name: string } | null;
-};
-
-export type LaunchRow = {
-  id: string;
-  projectId: string;
-  name: string;
-  startDate: string | null;
-  endDate: string | null;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string | null;
-  project: { id: string; name: string };
-};
-
 export type MemberRow = {
   membershipId: string;
   userId: string;
@@ -68,54 +45,6 @@ export async function updateClient(id: string, name: string): Promise<ClientAcco
 
 export async function deleteClient(id: string): Promise<void> {
   return api.delete(`/workspace/clients/${id}`);
-}
-
-export async function fetchProjects(clientAccountId?: string): Promise<ProjectRow[]> {
-  const q = clientAccountId ? `?clientAccountId=${encodeURIComponent(clientAccountId)}` : "";
-  return api.get<ProjectRow[]>(`/workspace/projects${q}`);
-}
-
-export async function createProject(name: string, clientAccountId?: string | null): Promise<ProjectRow> {
-  return api.post<ProjectRow>("/workspace/projects", {
-    name,
-    ...(clientAccountId ? { clientAccountId } : {}),
-  });
-}
-
-export async function updateProject(
-  id: string,
-  data: { name?: string; clientAccountId?: string | null }
-): Promise<ProjectRow> {
-  return api.patch<ProjectRow>(`/workspace/projects/${id}`, data);
-}
-
-export async function deleteProject(id: string): Promise<void> {
-  return api.delete(`/workspace/projects/${id}`);
-}
-
-export async function fetchLaunches(projectId?: string): Promise<LaunchRow[]> {
-  const q = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
-  return api.get<LaunchRow[]>(`/workspace/launches${q}`);
-}
-
-export async function createLaunch(body: {
-  projectId: string;
-  name: string;
-  startDate?: string | null;
-  endDate?: string | null;
-}): Promise<LaunchRow> {
-  return api.post<LaunchRow>("/workspace/launches", body);
-}
-
-export async function updateLaunch(
-  id: string,
-  data: { name?: string; startDate?: string | null; endDate?: string | null }
-): Promise<LaunchRow> {
-  return api.patch<LaunchRow>(`/workspace/launches/${id}`, data);
-}
-
-export async function deleteLaunch(id: string): Promise<void> {
-  return api.delete(`/workspace/launches/${id}`);
 }
 
 export async function fetchMembers(organizationId?: string): Promise<MemberRow[]> {

@@ -17,8 +17,6 @@ import { ActivityLogPage } from "@/pages/ActivityLogPage";
 import { MetasAlertasPage } from "@/pages/MetasAlertasPage";
 import { MarketingFunnelPage } from "@/pages/MarketingFunnelPage";
 import { ClientsPage } from "@/pages/ClientsPage";
-import { ProjectsPage } from "@/pages/ProjectsPage";
-import { LaunchesPage } from "@/pages/LaunchesPage";
 import { SettingsHubPage } from "@/pages/SettingsHubPage";
 import { ProfilePage } from "@/pages/ProfilePage";
 import { CompanySettingsPage } from "@/pages/CompanySettingsPage";
@@ -84,8 +82,6 @@ export default function App() {
           <Route path="ads/metas-alertas" element={<MetasAlertasPage />} />
           <Route path="ads/metas-operacao" element={<Navigate to="/ads/metas-alertas" replace />} />
           <Route path="clientes" element={<ClientsPage />} />
-          <Route path="projetos" element={<ProjectsPage />} />
-          <Route path="lancamentos" element={<LaunchesPage />} />
           <Route path="configuracoes" element={<SettingsHubPage />} />
           <Route path="configuracoes/empresa" element={<CompanySettingsPage />} />
           <Route path="configuracoes/admin" element={<AdminSettingsPage />} />

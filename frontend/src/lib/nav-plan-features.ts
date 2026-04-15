@@ -38,8 +38,6 @@ export function isSidebarPathEnabledByPlan(to: string, f: EnabledFeatures): bool
 
   if (path === "/clientes") return f.multiOrganization;
 
-  if (path === "/projetos" || path === "/lancamentos") return f.marketing;
-
   if (path === "/usuarios") return f.multiUser;
 
   if (path === "/revenda" || path.startsWith("/revenda/")) return f.revenda;
@@ -84,8 +82,6 @@ export function firstAllowedPathForPlanAndNav(
     "/marketing/integracoes",
     "/ads/metas-alertas",
     "/ads/metas-operacao",
-    "/projetos",
-    "/lancamentos",
     "/usuarios",
     "/revenda",
     "/configuracoes",
