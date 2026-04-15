@@ -30,8 +30,8 @@ function narrativeLine(row: AutomationExecutionLogDto): string {
   const act = row.actionTaken.trim().toUpperCase();
   const prev = row.previousValue ?? "—";
   const next = row.newValue ?? "—";
-  if (act === "PAUSE_ASSET") return `Campanha/conjunto/anúncio "${name}" pausado. Motivo: condição da regra (${rule}). Estado: ${prev} → ${next}.`;
-  if (act === "ACTIVATE_ASSET") return `"${name}" reativado. ${rule}. ${prev} → ${next}.`;
+  if (act === "PAUSE_ASSET") return `"${name}" foi pausado pelo motor. Regra: ${rule}. ${prev} → ${next}.`;
+  if (act === "ACTIVATE_ASSET") return `"${name}" foi reativado. Regra: ${rule}. ${prev} → ${next}.`;
   if (act === "INCREASE_BUDGET_20" || act === "DECREASE_BUDGET_20")
     return `"${name}": orçamento ${prev} → ${next}. (${rule})`;
   if (act === "NOTIFY_ONLY") return `Alerta: ${name}. Métrica ${prev} / limiar ${next}. (${rule})`;
@@ -60,7 +60,7 @@ export function AutomationExecutionTimeline({ items, loading, ruleChannelById }:
       <Card className="border-dashed border-border/60 bg-muted/10">
         <CardContent className="flex flex-col items-center gap-2 py-12 text-center text-sm text-muted-foreground">
           <ScrollText className="h-10 w-10 opacity-40" />
-          <p>Ainda não há execuções registadas.</p>
+          <p>Ainda não há execuções registradas.</p>
           <p className="max-w-md text-xs">
             Quando o motor autónomo executar pausas, ativações ou ajustes de orçamento, cada ação aparece aqui com data,
             canal e motivo.
@@ -75,7 +75,7 @@ export function AutomationExecutionTimeline({ items, loading, ruleChannelById }:
       <Card className="hidden overflow-hidden border-border/50 shadow-sm md:block">
         <CardHeader className="border-b border-border/40 bg-muted/20 py-3">
           <CardTitle className="text-sm font-semibold">Histórico de execuções</CardTitle>
-          <p className="text-xs text-muted-foreground">Fonte: AutomationExecutionLog (somente leitura).</p>
+          <p className="text-xs text-muted-foreground">Todas as ações executadas pelo motor de automação.</p>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">

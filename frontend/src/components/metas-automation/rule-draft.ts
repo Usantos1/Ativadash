@@ -406,7 +406,7 @@ export function optimizationProfileDraftDesmame(channel: "meta" | "google"): Rul
     notifyWhatsapp: true,
     actionType: "DECREASE_BUDGET_20",
     messageTemplate:
-      "🟠 *DESNAME — Ativa Dash*\nCampanha *{{campaign_name}}* — CPL {{metric_value}} acima do alvo.\n{{period}} · {{rule_name}}",
+      "🟠 *DESMAME — Ativa Dash*\nCampanha *{{campaign_name}}* — CPL {{metric_value}} acima do alvo.\n{{period}} · {{rule_name}}",
     routingJobSlugs: [],
     routingUserIds: [],
     routingCustomPhonesStr: "",

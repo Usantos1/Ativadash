@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { Bell, MessageCircle } from "lucide-react";
+import { Bell, Clock, MessageCircle, Send, Target, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -75,10 +75,10 @@ export function RuleBuilderSheet({
           </div>
 
           <div className="rounded-xl border border-border/40 bg-muted/15 p-4 space-y-4">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-primary">Quando (cadência)</p>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-primary"><Clock className="mr-1.5 inline h-3.5 w-3.5" />Quando (cadência)</p>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground">Frequência legada (janela local)</Label>
+                <Label className="text-[10px] text-muted-foreground">Frequência de verificação</Label>
                 <Select
                   value={r.checkFrequency}
                   disabled={!canEdit}
@@ -97,10 +97,10 @@ export function RuleBuilderSheet({
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground">Intervalo mínimo do worker (min)</Label>
+                <Label className="text-[10px] text-muted-foreground">Intervalo entre execuções (min)</Label>
                 <Input
                   inputMode="numeric"
-                  placeholder="ex.: 30 (vazio = só legado)"
+                  placeholder="ex.: 30 (vazio = padrão do motor)"
                   disabled={!canEdit}
                   value={r.checkFrequencyMinutesStr}
                   onChange={(e) => onChange({ checkFrequencyMinutesStr: e.target.value })}
@@ -109,7 +109,7 @@ export function RuleBuilderSheet({
               </div>
             </div>
             <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground">Janela de expediente (local)</Label>
+              <Label className="text-[10px] text-muted-foreground">Horário de funcionamento</Label>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs text-muted-foreground">Das</span>
                 <Input
@@ -130,39 +130,43 @@ export function RuleBuilderSheet({
               </div>
               <p className="text-[10px] text-muted-foreground">Fuso: {tz}.</p>
               <p className="text-[10px] text-amber-800 dark:text-amber-200/90">
-                Com <strong>das / às</strong> preenchidos, o motor <strong>só corre esta regra dentro desta janela</strong> (horário
-                local). Fora disso não há avaliação nem WhatsApp. Para <strong>24 horas</strong>, limpe os dois campos de hora e clique
-                em Salvar automações.
+                O motor só executa esta regra dentro do horário definido. Fora dessa janela, nenhuma ação ou notificação é disparada.
+                Deixe os campos vazios para funcionar 24 horas.
               </p>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground">Silêncio UTC (início 0–23)</Label>
-                <Input
-                  inputMode="numeric"
-                  placeholder="vazio = off"
-                  disabled={!canEdit}
-                  value={r.muteStartHourStr}
-                  onChange={(e) => onChange({ muteStartHourStr: e.target.value.replace(/\D/g, "").slice(0, 2) })}
-                  className="h-9 rounded-lg font-mono text-xs"
-                />
+            <details className="space-y-3">
+              <summary className="cursor-pointer text-[11px] font-medium text-muted-foreground hover:text-foreground">
+                Configurações avançadas (silêncio UTC)
+              </summary>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground">Silêncio (hora início, UTC)</Label>
+                  <Input
+                    inputMode="numeric"
+                    placeholder="vazio = off"
+                    disabled={!canEdit}
+                    value={r.muteStartHourStr}
+                    onChange={(e) => onChange({ muteStartHourStr: e.target.value.replace(/\D/g, "").slice(0, 2) })}
+                    className="h-9 rounded-lg font-mono text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground">Silêncio (hora fim, UTC)</Label>
+                  <Input
+                    inputMode="numeric"
+                    placeholder="vazio = off"
+                    disabled={!canEdit}
+                    value={r.muteEndHourStr}
+                    onChange={(e) => onChange({ muteEndHourStr: e.target.value.replace(/\D/g, "").slice(0, 2) })}
+                    className="h-9 rounded-lg font-mono text-xs"
+                  />
+                </div>
               </div>
-              <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground">Silêncio UTC (fim 0–23)</Label>
-                <Input
-                  inputMode="numeric"
-                  placeholder="vazio = off"
-                  disabled={!canEdit}
-                  value={r.muteEndHourStr}
-                  onChange={(e) => onChange({ muteEndHourStr: e.target.value.replace(/\D/g, "").slice(0, 2) })}
-                  className="h-9 rounded-lg font-mono text-xs"
-                />
-              </div>
-            </div>
+            </details>
           </div>
 
           <div className="rounded-xl border border-border/40 bg-muted/15 p-4 space-y-4">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-primary">Se (condição)</p>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-primary"><Target className="mr-1.5 inline h-3.5 w-3.5" />Se (condição)</p>
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <span className="font-semibold text-foreground">Nível</span>
               <Select
@@ -275,7 +279,7 @@ export function RuleBuilderSheet({
           </div>
 
           <div className="rounded-xl border border-border/40 bg-muted/15 p-4 space-y-4">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-primary">Então (ação)</p>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-primary"><Zap className="mr-1.5 inline h-3.5 w-3.5" />Então (ação)</p>
             <Select
               value={r.actionType}
               disabled={!canEdit}
@@ -297,7 +301,7 @@ export function RuleBuilderSheet({
             </Select>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground">% escala (aumentar/reduzir)</Label>
+                <Label className="text-[10px] text-muted-foreground">Percentual de ajuste (%)</Label>
                 <Input
                   inputMode="numeric"
                   disabled={!canEdit}
@@ -307,7 +311,7 @@ export function RuleBuilderSheet({
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground">Cooldown por ativo (minutos)</Label>
+                <Label className="text-[10px] text-muted-foreground">Intervalo mínimo entre ações (min)</Label>
                 <Input
                   inputMode="numeric"
                   disabled={!canEdit}
@@ -320,7 +324,7 @@ export function RuleBuilderSheet({
           </div>
 
           <div className="rounded-xl border border-border/40 bg-muted/15 p-4 space-y-3">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-primary">Onde (WhatsApp)</p>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-primary"><Send className="mr-1.5 inline h-3.5 w-3.5" />Notificação (WhatsApp)</p>
             <div className="flex items-center justify-between rounded-lg border border-border/50 px-3 py-2">
               <span className="text-sm">Notificar no WhatsApp</span>
               <Switch

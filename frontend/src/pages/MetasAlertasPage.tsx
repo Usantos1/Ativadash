@@ -15,13 +15,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { PageHeaderPremium } from "@/components/premium";
 import {
   dispatchMarketingSettingsRefresh,
@@ -128,6 +121,15 @@ export function MetasAlertasPage() {
     }
     return m;
   }, [rules]);
+
+  const activeCount = useMemo(
+    () => filteredAutomationRules.filter((r) => r.active).length,
+    [filteredAutomationRules]
+  );
+  const pausedCount = useMemo(
+    () => filteredAutomationRules.filter((r) => !r.active).length,
+    [filteredAutomationRules]
+  );
 
   function thresholdRefSelectOptions(r: RuleDraft): { value: AlertRuleThresholdRef | "fixed"; label: string }[] {
     const opts: { value: AlertRuleThresholdRef | "fixed"; label: string }[] = [
@@ -398,16 +400,22 @@ export function MetasAlertasPage() {
         className="border-b border-border/45 pb-5"
       />
 
-      {error ? (
-        <div className="rounded-xl border border-destructive/35 bg-destructive/[0.08] px-4 py-3 text-sm text-destructive">
-          {error}
+      {error && (
+        <div className="flex items-start gap-3 rounded-xl border border-destructive/35 bg-destructive/[0.08] px-4 py-3 text-sm text-destructive">
+          <span className="flex-1">{error}</span>
+          <button type="button" onClick={() => setError(null)} className="shrink-0 text-destructive/60 hover:text-destructive">
+            ✕
+          </button>
         </div>
-      ) : null}
-      {ok ? (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] px-4 py-3 text-sm font-medium text-emerald-900 dark:text-emerald-200">
-          {ok}
+      )}
+      {ok && (
+        <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] px-4 py-3 text-sm font-medium text-emerald-900 dark:text-emerald-200">
+          <span className="flex-1">{ok}</span>
+          <button type="button" onClick={() => setOk(null)} className="shrink-0 text-emerald-700/60 hover:text-emerald-900 dark:text-emerald-400/60 dark:hover:text-emerald-200">
+            ✕
+          </button>
         </div>
-      ) : null}
+      )}
 
       <RuleBuilderSheet
         open={sheetOpen && editingDraft != null}
@@ -430,47 +438,67 @@ export function MetasAlertasPage() {
             Metas globais
           </TabsTrigger>
           <TabsTrigger value="regras" className="rounded-lg text-xs sm:text-sm">
-            Motor de automações
+            Regras
+            {rules.length > 0 && (
+              <span className="ml-1.5 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold text-primary">
+                {rules.length}
+              </span>
+            )}
           </TabsTrigger>
           <TabsTrigger value="historico" className="rounded-lg text-xs sm:text-sm">
             Histórico
+            {execLogs.length > 0 && (
+              <span className="ml-1.5 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold text-primary">
+                {execLogs.length}
+              </span>
+            )}
           </TabsTrigger>
         </TabsList>
 
+        {/* ── Metas globais ── */}
         <TabsContent value="metas" className="mt-6">
           <form onSubmit={handleSaveMetas} className="space-y-4">
+            <div className="rounded-xl border border-primary/15 bg-gradient-to-br from-primary/[0.06] to-transparent px-4 py-3 text-sm text-muted-foreground">
+              <strong className="text-foreground">Como funcionam as metas:</strong>{" "}
+              Estes valores são usados pelo motor de automação como referência para regras dinâmicas
+              (ex: &quot;CPL acima do teto → pausar&quot;). Defina por canal para maior precisão.
+            </div>
+
             <Card className="border-border/50 bg-card shadow-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base font-semibold">Configurações gerais</CardTitle>
+                <CardTitle className="text-base font-semibold">Modo de negócio</CardTitle>
                 <p className="text-xs text-muted-foreground">
-                  Define como o painel interpreta conversões e exibe métricas.
+                  Altera os indicadores em destaque no cockpit e nas automações.
                 </p>
               </CardHeader>
-              <CardContent className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Modo de negócio
-                  </Label>
-                  <Select
-                    value={businessGoalMode}
-                    disabled={!canEdit}
-                    onValueChange={(v) => setBusinessGoalMode(v as BusinessGoalMode)}
-                  >
-                    <SelectTrigger className="h-10 rounded-xl">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="LEADS">Leads (geração de contatos)</SelectItem>
-                      <SelectItem value="SALES">Vendas (e-commerce / ROAS)</SelectItem>
-                      <SelectItem value="HYBRID">Híbrido (leads + vendas)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[10px] text-muted-foreground">
-                    Altera os indicadores em destaque no cockpit e nas automações.
-                  </p>
+              <CardContent>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {([
+                    { value: "LEADS", label: "Leads", desc: "Geração de contatos", icon: "👥" },
+                    { value: "SALES", label: "Vendas", desc: "E-commerce / ROAS", icon: "💰" },
+                    { value: "HYBRID", label: "Híbrido", desc: "Leads + Vendas", icon: "🔄" },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      disabled={!canEdit}
+                      onClick={() => setBusinessGoalMode(opt.value)}
+                      className={cn(
+                        "flex flex-col items-center gap-1.5 rounded-xl border-2 p-4 text-center transition-all",
+                        businessGoalMode === opt.value
+                          ? "border-primary bg-primary/5 shadow-sm"
+                          : "border-border/50 hover:border-border hover:bg-muted/30"
+                      )}
+                    >
+                      <span className="text-2xl">{opt.icon}</span>
+                      <span className="text-sm font-semibold">{opt.label}</span>
+                      <span className="text-[11px] text-muted-foreground">{opt.desc}</span>
+                    </button>
+                  ))}
                 </div>
               </CardContent>
             </Card>
+
             <div className="grid gap-4 lg:grid-cols-2">
               {(
                 [
@@ -553,7 +581,7 @@ export function MetasAlertasPage() {
                         Orçamento máximo diário (R$)
                       </Label>
                       <p className="text-[10px] text-muted-foreground">
-                        Teto duro para alertas de sangria (regra “todos os canais” soma Meta + Google).
+                        Teto duro para alertas de sangria (regra &quot;todos os canais&quot; soma Meta + Google).
                       </p>
                       <Input
                         inputMode="decimal"
@@ -575,6 +603,7 @@ export function MetasAlertasPage() {
           </form>
         </TabsContent>
 
+        {/* ── Motor de automações ── */}
         <TabsContent value="regras" className="mt-6 space-y-4">
           {!performanceAlerts ? (
             <Card className="border-border/50">
@@ -585,7 +614,7 @@ export function MetasAlertasPage() {
           ) : (
             <>
               <div className="rounded-xl border border-primary/15 bg-gradient-to-br from-primary/[0.06] to-transparent px-4 py-3 text-sm">
-                <strong className="text-foreground">Cérebro autónomo:</strong>{" "}
+                <strong className="text-foreground">Motor autônomo:</strong>{" "}
                 <span className="text-muted-foreground">
                   cartões resumidos à esquerda; <span className="font-medium text-foreground">Editar</span> abre o
                   construtor (QUANDO / SE / ENTÃO / ONDE). Salve todas as alterações no fim da página.
@@ -602,9 +631,11 @@ export function MetasAlertasPage() {
                   <strong className="text-foreground">{automationChannel === "meta" ? "Meta Ads" : "Google Ads"}</strong>.
                 </p>
                 <div className="grid gap-3 md:grid-cols-3">
-                  <Card className="border-border/50 bg-card shadow-sm">
+                  <Card className="border-l-4 border-l-red-500 border-border/50 bg-card shadow-sm">
                     <CardHeader className="space-y-1 pb-2">
-                      <CardTitle className="text-sm font-semibold">Stop-Loss</CardTitle>
+                      <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                        <span>🛑</span> Stop-Loss
+                      </CardTitle>
                       <p className="text-[11px] leading-snug text-muted-foreground">
                         CPL acima do teto → pausar anúncio + notificar.
                       </p>
@@ -618,13 +649,15 @@ export function MetasAlertasPage() {
                         disabled={!canEdit}
                         onClick={() => applyTemplate(() => optimizationProfileDraftStopLoss(automationChannel))}
                       >
-                        Abrir no editor
+                        Usar template →
                       </Button>
                     </CardContent>
                   </Card>
-                  <Card className="border-border/50 bg-card shadow-sm">
+                  <Card className="border-l-4 border-l-emerald-500 border-border/50 bg-card shadow-sm">
                     <CardHeader className="space-y-1 pb-2">
-                      <CardTitle className="text-sm font-semibold">Take-Profit</CardTitle>
+                      <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                        <span>📈</span> Take-Profit
+                      </CardTitle>
                       <p className="text-[11px] leading-snug text-muted-foreground">
                         ROAS acima da meta → escalar orçamento (% configurável).
                       </p>
@@ -638,13 +671,15 @@ export function MetasAlertasPage() {
                         disabled={!canEdit}
                         onClick={() => applyTemplate(() => optimizationProfileDraftTakeProfit(automationChannel))}
                       >
-                        Abrir no editor
+                        Usar template →
                       </Button>
                     </CardContent>
                   </Card>
-                  <Card className="border-border/50 bg-card shadow-sm">
+                  <Card className="border-l-4 border-l-amber-500 border-border/50 bg-card shadow-sm">
                     <CardHeader className="space-y-1 pb-2">
-                      <CardTitle className="text-sm font-semibold">Desmame</CardTitle>
+                      <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                        <span>📉</span> Desmame
+                      </CardTitle>
                       <p className="text-[11px] leading-snug text-muted-foreground">
                         CPL na faixa entre alvo e teto → reduzir orçamento.
                       </p>
@@ -658,7 +693,7 @@ export function MetasAlertasPage() {
                         disabled={!canEdit}
                         onClick={() => applyTemplate(() => optimizationProfileDraftDesmame(automationChannel))}
                       >
-                        Abrir no editor
+                        Usar template →
                       </Button>
                     </CardContent>
                   </Card>
@@ -709,12 +744,25 @@ export function MetasAlertasPage() {
                 </Button>
               </div>
 
+              {filteredAutomationRules.length > 0 && (
+                <div className="flex flex-wrap items-center gap-3 text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                    {activeCount} ativas
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
+                    {pausedCount} pausadas
+                  </span>
+                </div>
+              )}
+
               {filteredAutomationRules.length === 0 ? (
                 <Card className="border-dashed border-border/60 bg-muted/10">
                   <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
                     <Zap className="h-10 w-10 text-muted-foreground/50" />
                     <p className="text-sm text-muted-foreground">
-                      Nenhuma regra para este canal (regras “todos os canais” aparecem nas duas abas).
+                      Nenhuma regra para este canal (regras &quot;todos os canais&quot; aparecem nas duas abas).
                     </p>
                     <div className="flex flex-wrap justify-center gap-2">
                       <Button
@@ -762,21 +810,27 @@ export function MetasAlertasPage() {
                 </div>
               )}
 
-              <div className="flex justify-end pt-2">
-                <Button
-                  type="button"
-                  className="rounded-xl"
-                  disabled={saving || !canEdit || rules.length === 0}
-                  onClick={() => void handleSaveRules()}
-                >
-                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                  Salvar automações
-                </Button>
+              <div className="sticky bottom-0 z-10 -mx-1 border-t border-border/40 bg-background/95 px-1 py-3 backdrop-blur-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground">
+                    {rules.length} regra{rules.length !== 1 ? "s" : ""} · Salve para aplicar alterações
+                  </p>
+                  <Button
+                    type="button"
+                    className="rounded-xl"
+                    disabled={saving || !canEdit || rules.length === 0}
+                    onClick={() => void handleSaveRules()}
+                  >
+                    {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                    Salvar automações
+                  </Button>
+                </div>
               </div>
             </>
           )}
         </TabsContent>
 
+        {/* ── Histórico ── */}
         <TabsContent value="historico" className="mt-6 space-y-4">
           {!performanceAlerts ? (
             <Card className="border-border/50">
@@ -789,7 +843,7 @@ export function MetasAlertasPage() {
               <div className="flex flex-col gap-3 rounded-xl border border-border/40 bg-muted/15 px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
                 <p className="min-w-0 flex-1">
                   <ScrollText className="mr-2 inline h-4 w-4 align-text-bottom text-primary" />
-                  <strong className="text-foreground">Transparência:</strong> leitura segura dos registos do motor
+                  <strong className="text-foreground">Transparência:</strong> histórico completo dos registros do motor
                   (pausa, ativar, escala, notificação). O canal é inferido pela regra quando possível.
                 </p>
                 <Button

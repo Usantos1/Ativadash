@@ -48,6 +48,35 @@ export function AutomationRuleSummaryCard({
           <div className="min-w-0 flex-1 space-y-1">
             <p className="truncate font-semibold text-foreground">{rule.name || "Sem nome"}</p>
             <p className="text-xs leading-relaxed text-muted-foreground sm:text-[13px]">{summary}</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              <span className={cn(
+                "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                rule.appliesToChannel === "meta" ? "bg-blue-500/10 text-blue-700 dark:text-blue-300" :
+                rule.appliesToChannel === "google" ? "bg-amber-500/10 text-amber-700 dark:text-amber-300" :
+                "bg-muted text-muted-foreground"
+              )}>
+                {rule.appliesToChannel === "meta" ? "Meta Ads" : rule.appliesToChannel === "google" ? "Google Ads" : "Todos"}
+              </span>
+              <span className={cn(
+                "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                rule.actionType === "PAUSE_ASSET" ? "bg-red-500/10 text-red-700 dark:text-red-300" :
+                rule.actionType === "ACTIVATE_ASSET" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" :
+                rule.actionType === "INCREASE_BUDGET_20" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" :
+                rule.actionType === "DECREASE_BUDGET_20" ? "bg-amber-500/10 text-amber-700 dark:text-amber-300" :
+                "bg-muted text-muted-foreground"
+              )}>
+                {rule.actionType === "NOTIFY_ONLY" ? "Notificar" :
+                 rule.actionType === "PAUSE_ASSET" ? "Pausar" :
+                 rule.actionType === "ACTIVATE_ASSET" ? "Ativar" :
+                 rule.actionType === "INCREASE_BUDGET_20" ? "↑ Orçamento" :
+                 rule.actionType === "DECREASE_BUDGET_20" ? "↓ Orçamento" : rule.actionType}
+              </span>
+              {rule.notifyWhatsapp && (
+                <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-semibold text-green-700 dark:text-green-300">
+                  WhatsApp
+                </span>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border/35 pt-3 sm:border-0 sm:pt-0">
