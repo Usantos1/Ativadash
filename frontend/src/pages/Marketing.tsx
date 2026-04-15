@@ -60,6 +60,7 @@ import { appendCampaignActionLog } from "@/lib/campaign-local-actions";
 import { downloadPainelAdsReportPdf, type PainelAdsKpiRow, type PainelAdsCampaignPdfRow } from "@/lib/export-pdf";
 import { openMailtoWithReportNote } from "@/lib/export-csv";
 import { fetchManualRevenues } from "@/lib/manual-revenue-api";
+import { fetchCheckoutRevenueSummary, type CheckoutRevenueSummary } from "@/lib/checkout-api";
 import { canUserMutateMarketingAds } from "@/lib/marketing-ads-permissions";
 import {
   aggregateGoogle,
@@ -123,6 +124,7 @@ export function Marketing() {
   const [budgetSaving, setBudgetSaving] = useState(false);
   const [orgCtx, setOrgCtx] = useState<OrganizationContext | null>(null);
   const [manualRevMap, setManualRevMap] = useState<Map<string, number>>(new Map());
+  const [checkoutSummary, setCheckoutSummary] = useState<CheckoutRevenueSummary | null>(null);
   const reloadManualRevenues = useCallback(() => {
     fetchManualRevenues()
       .then((rows) => {
@@ -170,6 +172,15 @@ export function Marketing() {
   useEffect(() => {
     reloadManualRevenues();
   }, [reloadManualRevenues]);
+
+  useEffect(() => {
+    if (!dateRange.startDate || !dateRange.endDate) return;
+    let c = false;
+    fetchCheckoutRevenueSummary(dateRange.startDate, dateRange.endDate)
+      .then((s) => { if (!c) setCheckoutSummary(s); })
+      .catch(() => { if (!c) setCheckoutSummary(null); });
+    return () => { c = true; };
+  }, [dateRange.startDate, dateRange.endDate]);
 
   useEffect(() => {
     let c = false;
@@ -343,7 +354,8 @@ export function Marketing() {
     return { metaManualRevenue: metaTotal, googleManualRevenue: googleTotal, totalManualRevenue: metaTotal + googleTotal };
   }, [manualRevMap, metaCampaignsFiltered, googleCampaignsFiltered]);
 
-  const attributedRevenue = attributedRevenueApi + totalManualRevenue;
+  const checkoutRevenue = checkoutSummary?.totalNet ?? 0;
+  const attributedRevenue = attributedRevenueApi + totalManualRevenue + checkoutRevenue;
   const roasBlend = filteredSpend > 0 && attributedRevenue > 0 ? attributedRevenue / filteredSpend : null;
   const goalCtx = useMemo(() => {
     if (!settings) return defaultMarketingGoalContext();

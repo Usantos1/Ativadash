@@ -118,9 +118,9 @@ export const INTEGRATION_HUB_SECTIONS: IntegrationHubSectionDef[] = [
         routeSlug: "hotmart",
         category: "checkout",
         categoryLabel: "Checkout",
-        available: false,
+        available: true,
         logoSrc: "/integrations/hotmart.svg",
-        tagline: "Vendas, afiliados e eventos de checkout.",
+        tagline: "Vendas, afiliados e eventos de checkout via webhook.",
       },
       {
         id: "kiwify",

@@ -40,6 +40,8 @@ export type EnabledFeatures = {
   automacoes: boolean;
   /** PATCH status/orçamento em campanhas Meta/Google. */
   campaignWrite: boolean;
+  /** Integrações de checkout (Hotmart, Kiwify etc.) */
+  checkoutIntegrations: boolean;
 };
 
 export type WorkspaceStatus = "ACTIVE" | "PAUSED" | "ARCHIVED";

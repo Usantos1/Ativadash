@@ -21,6 +21,8 @@ export type PlanFeatureFlags = {
   automacoes: boolean;
   /** Edição de campanhas Meta/Google (PATCH status/orçamento). */
   campaignWrite: boolean;
+  /** Integrações de checkout (Hotmart, Kiwify, Eduzz etc.) */
+  checkoutIntegrations: boolean;
 };
 
 const DEFAULT_FEATURES: PlanFeatureFlags = {
@@ -42,6 +44,7 @@ const DEFAULT_FEATURES: PlanFeatureFlags = {
   api: false,
   automacoes: false,
   campaignWrite: true,
+  checkoutIntegrations: false,
 };
 
 function readBool(raw: Record<string, unknown>, key: string, fallback: boolean): boolean {
@@ -75,6 +78,7 @@ export function mergePlanFeatures(plan: Plan | null): PlanFeatureFlags {
     api: readBool(o, "api", DEFAULT_FEATURES.api),
     automacoes: readBool(o, "automacoes", DEFAULT_FEATURES.automacoes),
     campaignWrite: readBool(o, "campaignWrite", DEFAULT_FEATURES.campaignWrite),
+    checkoutIntegrations: readBool(o, "checkoutIntegrations", DEFAULT_FEATURES.checkoutIntegrations),
   };
 }
 

@@ -3,6 +3,7 @@ import { authMiddleware } from "../middlewares/auth.middleware.js";
 import { requireJwtOrganizationAccess } from "../middlewares/organization-context.middleware.js";
 import * as workspace from "../controllers/workspace.controller.js";
 import * as webhooks from "../controllers/webhooks.controller.js";
+import * as checkout from "../controllers/checkout.controller.js";
 
 const router = Router();
 
@@ -40,5 +41,12 @@ router.post("/webhooks/endpoints", webhooks.webhooksEndpointsCreate);
 router.patch("/webhooks/endpoints/:id", webhooks.webhooksEndpointsPatch);
 router.get("/webhooks/events", webhooks.webhooksEventsList);
 router.post("/webhooks/events/:id/replay", webhooks.webhooksEventsReplay);
+
+router.get("/checkout-events", checkout.checkoutEventsList);
+router.get("/checkout-events/summary", checkout.checkoutRevenueSummary);
+router.get("/checkout-events/by-campaign", checkout.checkoutRevenueByCampaign);
+router.get("/checkout-product-mappings", checkout.checkoutMappingsList);
+router.post("/checkout-product-mappings", checkout.checkoutMappingsUpsert);
+router.delete("/checkout-product-mappings/:id", checkout.checkoutMappingsDelete);
 
 export default router;

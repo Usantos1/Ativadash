@@ -136,6 +136,8 @@ model Organization {
   automationExecutionLogs    AutomationExecutionLog[]
   dashboardShareLinks DashboardShareLink[]
   manualCampaignRevenues ManualCampaignRevenue[]
+  checkoutEvents         CheckoutEvent[]
+  checkoutProductMappings CheckoutProductMapping[]
 
   matrixGrantsAsMatrix   MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantMatrix")
   matrixGrantsAsWorkspace MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantWorkspace")
@@ -806,4 +808,58 @@ model WebhookEvent {
   @@unique([organizationId, eventKey])
   @@index([organizationId, createdAt])
   @@index([status, createdAt])
+}
+
+/// Evento de checkout normalizado (Hotmart, Kiwify, Eduzz etc.) — alimenta receita real no dashboard.
+model CheckoutEvent {
+  id                String   @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  source            String
+  externalEventId   String
+  eventType         String
+  status            String
+  transactionId     String
+  productId         String?
+  productName       String?
+  offerId           String?
+  buyerEmail        String?
+  buyerName         String?
+  amountBrl         Float
+  currency          String   @default("BRL")
+  utmSource         String?
+  utmMedium         String?
+  utmCampaign       String?
+  utmContent        String?
+  utmTerm           String?
+  mappedCampaignId  String?
+  mappedChannel     String?
+  subscriptionId    String?
+  recurrenceNumber  Int?
+  rawPayload        Json
+  occurredAt        DateTime
+  processedAt       DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  @@unique([organizationId, source, externalEventId])
+  @@index([organizationId, occurredAt])
+  @@index([organizationId, eventType])
+  @@index([transactionId])
+}
+
+/// Mapeamento manual: produto de checkout → campanha Meta/Google (fallback quando não há UTM).
+model CheckoutProductMapping {
+  id              String   @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  source          String
+  productId       String
+  productName     String?
+  campaignId      String
+  channel         String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([organizationId, source, productId])
+  @@index([organizationId])
 }

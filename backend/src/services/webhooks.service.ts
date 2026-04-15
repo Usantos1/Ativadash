@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../utils/prisma.js";
 import { mergePlanFeaturesWithOverrides } from "../utils/plan-features.js";
 import { resolveBillingOrganizationId, resolveEffectivePlan } from "./plan-limits.service.js";
+import { parseHotmartPayload, processHotmartEvent } from "./hotmart-webhook.service.js";
 
 const MAX_ENDPOINTS_PER_ORG = 20;
 
@@ -12,6 +13,12 @@ export function generateSigningSecret(): string {
 
 export function verifyWebhookSignature(secret: string, rawBody: Buffer, header: string | undefined): boolean {
   if (!header || !secret) return false;
+
+  if (header.startsWith("hottok:")) {
+    const hottok = header.slice(7);
+    return hottok === secret;
+  }
+
   const expectedHex = createHmac("sha256", secret).update(rawBody).digest("hex");
   const normalized = header.trim().toLowerCase();
   const hex = normalized.startsWith("sha256=") ? normalized.slice(7) : normalized;
@@ -86,18 +93,30 @@ export async function ingestWebhookPublic(
   const rawPayload = rawBodyToJson(rawBody);
   const now = new Date();
 
+  const detectedSource = detectSourceType(rawPayload);
+
   try {
     const row = await prisma.webhookEvent.create({
       data: {
         organizationId: org.id,
         webhookEndpointId: endpoint.id,
         eventKey,
-        sourceType: "custom",
+        sourceType: detectedSource,
         status: "PROCESSED",
         rawPayload,
         processedAt: now,
       },
     });
+
+    if (detectedSource === "hotmart") {
+      try {
+        const parsed = parseHotmartPayload(rawPayload);
+        await processHotmartEvent(org.id, parsed, rawPayload);
+      } catch (err) {
+        console.error("[hotmart-webhook] Erro ao processar evento Hotmart:", err);
+      }
+    }
+
     return { ok: true, eventId: row.id, duplicate: false };
   } catch (e) {
     if (typeof e === "object" && e !== null && "code" in e && (e as { code: string }).code === "P2002") {
@@ -109,6 +128,16 @@ export async function ingestWebhookPublic(
     }
     throw e;
   }
+}
+
+function detectSourceType(payload: unknown): string {
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const obj = payload as Record<string, unknown>;
+    if (obj.hottok || (obj.event && typeof obj.event === "string" && obj.data && typeof (obj.data as Record<string, unknown>).purchase === "object")) {
+      return "hotmart";
+    }
+  }
+  return "custom";
 }
 
 export async function listWebhookEndpoints(organizationId: string) {

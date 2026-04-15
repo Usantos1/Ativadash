@@ -12,6 +12,7 @@ import { MetaAdsIntegrationPage } from "@/pages/integrations/MetaAdsIntegrationP
 import { WhatsAppIntegrationPage } from "@/pages/integrations/WhatsAppIntegrationPage";
 import { WebhooksIntegrationPage } from "@/pages/integrations/WebhooksIntegrationPage";
 import { IntegrationComingSoonPage } from "@/pages/integrations/IntegrationComingSoonPage";
+import { HotmartIntegrationPage } from "@/pages/integrations/HotmartIntegrationPage";
 import { MetasAlertasPage } from "@/pages/MetasAlertasPage";
 import { MarketingFunnelPage } from "@/pages/MarketingFunnelPage";
 import { ClientsPage } from "@/pages/ClientsPage";
@@ -76,6 +77,7 @@ export default function App() {
           <Route path="marketing/integracoes/ativa-crm" element={<WhatsAppIntegrationPage />} />
           <Route path="marketing/integracoes/whatsapp" element={<WhatsAppIntegrationPage />} />
           <Route path="marketing/integracoes/webhook" element={<WebhooksIntegrationPage />} />
+          <Route path="marketing/integracoes/hotmart" element={<HotmartIntegrationPage />} />
           <Route path="marketing/integracoes/:slug" element={<IntegrationComingSoonPage />} />
           <Route path="marketing/configuracoes" element={<Navigate to="/ads/metas-alertas" replace />} />
           <Route path="ads/metas-alertas" element={<MetasAlertasPage />} />

@@ -68,6 +68,7 @@ const FALLBACK_ENABLED: EnabledFeatures = {
   api: false,
   automacoes: false,
   campaignWrite: true,
+  checkoutIntegrations: false,
 };
 
 const EMPTY_LIMIT_DRAFT: Record<PlanLimitFieldKey, string> = {

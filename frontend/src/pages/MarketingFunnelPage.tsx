@@ -53,6 +53,7 @@ import { fetchIntegrations, type IntegrationFromApi } from "@/lib/integrations-a
 import { isNonDefaultPeriod } from "@/lib/marketing-period-storage";
 import type { DashboardSharePage } from "@/lib/dashboard-share-api";
 import { fetchManualRevenues } from "@/lib/manual-revenue-api";
+import { fetchCheckoutRevenueSummary, fetchCheckoutRevenueByCampaign, type CheckoutRevenueSummary, type CheckoutCampaignRevenue } from "@/lib/checkout-api";
 
 export type FunnelVariant = "captacao" | "conversao" | "receita";
 
@@ -240,6 +241,8 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
   const [budgetSaving, setBudgetSaving] = useState(false);
   const [integrationsList, setIntegrationsList] = useState<IntegrationFromApi[]>([]);
   const [manualRevMap, setManualRevMap] = useState<Map<string, number>>(new Map());
+  const [checkoutSummary, setCheckoutSummary] = useState<CheckoutRevenueSummary | null>(null);
+  const [checkoutByCampaign, setCheckoutByCampaign] = useState<CheckoutCampaignRevenue[]>([]);
   const reloadManualRevenues = useCallback(() => {
     fetchManualRevenues()
       .then((rows) => {
@@ -253,6 +256,18 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
   useEffect(() => {
     reloadManualRevenues();
   }, [reloadManualRevenues]);
+
+  useEffect(() => {
+    if (!dateRange.startDate || !dateRange.endDate) return;
+    let c = false;
+    fetchCheckoutRevenueSummary(dateRange.startDate, dateRange.endDate)
+      .then((s) => { if (!c) setCheckoutSummary(s); })
+      .catch(() => { if (!c) setCheckoutSummary(null); });
+    fetchCheckoutRevenueByCampaign(dateRange.startDate, dateRange.endDate)
+      .then((items) => { if (!c) setCheckoutByCampaign(items); })
+      .catch(() => { if (!c) setCheckoutByCampaign([]); });
+    return () => { c = true; };
+  }, [dateRange.startDate, dateRange.endDate]);
 
   useEffect(() => {
     if (variant !== "receita") return;
@@ -329,16 +344,30 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
     return { metaManualRevenue: metaTotal, googleManualRevenue: googleTotal, totalManualRevenue: metaTotal + googleTotal };
   }, [manualRevMap, metaCampaignsFiltered, googleCampaignsFiltered]);
 
+  const checkoutRevenue = checkoutSummary?.totalNet ?? 0;
+
+  const metaCheckoutRevenue = useMemo(() => {
+    return checkoutByCampaign
+      .filter((c) => c.channel === "facebook")
+      .reduce((sum, c) => sum + c.net, 0);
+  }, [checkoutByCampaign]);
+
+  const googleCheckoutRevenue = useMemo(() => {
+    return checkoutByCampaign
+      .filter((c) => c.channel === "google")
+      .reduce((sum, c) => sum + c.net, 0);
+  }, [checkoutByCampaign]);
+
   const googleSpendAgg = aggG.costMicros / 1_000_000;
   const metaLeadishAgg = aggM.leads + aggM.messagingConversationsStarted;
   const metaCplChannel =
     aggM.spend > 0 && metaLeadishAgg > 0 ? aggM.spend / metaLeadishAgg : null;
-  const metaRevenueWithManual = aggM.purchaseValue + metaManualRevenue;
+  const metaRevenueWithManual = aggM.purchaseValue + metaManualRevenue + metaCheckoutRevenue;
   const metaRoasChannel =
     aggM.spend > 0 && metaRevenueWithManual > 0 ? metaRevenueWithManual / aggM.spend : null;
   const googleCplChannel =
     googleSpendAgg > 0 && aggG.conversions > 0 ? googleSpendAgg / aggG.conversions : null;
-  const googleRevenueWithManual = (aggG.conversionsValue ?? 0) + googleManualRevenue;
+  const googleRevenueWithManual = (aggG.conversionsValue ?? 0) + googleManualRevenue + googleCheckoutRevenue;
   const googleRoasChannel =
     googleSpendAgg > 0 && googleRevenueWithManual > 0
       ? googleRevenueWithManual / googleSpendAgg
@@ -375,7 +404,7 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
     aggM.spend,
   ]);
 
-  const revenueWithManual = attributedRevenue + totalManualRevenue;
+  const revenueWithManual = attributedRevenue + totalManualRevenue + checkoutRevenue;
   const roasBlend =
     filteredSpend > 0 && revenueWithManual > 0 ? revenueWithManual / filteredSpend : null;
   const cpaTrafego = leadsReais > 0 ? filteredSpend / leadsReais : 0;

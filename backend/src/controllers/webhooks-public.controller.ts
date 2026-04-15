@@ -4,14 +4,25 @@ import { ingestWebhookPublic } from "../services/webhooks.service.js";
 /**
  * Corpo bruto (Buffer) — rota montada com express.raw().
  * Assinatura: header `X-Ativadash-Signature: sha256=<hex>` = HMAC-SHA256(segredo, corpo bruto).
+ * Hotmart: envia `hottok` no corpo do payload (não usa HMAC padrão).
  * Idempotência opcional: `X-Event-Id` ou `X-Idempotency-Key`.
  */
 export async function postPublicWebhook(req: Request, res: Response) {
   try {
     const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(String(req.body ?? ""), "utf8");
-    const sig =
+    let sig =
       (req.headers["x-ativadash-signature"] as string | undefined) ||
       (req.headers["x-webhook-signature"] as string | undefined);
+
+    if (!sig) {
+      try {
+        const parsed = JSON.parse(raw.toString("utf8"));
+        if (parsed && parsed.hottok && typeof parsed.hottok === "string") {
+          sig = `hottok:${parsed.hottok}`;
+        }
+      } catch { /* not JSON or no hottok */ }
+    }
+
     const idem =
       (req.headers["x-event-id"] as string | undefined) ||
       (req.headers["x-idempotency-key"] as string | undefined);
