@@ -181,7 +181,74 @@ async function main() {
     });
   }
 
+  // ── Cenário de impersonação (agência + clientes) ──────────────────
+  const agencyPlan = await prisma.plan.findUnique({ where: { slug: "agency" } });
+
+  const matrixOrg = await prisma.organization.upsert({
+    where: { slug: "matriz-demo" },
+    create: {
+      name: "Matriz Demo Agência",
+      slug: "matriz-demo",
+      planId: agencyPlan?.id ?? starter.id,
+      organizationKind: "MATRIX",
+      resellerPartner: true,
+    },
+    update: {
+      organizationKind: "MATRIX",
+      resellerPartner: true,
+    },
+  });
+
+  const clienteA = await prisma.organization.upsert({
+    where: { slug: "cliente-alpha" },
+    create: {
+      name: "Cliente Alpha LTDA",
+      slug: "cliente-alpha",
+      planId: starter.id,
+      organizationKind: "CLIENT_WORKSPACE",
+      parentOrganizationId: matrixOrg.id,
+      resellerOrgKind: "CLIENT",
+    },
+    update: { parentOrganizationId: matrixOrg.id },
+  });
+
+  const clienteB = await prisma.organization.upsert({
+    where: { slug: "cliente-beta" },
+    create: {
+      name: "Cliente Beta SA",
+      slug: "cliente-beta",
+      planId: starter.id,
+      organizationKind: "CLIENT_WORKSPACE",
+      parentOrganizationId: matrixOrg.id,
+      resellerOrgKind: "CLIENT",
+    },
+    update: { parentOrganizationId: matrixOrg.id },
+  });
+
+  const matrizOwner = await prisma.user.upsert({
+    where: { email: "agencia@ativadash.com" },
+    create: { email: "agencia@ativadash.com", password: hashedPassword, name: "Dono da Agência" },
+    update: {},
+  });
+
+  await prisma.membership.upsert({
+    where: { userId_organizationId: { userId: matrizOwner.id, organizationId: matrixOrg.id } },
+    create: { userId: matrizOwner.id, organizationId: matrixOrg.id, role: "agency_owner" },
+    update: {},
+  });
+
+  // Subscription para orgs novas
+  for (const org of [matrixOrg, clienteA, clienteB]) {
+    if (!org.planId) continue;
+    await prisma.subscription.upsert({
+      where: { organizationId: org.id },
+      create: { organizationId: org.id, planId: org.planId!, billingMode: "custom", status: "active" },
+      update: {},
+    });
+  }
+
   console.log("Seed concluído. Planos: starter, professional, agency. Demo: demo@ativadash.com / demo123");
+  console.log("Impersonação: agencia@ativadash.com / demo123 → Matriz Demo Agência → Cliente Alpha / Beta");
 }
 
 main()

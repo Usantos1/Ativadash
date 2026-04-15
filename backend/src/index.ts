@@ -11,6 +11,7 @@ import workspaceRoutes from "./routes/workspace.routes.js";
 import organizationRoutes from "./routes/organization.routes.js";
 import platformRoutes from "./routes/platform.routes.js";
 import resellerRoutes from "./routes/reseller.routes.js";
+import impersonationRoutes from "./routes/impersonation.routes.js";
 import hooksPublicRoutes from "./routes/webhooks-public.routes.js";
 import publicDashboardShareRoutes from "./routes/public-dashboard-share.routes.js";
 
@@ -102,6 +103,7 @@ app.use("/api/workspace", workspaceRoutes);
 app.use("/api/organization", organizationRoutes);
 app.use("/api/platform", platformRoutes);
 app.use("/api/reseller", resellerRoutes);
+app.use("/api/impersonation", impersonationRoutes);
 
 app.use((_req, res) => {
   res.status(404).json({ message: "Rota não encontrada" });

@@ -86,15 +86,18 @@ export function OrganizationSwitcher(props?: {
 
   if (!user?.organizationId) return null;
 
+  const isImpersonating = user.isImpersonating === true;
   const currentOrgId = user.organizationId;
   const options = collectOptions(currentOrgId, memberships, managed);
   const displayName = user.organization?.name ?? "Empresa";
-  const canSwitch = options.length > 1;
+  const canSwitch = !isImpersonating && options.length > 1;
   const facePrimary = contextFace?.primary ?? displayName;
-  const faceSecondary = contextFace?.secondary ?? executiveGreetingLine(user);
+  const faceSecondary = isImpersonating
+    ? "Acesso como administrador"
+    : (contextFace?.secondary ?? executiveGreetingLine(user));
 
   async function onSelect(organizationId: string) {
-    if (organizationId === currentOrgId || loading) return;
+    if (organizationId === currentOrgId || loading || isImpersonating) return;
     setLoading(true);
     try {
       const res = await switchWorkspaceOrganization(organizationId);

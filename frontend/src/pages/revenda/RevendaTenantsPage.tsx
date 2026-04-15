@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import type { ChildWorkspaceOperationsRow, EnabledFeatures, ResellerOrgKind, WorkspaceStatus } from "@/lib/organization-api";
 import { switchWorkspaceOrganization } from "@/lib/organization-api";
+import { startImpersonation } from "@/lib/impersonation-api";
 import {
   fetchResellerOverview,
   fetchResellerPlans,
@@ -288,12 +289,14 @@ export function RevendaTenantsPage({ kind }: Props) {
     setSwitchingId(orgId);
     try {
       await postResellerEnterChild(orgId);
-      const r = await switchWorkspaceOrganization(orgId);
-      setAuth(r.user, r.accessToken, r.refreshToken, {
-        memberships: r.memberships,
-        managedOrganizations: r.managedOrganizations,
-      });
-      navigate("/dashboard");
+      const r = await startImpersonation(orgId);
+      setAuth(
+        { ...r.user, organization: r.user.organization },
+        r.accessToken,
+        r.refreshToken,
+        { memberships: r.memberships, managedOrganizations: r.managedOrganizations }
+      );
+      navigate("/dashboard", { replace: true });
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Não foi possível entrar na empresa.");
     } finally {
@@ -569,7 +572,7 @@ export function RevendaTenantsPage({ kind }: Props) {
                             ) : (
                               <LogIn className="h-3.5 w-3.5" />
                             )}
-                            Entrar
+                            Acessar como admin
                           </Button>
                           <Button type="button" variant="secondary" size="sm" className="gap-1" onClick={() => openEdit(r)}>
                             <Pencil className="h-3.5 w-3.5" />

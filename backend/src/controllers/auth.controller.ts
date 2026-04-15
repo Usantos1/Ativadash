@@ -90,7 +90,14 @@ export async function refresh(req: Request, res: Response) {
   }
 }
 
-type JwtUser = { userId: string; email: string; organizationId: string };
+type JwtUser = {
+  userId: string;
+  email: string;
+  organizationId: string;
+  isImpersonating?: boolean;
+  impersonationSessionId?: string;
+  sourceOrganizationId?: string;
+};
 
 export async function me(req: Request, res: Response) {
   const jwtUser = (req as Request & { user: JwtUser }).user;
@@ -101,7 +108,14 @@ export async function me(req: Request, res: Response) {
         message: "Usuário não está associado a esta empresa ou o vínculo foi removido.",
       });
     }
-    return res.json(profile);
+    const impersonationFields = jwtUser.isImpersonating
+      ? {
+          isImpersonating: true as const,
+          impersonationSessionId: jwtUser.impersonationSessionId,
+          sourceOrganizationId: jwtUser.sourceOrganizationId,
+        }
+      : {};
+    return res.json({ ...profile, ...impersonationFields });
   } catch (e) {
     if (respondIfDatabaseUnavailable(res, e, "GET /api/auth/me")) return;
     console.error(e);
@@ -111,6 +125,14 @@ export async function me(req: Request, res: Response) {
 
 export async function switchOrganization(req: Request, res: Response) {
   const jwtUser = (req as Request & { user: JwtUser }).user;
+
+  if (jwtUser.isImpersonating) {
+    return res.status(400).json({
+      message: "Não é possível trocar de organização durante impersonação. Saia primeiro.",
+      code: "IMPERSONATION_ACTIVE",
+    });
+  }
+
   const parsed = switchOrganizationSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({

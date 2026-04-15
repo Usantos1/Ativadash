@@ -10,6 +10,7 @@ import {
 } from "@/components/layout/organization-plan-features-context";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { AppTopbar } from "@/components/layout/AppTopbar";
+import { ImpersonationBanner } from "@/components/layout/ImpersonationBanner";
 import { AppShell } from "@/components/shell/AppShell";
 import { useUIStore } from "@/stores/ui-store";
 import { useAuthStore, type AuthMeResponse } from "@/stores/auth-store";
@@ -72,6 +73,9 @@ function MainLayoutInner() {
             matrizNavEligible: profile.matrizNavEligible,
             organizationKind: profile.organizationKind,
             parentOrganizationId: profile.parentOrganizationId,
+            isImpersonating: (profile as AuthMeResponse & { isImpersonating?: boolean }).isImpersonating,
+            impersonationSessionId: (profile as AuthMeResponse & { impersonationSessionId?: string }).impersonationSessionId,
+            sourceOrganizationId: (profile as AuthMeResponse & { sourceOrganizationId?: string }).sourceOrganizationId,
           },
           memberships: profile.memberships.map((m) => ({
             ...m,
@@ -146,6 +150,7 @@ function MainLayoutInner() {
 
   return (
     <AppShell>
+      <ImpersonationBanner />
       <ShortcutsHelpModal />
       <Sidebar
         mobileOpen={sidebarOpen}

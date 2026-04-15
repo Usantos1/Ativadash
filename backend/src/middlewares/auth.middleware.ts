@@ -7,6 +7,10 @@ export interface JwtPayload {
   userId: string;
   email: string;
   organizationId: string;
+  /** Campos presentes apenas durante impersonação */
+  isImpersonating?: boolean;
+  impersonationSessionId?: string;
+  sourceOrganizationId?: string;
 }
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction) {

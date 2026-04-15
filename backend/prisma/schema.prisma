@@ -61,6 +61,7 @@ model User {
   invitationsSent Invitation[] @relation("InvitationInvitedBy")
   matrixWorkspaceGrants MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantUser")
   assetAccessGrants     AssetAccessGrant[]     @relation("AssetAccessGrantUser")
+  impersonationSessions ImpersonationSession[] @relation("ImpersonationActor")
 }
 
 model RefreshToken {
@@ -142,6 +143,9 @@ model Organization {
   googleAdsCustomerAssignments GoogleAdsCustomerAssignment[]
   metaAdsAssignments         MetaAdsAssignment[]
 
+  impersonationSessionsAsSource ImpersonationSession[] @relation("ImpersonationSource")
+  impersonationSessionsAsTarget ImpersonationSession[] @relation("ImpersonationTarget")
+
   @@index([parentOrganizationId])
   @@index([organizationKind])
 }
@@ -214,6 +218,37 @@ model ResellerAuditLog {
 
   @@index([matrixOrgId, createdAt])
   @@index([matrixOrgId, action, createdAt])
+}
+
+/// Sessão de impersonação: admin/agência acessando org-cliente como administrador.
+model ImpersonationSession {
+  id                     String   @id @default(cuid())
+  /// Quem iniciou a impersonação
+  actorUserId            String
+  actorUser              User     @relation("ImpersonationActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+  /// Organização de origem (de onde saiu)
+  sourceOrganizationId   String
+  sourceOrganization     Organization @relation("ImpersonationSource", fields: [sourceOrganizationId], references: [id], onDelete: Cascade)
+  /// Organização destino (cliente acessado)
+  targetOrganizationId   String
+  targetOrganization     Organization @relation("ImpersonationTarget", fields: [targetOrganizationId], references: [id], onDelete: Cascade)
+  /// Papel assumido na org destino
+  assumedRole            String   @default("admin")
+  /// Sessão ativa?
+  isActive               Boolean  @default(true)
+  startedAt              DateTime @default(now())
+  endedAt                DateTime?
+  /// Motivo opcional
+  reason                 String?
+  ip                     String?
+  userAgent              String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@index([actorUserId, isActive])
+  @@index([targetOrganizationId])
+  @@index([sourceOrganizationId])
+  @@index([isActive, startedAt])
 }
 
 /// Convite por e-mail para novo membro da organização

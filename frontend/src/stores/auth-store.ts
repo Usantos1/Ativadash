@@ -43,6 +43,10 @@ export interface User {
   organizationKind?: MembershipOrganizationKind;
   /** Se definido, a org ativa é filha na hierarquia (ex.: agência filial). */
   parentOrganizationId?: string | null;
+  /** Impersonação: true quando acessando org-cliente como admin */
+  isImpersonating?: boolean;
+  impersonationSessionId?: string;
+  sourceOrganizationId?: string;
 }
 
 /** Resposta de GET /auth/me */

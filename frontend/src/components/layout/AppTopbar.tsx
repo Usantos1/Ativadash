@@ -21,7 +21,9 @@ export function AppTopbar({
   const { pathname } = useLocation();
   const crumbs = useMemo(() => resolveTopbarCrumbs(pathname), [pathname]);
   const user = useAuthStore((s) => s.user);
+  const isImpersonating = user?.isImpersonating === true;
   const showSupportBadge =
+    !isImpersonating &&
     user?.platformAdmin === true && user.organizationId != null && resolveAppNavMode(user) !== "platform_full";
 
   const showCenterCrumbs = crumbs.length > 0;

@@ -431,13 +431,16 @@ export async function resolveFallbackActiveOrganizationIdForSession(userId: stri
 }
 
 export async function refreshAccessToken(refreshTokenStr: string) {
-  let decoded: { userId?: string; type?: string; organizationId?: string };
+  let decoded: {
+    userId?: string;
+    type?: string;
+    organizationId?: string;
+    isImpersonating?: boolean;
+    impersonationSessionId?: string;
+    sourceOrganizationId?: string;
+  };
   try {
-    decoded = jwt.verify(refreshTokenStr, env.JWT_REFRESH_SECRET) as {
-      userId?: string;
-      type?: string;
-      organizationId?: string;
-    };
+    decoded = jwt.verify(refreshTokenStr, env.JWT_REFRESH_SECRET) as typeof decoded;
   } catch {
     throw new Error("Refresh token inválido ou expirado");
   }
@@ -453,6 +456,21 @@ export async function refreshAccessToken(refreshTokenStr: string) {
     throw new Error("Refresh token inválido ou expirado");
   }
 
+  let impersonationCtx: ImpersonationTokenContext | undefined;
+
+  if (decoded.isImpersonating && decoded.impersonationSessionId && decoded.sourceOrganizationId) {
+    const sess = await prisma.impersonationSession.findFirst({
+      where: { id: decoded.impersonationSessionId, isActive: true },
+    });
+    if (sess) {
+      impersonationCtx = {
+        isImpersonating: true,
+        impersonationSessionId: sess.id,
+        sourceOrganizationId: decoded.sourceOrganizationId,
+      };
+    }
+  }
+
   let orgId = decoded.organizationId;
   if (!orgId) {
     const m = await prisma.membership.findFirst({
@@ -465,7 +483,9 @@ export async function refreshAccessToken(refreshTokenStr: string) {
     throw new Error("Usuário sem organização");
   }
 
-  let allowed = await userHasEffectiveAccess(stored.userId, orgId);
+  let allowed = impersonationCtx
+    ? true
+    : await userHasEffectiveAccess(stored.userId, orgId);
   if (!allowed) {
     const fallbackOrgId = await resolveFallbackActiveOrganizationIdForSession(stored.userId);
     if (fallbackOrgId) {
@@ -481,7 +501,8 @@ export async function refreshAccessToken(refreshTokenStr: string) {
   const { accessToken, refreshToken: newRefresh } = await createTokens(
     stored.user.id,
     stored.user.email,
-    orgId
+    orgId,
+    impersonationCtx
   );
   await saveRefreshToken(stored.user.id, newRefresh);
   const userDto = await getAuthProfile(stored.userId, orgId);
@@ -490,7 +511,15 @@ export async function refreshAccessToken(refreshTokenStr: string) {
   }
   const memberships = await listMembershipSummaries(stored.userId);
   return {
-    user: { ...userDto, platformAdmin: isPlatformAdminEmail(stored.user.email) },
+    user: {
+      ...userDto,
+      platformAdmin: isPlatformAdminEmail(stored.user.email),
+      ...(impersonationCtx ? {
+        isImpersonating: true,
+        impersonationSessionId: impersonationCtx.impersonationSessionId,
+        sourceOrganizationId: impersonationCtx.sourceOrganizationId,
+      } : {}),
+    },
     memberships,
     accessToken,
     refreshToken: newRefresh,
@@ -500,11 +529,14 @@ export async function refreshAccessToken(refreshTokenStr: string) {
 export async function switchActiveOrganization(
   userId: string,
   targetOrganizationId: string,
-  audit?: { previousOrganizationId: string; ip?: string | null; userAgent?: string | null }
+  audit?: { previousOrganizationId: string; ip?: string | null; userAgent?: string | null },
+  impersonation?: ImpersonationTokenContext
 ) {
-  const allowed = await userHasEffectiveAccess(userId, targetOrganizationId);
-  if (!allowed) {
-    throw new Error("Sem acesso a esta empresa");
+  if (!impersonation) {
+    const allowed = await userHasEffectiveAccess(userId, targetOrganizationId);
+    if (!allowed) {
+      throw new Error("Sem acesso a esta empresa");
+    }
   }
   const user = await prisma.user.findFirst({
     where: { id: userId, deletedAt: null },
@@ -530,7 +562,7 @@ export async function switchActiveOrganization(
       userAgent: audit.userAgent,
     });
   }
-  const { accessToken, refreshToken } = await createTokens(userId, user.email, targetOrganizationId);
+  const { accessToken, refreshToken } = await createTokens(userId, user.email, targetOrganizationId, impersonation);
   await saveRefreshToken(userId, refreshToken);
   const userDto = await getAuthProfile(userId, targetOrganizationId);
   if (!userDto) {
@@ -539,7 +571,15 @@ export async function switchActiveOrganization(
   const memberships = await listMembershipSummaries(userId);
   const managedOrganizations = await listManagedOrganizationsForActiveContext(userId, targetOrganizationId);
   return {
-    user: { ...userDto, platformAdmin: isPlatformAdminEmail(user.email) },
+    user: {
+      ...userDto,
+      platformAdmin: isPlatformAdminEmail(user.email),
+      ...(impersonation ? {
+        isImpersonating: true,
+        impersonationSessionId: impersonation.impersonationSessionId,
+        sourceOrganizationId: impersonation.sourceOrganizationId,
+      } : {}),
+    },
     memberships,
     managedOrganizations,
     accessToken,
@@ -547,13 +587,34 @@ export async function switchActiveOrganization(
   };
 }
 
-async function createTokens(userId: string, email: string, organizationId: string) {
+export type ImpersonationTokenContext = {
+  isImpersonating: true;
+  impersonationSessionId: string;
+  sourceOrganizationId: string;
+};
+
+async function createTokens(
+  userId: string,
+  email: string,
+  organizationId: string,
+  impersonation?: ImpersonationTokenContext
+) {
   const payload: JwtPayload = { userId, email, organizationId };
+  if (impersonation) {
+    payload.isImpersonating = true;
+    payload.impersonationSessionId = impersonation.impersonationSessionId;
+    payload.sourceOrganizationId = impersonation.sourceOrganizationId;
+  }
   const accessOpts: SignOptions = { expiresIn: "15m" };
   const refreshOpts: SignOptions = { expiresIn: "7d" };
   const accessToken = jwt.sign(payload, env.JWT_SECRET, accessOpts);
   const refreshToken = jwt.sign(
-    { userId, type: "refresh", organizationId },
+    {
+      userId,
+      type: "refresh",
+      organizationId,
+      ...(impersonation ?? {}),
+    },
     env.JWT_REFRESH_SECRET,
     refreshOpts
   );
