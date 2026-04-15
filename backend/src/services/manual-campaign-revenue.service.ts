@@ -13,8 +13,8 @@ export async function upsertManualCampaignRevenue(
   manualRevenue: number
 ) {
   return prisma.manualCampaignRevenue.upsert({
-    where: { workspaceId_campaignId: { workspaceId, campaignId } },
-    update: { manualRevenue, channel },
+    where: { workspaceId_campaignId_channel: { workspaceId, campaignId, channel } },
+    update: { manualRevenue },
     create: { workspaceId, campaignId, channel, manualRevenue },
   });
 }
