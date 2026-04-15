@@ -3,11 +3,13 @@ import { IntegrationDetailHeader } from "@/components/integrations/detail/Integr
 import { IntegrationDetailPageShell } from "@/components/integrations/detail/IntegrationDetailPageShell";
 import { WebhooksIntegrationPanel } from "@/components/integrations/WebhooksIntegrationPanel";
 import { hubItemByRouteSlug } from "@/lib/integration-hub-registry";
+import { formatPageTitle, usePageTitle } from "@/hooks/usePageTitle";
 import { cn } from "@/lib/utils";
 
 const webhookHub = hubItemByRouteSlug("webhook");
 
 export function WebhooksIntegrationPage() {
+  usePageTitle(formatPageTitle(["Integrações", "Webhooks"]));
   const [toast, setToast] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   return (

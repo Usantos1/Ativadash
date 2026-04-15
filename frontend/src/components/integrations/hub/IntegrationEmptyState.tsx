@@ -17,8 +17,8 @@ export function IntegrationEmptyState({ query }: Props) {
         <p className="text-lg font-semibold text-foreground">Nenhuma integração aqui</p>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           {hasQuery
-            ? `Nada corresponde a “${query.trim()}”. Limpe a busca ou troque o filtro.`
-            : "Ajuste o filtro ou volte a “Todas” para ver o catálogo completo."}
+            ? `Nada corresponde a \u201c${query.trim()}\u201d. Limpe a busca ou troque o filtro.`
+            : "Ajuste o filtro ou selecione \u201cTodas\u201d para ver o catálogo completo."}
         </p>
       </div>
     </div>

@@ -33,6 +33,7 @@ import { IntegrationConfigCard } from "@/components/integrations/detail/Integrat
 import { MetaAdsSummaryPanel } from "@/components/integrations/detail/MetaAdsSummaryPanel";
 import { MetaAdsLinkedAccountsTable } from "@/components/integrations/detail/MetaAdsLinkedAccountsTable";
 import { IntegrationStatusBadge } from "@/components/integrations/hub/IntegrationStatusBadge";
+import { formatPageTitle, usePageTitle } from "@/hooks/usePageTitle";
 import { cn } from "@/lib/utils";
 
 const S_ORG = "__org__";
@@ -42,6 +43,7 @@ function normAdId(id: string): string {
 }
 
 export function MetaAdsIntegrationPage() {
+  usePageTitle(formatPageTitle(["Integrações", "Meta Ads"]));
   const [searchParams, setSearchParams] = useSearchParams();
   const [list, setList] = useState<IntegrationFromApi[]>([]);
   const [setup, setSetup] = useState<MetaAdsSetupDto | null>(null);

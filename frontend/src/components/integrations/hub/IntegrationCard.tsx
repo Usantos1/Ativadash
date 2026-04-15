@@ -184,7 +184,7 @@ export function IntegrationCard({ item, status, detailHint }: Props) {
                 {interested ? "Interesse registrado" : "Tenho interesse"}
               </Button>
               <p className="text-[10px] leading-snug text-muted-foreground">
-                Ajuda a priorizar o que construímos a seguir neste workspace.
+                Ajuda a priorizar as próximas integrações do seu workspace.
               </p>
             </div>
           ) : (

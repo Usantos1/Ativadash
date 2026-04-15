@@ -2,9 +2,11 @@ import { useState } from "react";
 import { AtivaCrmIntegrationPanel } from "@/components/integrations/AtivaCrmIntegrationPanel";
 import { IntegrationDetailHeader } from "@/components/integrations/detail/IntegrationDetailHeader";
 import { IntegrationDetailPageShell } from "@/components/integrations/detail/IntegrationDetailPageShell";
+import { formatPageTitle, usePageTitle } from "@/hooks/usePageTitle";
 import { cn } from "@/lib/utils";
 
 export function WhatsAppIntegrationPage() {
+  usePageTitle(formatPageTitle(["Integrações", "Ativa CRM"]));
   const [toast, setToast] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   return (

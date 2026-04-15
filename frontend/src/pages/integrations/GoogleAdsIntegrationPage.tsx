@@ -33,6 +33,7 @@ import { IntegrationConfigCard } from "@/components/integrations/detail/Integrat
 import { GoogleAdsSummaryPanel } from "@/components/integrations/detail/GoogleAdsSummaryPanel";
 import { GoogleAdsLinkedAccountsTable } from "@/components/integrations/detail/GoogleAdsLinkedAccountsTable";
 import { IntegrationStatusBadge } from "@/components/integrations/hub/IntegrationStatusBadge";
+import { formatPageTitle, usePageTitle } from "@/hooks/usePageTitle";
 import { cn } from "@/lib/utils";
 
 function normId(id: string): string {
@@ -49,6 +50,7 @@ const S_ORG = "__org__";
 const S_MCC_NONE = "__mcc_none__";
 
 export function GoogleAdsIntegrationPage() {
+  usePageTitle(formatPageTitle(["Integrações", "Google Ads"]));
   const [searchParams, setSearchParams] = useSearchParams();
   const [list, setList] = useState<IntegrationFromApi[]>([]);
   const [setup, setSetup] = useState<GoogleAdsSetupDto | null>(null);
