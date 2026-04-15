@@ -335,6 +335,10 @@ export async function patchChildWorkspace(
   return api.patch(`/organization/children/${childId}`, body);
 }
 
+export async function deleteChildWorkspace(childId: string): Promise<{ ok: true }> {
+  return api.delete(`/organization/children/${childId}`);
+}
+
 export async function patchOrganizationPlanSettings(body: {
   inheritPlanFromParent?: boolean;
   planId?: string | null;

@@ -20,6 +20,8 @@ import {
   LogIn,
   Link2,
   Target,
+  Archive,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +43,7 @@ import {
   fetchChildrenOperationsDashboard,
   formatPlanCap,
   patchChildWorkspace,
+  deleteChildWorkspace,
   type ChildWorkspaceOperationsRow,
   type ResellerOrgKind,
   type WorkspaceStatus,
@@ -125,6 +128,10 @@ export function ClientsPage() {
   const [editStatus, setEditStatus] = useState<WorkspaceStatus>("ACTIVE");
   const [editSaving, setEditSaving] = useState(false);
   const [teamRow, setTeamRow] = useState<ChildWorkspaceOperationsRow | null>(null);
+  const [archiveRow, setArchiveRow] = useState<ChildWorkspaceOperationsRow | null>(null);
+  const [archiving, setArchiving] = useState(false);
+  const [deleteRow, setDeleteRow] = useState<ChildWorkspaceOperationsRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -200,6 +207,36 @@ export function ClientsPage() {
       setError(e instanceof Error ? e.message : "Não foi possível acessar como admin.");
     } finally {
       setSwitchingId(null);
+    }
+  }
+
+  async function handleArchiveWorkspace() {
+    if (!archiveRow) return;
+    setArchiving(true);
+    setError(null);
+    try {
+      await patchChildWorkspace(archiveRow.id, { workspaceStatus: "ARCHIVED" as WorkspaceStatus });
+      setArchiveRow(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao arquivar cliente");
+    } finally {
+      setArchiving(false);
+    }
+  }
+
+  async function handleDeleteWorkspace() {
+    if (!deleteRow) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteChildWorkspace(deleteRow.id);
+      setDeleteRow(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao excluir cliente");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -533,16 +570,41 @@ export function ClientsPage() {
                             Acessar e abrir Usuários
                           </DropdownMenu.Item>
                           {canPatchChild ? (
-                            <DropdownMenu.Item
-                              className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
-                              onSelect={(e) => {
-                                e.preventDefault();
-                                openEditWorkspace(row);
-                              }}
-                            >
-                              <Pencil className="h-4 w-4 opacity-70" />
-                              Editar conta
-                            </DropdownMenu.Item>
+                            <>
+                              <DropdownMenu.Item
+                                className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
+                                onSelect={(e) => {
+                                  e.preventDefault();
+                                  openEditWorkspace(row);
+                                }}
+                              >
+                                <Pencil className="h-4 w-4 opacity-70" />
+                                Editar conta
+                              </DropdownMenu.Item>
+                              {row.workspaceStatus !== "ARCHIVED" ? (
+                                <DropdownMenu.Item
+                                  className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground outline-none hover:bg-muted"
+                                  onSelect={(e) => {
+                                    e.preventDefault();
+                                    setArchiveRow(row);
+                                  }}
+                                >
+                                  <Archive className="h-4 w-4" />
+                                  Arquivar cliente
+                                </DropdownMenu.Item>
+                              ) : null}
+                              <DropdownMenu.Separator className="my-1 h-px bg-border/50" />
+                              <DropdownMenu.Item
+                                className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 outline-none hover:bg-red-50 dark:hover:bg-red-950/20"
+                                onSelect={(e) => {
+                                  e.preventDefault();
+                                  setDeleteRow(row);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Excluir cliente
+                              </DropdownMenu.Item>
+                            </>
                           ) : null}
                           <DropdownMenu.Item
                             className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
@@ -964,6 +1026,63 @@ export function ClientsPage() {
             >
               {editSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!archiveRow} onOpenChange={(v) => { if (!v) setArchiveRow(null); }}>
+        <DialogContent title="Arquivar cliente" showClose>
+          <div className="space-y-3 py-2">
+            <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900/40 dark:bg-red-950/20">
+              <AlertTriangle className="h-5 w-5 shrink-0 text-red-600" />
+              <p className="text-sm text-red-800 dark:text-red-300">
+                Esta ação vai arquivar o workspace <strong>{archiveRow?.name}</strong>. Os dados não serão apagados, mas o cliente ficará inacessível até ser reativado.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={() => setArchiveRow(null)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={archiving}
+              onClick={() => void handleArchiveWorkspace()}
+            >
+              {archiving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Arquivar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteRow} onOpenChange={(v) => { if (!v) setDeleteRow(null); }}>
+        <DialogContent title="Excluir cliente" showClose>
+          <div className="space-y-3 py-2">
+            <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900/40 dark:bg-red-950/20">
+              <Trash2 className="h-5 w-5 shrink-0 text-red-600" />
+              <div className="text-sm text-red-800 dark:text-red-300">
+                <p className="font-semibold">Esta ação é irreversível.</p>
+                <p className="mt-1">
+                  O workspace <strong>{deleteRow?.name}</strong> e todos os dados associados (integrações, campanhas, membros) serão permanentemente removidos.
+                </p>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={() => setDeleteRow(null)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => void handleDeleteWorkspace()}
+            >
+              {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+              Excluir permanentemente
             </Button>
           </DialogFooter>
         </DialogContent>

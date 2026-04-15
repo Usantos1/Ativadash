@@ -1,16 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DayPicker, type DateRange } from "react-day-picker";
 import { ptBR } from "date-fns/locale";
 import { formatInTimeZone } from "date-fns-tz";
+import { parse, isValid, isBefore, isAfter } from "date-fns";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
   ALL_PRESET_ITEMS,
   type MarketingPresetId,
   getPresetRange,
   labelForPreset,
-  loadRecentPresetIds,
   formatRangeShortPt,
   MARKETING_TZ,
 } from "@/lib/marketing-date-presets";
@@ -38,6 +39,18 @@ function parseYmdToLocalDate(ymd: string): Date {
   return new Date(y, m - 1, d);
 }
 
+function formatDateInput(d: Date): string {
+  return formatInTimeZone(d, MARKETING_TZ, "dd/MM/yyyy", { locale: ptBR });
+}
+
+function parseDateInput(raw: string): Date | null {
+  const trimmed = raw.trim();
+  const d = parse(trimmed, "dd/MM/yyyy", new Date());
+  if (!isValid(d)) return null;
+  if (d.getFullYear() < 2000 || d.getFullYear() > 2100) return null;
+  return d;
+}
+
 export function MarketingDateRangeDialog({
   open,
   onOpenChange,
@@ -52,16 +65,24 @@ export function MarketingDateRangeDialog({
     from: parseYmdToLocalDate(initial.startDate),
     to: parseYmdToLocalDate(initial.endDate),
   }));
+  const [fromText, setFromText] = useState("");
+  const [toText, setToText] = useState("");
+  const endInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (!open) return;
     setPresetId(initialPresetId);
-    setRange({
-      from: parseYmdToLocalDate(initial.startDate),
-      to: parseYmdToLocalDate(initial.endDate),
-    });
+    const from = parseYmdToLocalDate(initial.startDate);
+    const to = parseYmdToLocalDate(initial.endDate);
+    setRange({ from, to });
+    setFromText(formatDateInput(from));
+    setToText(formatDateInput(to));
   }, [open, initial.startDate, initial.endDate, initialPresetId, initialLabel]);
 
-  const recentIds = useMemo(() => loadRecentPresetIds(), [open]);
+  useEffect(() => {
+    if (range?.from) setFromText(formatDateInput(range.from));
+    if (range?.to) setToText(formatDateInput(range.to));
+  }, [range?.from, range?.to]);
 
   function applyPreset(id: MarketingPresetId) {
     setPresetId(id);
@@ -75,21 +96,60 @@ export function MarketingDateRangeDialog({
     setRange(next);
   }
 
+  function handleFromBlur() {
+    const d = parseDateInput(fromText);
+    if (!d) {
+      if (range?.from) setFromText(formatDateInput(range.from));
+      return;
+    }
+    setPresetId("custom");
+    const to = range?.to;
+    if (to && isAfter(d, to)) {
+      setRange({ from: d, to: d });
+    } else {
+      setRange({ from: d, to });
+    }
+  }
+
+  function handleToBlur() {
+    const d = parseDateInput(toText);
+    if (!d) {
+      if (range?.to) setToText(formatDateInput(range.to));
+      return;
+    }
+    setPresetId("custom");
+    const from = range?.from;
+    if (from && isBefore(d, from)) {
+      setRange({ from: d, to: d });
+    } else {
+      setRange({ from, to: d });
+    }
+  }
+
+  function handleFromKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") {
+      handleFromBlur();
+      endInputRef.current?.focus();
+    }
+  }
+
+  function handleToKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") {
+      handleToBlur();
+      handleApply();
+    }
+  }
+
   function handleApply() {
     const from = range?.from;
     const to = range?.to ?? range?.from;
     if (!from || !to) return;
     const startDate = formatInTimeZone(from, MARKETING_TZ, "yyyy-MM-dd");
     const endDate = formatInTimeZone(to, MARKETING_TZ, "yyyy-MM-dd");
+    const datePart = formatRangeShortPt(startDate, endDate);
     const label =
-      presetId === "custom" ? formatRangeShortPt(startDate, endDate) : labelForPreset(presetId);
-    onApply({
-      startDate,
-      endDate,
-      label,
-      presetId,
-      compareEnabled: false,
-    });
+      presetId === "custom" ? datePart : `${labelForPreset(presetId)} · ${datePart}`;
+    onApply({ startDate, endDate, label, presetId, compareEnabled: false });
     onOpenChange(false);
   }
 
@@ -98,65 +158,36 @@ export function MarketingDateRangeDialog({
       <DialogContent
         showClose
         title="Período"
-        className="flex max-h-[95dvh] w-[min(100vw-1rem,80rem)] max-w-none flex-col gap-0 overflow-y-auto overflow-x-visible p-0 sm:max-h-[90vh]"
+        className="flex max-h-[95dvh] w-[min(100vw-1rem,64rem)] max-w-none flex-col gap-0 overflow-y-auto p-0 sm:max-h-[90vh]"
       >
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
-          <aside className="w-full shrink-0 border-b border-border/80 lg:w-[min(100%,240px)] lg:max-w-[240px] lg:border-b-0 lg:border-r">
-            <div className="max-h-[40vh] overflow-y-auto p-3 lg:max-h-[min(70vh,520px)]">
-              {recentIds.length > 0 && (
-                <>
-                  <p className="mb-2 px-2 text-xs font-medium text-muted-foreground">Usados recentemente</p>
-                  <ul className="mb-3 space-y-0.5">
-                    {recentIds.map((id) => (
-                      <li key={`r-${id}`}>
-                        <button
-                          type="button"
-                          onClick={() => applyPreset(id)}
-                          className={cn(
-                            "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted",
-                            presetId === id && "bg-primary/10 font-medium text-primary"
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              "flex h-3.5 w-3.5 shrink-0 rounded-full border-2",
-                              presetId === id ? "border-primary bg-primary" : "border-muted-foreground/40"
-                            )}
-                          />
-                          {labelForPreset(id)}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="mb-2 border-t border-border/60" />
-                </>
-              )}
-              <ul className="space-y-0.5">
-                {ALL_PRESET_ITEMS.map(({ id, label }) => (
-                  <li key={id}>
-                    <button
-                      type="button"
-                      onClick={() => applyPreset(id)}
-                      className={cn(
-                        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted",
-                        presetId === id && "bg-primary/10 font-medium text-primary"
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "flex h-3.5 w-3.5 shrink-0 rounded-full border-2",
-                          presetId === id ? "border-primary bg-primary" : "border-muted-foreground/40"
-                        )}
-                      />
-                      {label}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col sm:flex-row">
+          {/* Presets */}
+          <aside className="w-full shrink-0 border-b border-border/60 sm:w-48 sm:border-b-0 sm:border-r">
+            <div className="flex gap-1 overflow-x-auto p-2 sm:max-h-[min(65vh,460px)] sm:flex-col sm:overflow-x-visible sm:overflow-y-auto sm:p-3">
+              {ALL_PRESET_ITEMS.map(({ id, label }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => applyPreset(id)}
+                  className={cn(
+                    "flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-muted sm:w-full",
+                    presetId === id && "bg-primary/10 font-medium text-primary"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "hidden h-3 w-3 shrink-0 rounded-full border-2 sm:flex",
+                      presetId === id ? "border-primary bg-primary" : "border-muted-foreground/30"
+                    )}
+                  />
+                  {label}
+                </button>
+              ))}
             </div>
           </aside>
 
-          <div className="min-w-0 flex-1 overflow-x-visible overflow-y-visible p-3 sm:p-4 lg:min-w-[min(100%,42rem)]">
+          {/* Calendar + inputs */}
+          <div className="min-w-0 flex-1 overflow-x-auto p-3 sm:p-4">
             <DayPicker
               mode="range"
               selected={range}
@@ -167,24 +198,18 @@ export function MarketingDateRangeDialog({
               defaultMonth={range?.from}
               className="marketing-day-picker w-full max-w-full"
               classNames={{
-                months:
-                  "flex flex-col gap-6 sm:flex-row sm:flex-nowrap sm:items-start sm:justify-center sm:gap-10",
+                months: "flex flex-col gap-4 sm:flex-row sm:flex-nowrap sm:items-start sm:justify-center sm:gap-8",
                 month: "w-full shrink-0 space-y-2 sm:w-auto",
                 caption: "flex justify-center pt-1 relative items-center mb-2",
                 caption_label: "text-sm font-medium",
                 nav: "flex items-center gap-1",
-                nav_button: cn(
-                  "inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/80 bg-background text-sm"
-                ),
+                nav_button: "inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/80 bg-background text-sm hover:bg-muted",
                 table: "w-full border-collapse",
                 head_row: "flex",
                 head_cell: "w-9 text-[0.7rem] font-medium text-muted-foreground",
                 row: "flex w-full mt-1",
                 cell: "relative p-0 text-center text-sm focus-within:relative",
-                day: cn(
-                  "h-9 w-9 rounded-md p-0 font-normal aria-selected:opacity-100",
-                  "hover:bg-muted"
-                ),
+                day: "h-9 w-9 rounded-md p-0 font-normal aria-selected:opacity-100 hover:bg-muted",
                 day_range_start: "rounded-l-md bg-primary text-primary-foreground",
                 day_range_end: "rounded-r-md bg-primary text-primary-foreground",
                 day_selected: "bg-primary text-primary-foreground",
@@ -195,41 +220,45 @@ export function MarketingDateRangeDialog({
               }}
             />
 
-            <div className="mt-4 space-y-3 border-t border-border/80 pt-4">
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="rounded-md border border-border/80 bg-muted/40 px-2 py-1 font-medium">
-                  {presetId === "custom" ? "Personalizado" : labelForPreset(presetId)}
-                </span>
-                {range?.from && range?.to && (
-                  <>
-                    <input
-                      readOnly
-                      className="h-9 min-w-[7.5rem] flex-1 rounded-md border border-border/80 bg-background px-2 text-xs sm:max-w-[9rem]"
-                      value={formatInTimeZone(range.from, MARKETING_TZ, "d 'de' MMM", { locale: ptBR })}
-                    />
-                    <input
-                      readOnly
-                      className="h-9 min-w-[7.5rem] flex-1 rounded-md border border-border/80 bg-background px-2 text-xs sm:max-w-[9rem]"
-                      value={formatInTimeZone(range.to, MARKETING_TZ, "d 'de' MMM", { locale: ptBR })}
-                    />
-                  </>
-                )}
+            {/* Editable date inputs */}
+            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium text-muted-foreground">Início</label>
+                <Input
+                  value={fromText}
+                  onChange={(e) => setFromText(e.target.value)}
+                  onBlur={handleFromBlur}
+                  onKeyDown={handleFromKeyDown}
+                  placeholder="dd/mm/aaaa"
+                  className="h-8 w-28 rounded-lg text-xs"
+                />
               </div>
-
-              <p className="text-xs text-muted-foreground">
-                Fuso horário das datas: <strong className="font-medium text-foreground">Horário de São Paulo</strong> (
-                {MARKETING_TZ})
-              </p>
+              <span className="text-xs text-muted-foreground">até</span>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium text-muted-foreground">Fim</label>
+                <Input
+                  ref={endInputRef}
+                  value={toText}
+                  onChange={(e) => setToText(e.target.value)}
+                  onBlur={handleToBlur}
+                  onKeyDown={handleToKeyDown}
+                  placeholder="dd/mm/aaaa"
+                  className="h-8 w-28 rounded-lg text-xs"
+                />
+              </div>
+              <span className="text-[10px] text-muted-foreground/70 ml-auto hidden sm:inline">
+                Fuso: São Paulo
+              </span>
             </div>
           </div>
         </div>
 
-        <DialogFooter className="border-t border-border/80 bg-muted/20 px-4 py-3 sm:px-6">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="border-t border-border/60 bg-muted/10 px-4 py-2.5 sm:px-5">
+          <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button type="button" onClick={handleApply} disabled={!range?.from || !range?.to}>
-            Atualizar
+          <Button type="button" size="sm" onClick={handleApply} disabled={!range?.from || !range?.to}>
+            Aplicar
           </Button>
         </DialogFooter>
       </DialogContent>

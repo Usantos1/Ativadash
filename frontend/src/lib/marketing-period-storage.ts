@@ -1,6 +1,6 @@
 import type { DateFilterApplyPayload } from "@/components/marketing/MarketingDateRangeDialog";
 import type { MarketingPresetId } from "@/lib/marketing-date-presets";
-import { defaultLast30ApiRange, labelForPreset, wallRangeToApi, getPresetRange } from "@/lib/marketing-date-presets";
+import { defaultLast30ApiRange, labelForPreset, wallRangeToApi, getPresetRange, formatRangeShortPt } from "@/lib/marketing-date-presets";
 
 const STORAGE_KEY = "ativadash:period";
 
@@ -65,9 +65,10 @@ export function getInitialMarketingPeriodState(): {
     };
   }
   const dr = defaultLast30ApiRange();
+  const datePart = formatRangeShortPt(dr.startDate, dr.endDate);
   return {
     dateRange: dr,
-    dateRangeLabel: labelForPreset("last_30d"),
+    dateRangeLabel: `${labelForPreset("last_30d")} · ${datePart}`,
     presetId: "last_30d",
   };
 }
@@ -80,10 +81,11 @@ export function refreshPresetDatesIfNeeded(presetId: MarketingPresetId): {
 } | null {
   if (presetId === "custom") return null;
   const api = wallRangeToApi(getPresetRange(presetId));
+  const datePart = formatRangeShortPt(api.startDate, api.endDate);
   return {
     startDate: api.startDate,
     endDate: api.endDate,
-    label: labelForPreset(presetId),
+    label: `${labelForPreset(presetId)} · ${datePart}`,
   };
 }
 

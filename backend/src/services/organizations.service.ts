@@ -318,6 +318,26 @@ export async function updateChildOrganizationByParent(
   return updated;
 }
 
+export async function softDeleteChildOrganization(
+  parentOrganizationId: string,
+  userId: string,
+  childId: string
+) {
+  await assertDirectOrgAdmin(userId, parentOrganizationId);
+  const child = await prisma.organization.findFirst({
+    where: { id: childId, parentOrganizationId, deletedAt: null },
+    select: { id: true, name: true },
+  });
+  if (!child) {
+    throw new Error("Workspace filho não encontrado");
+  }
+  await prisma.organization.update({
+    where: { id: childId },
+    data: { deletedAt: new Date(), workspaceStatus: "ARCHIVED" },
+  });
+  return { id: child.id, name: child.name };
+}
+
 /** Verifica se `orgId` é a própria matriz ou um descendente na hierarquia. */
 export async function isOrganizationUnderMatrix(orgId: string, matrixId: string): Promise<boolean> {
   let walk: string | null = orgId;

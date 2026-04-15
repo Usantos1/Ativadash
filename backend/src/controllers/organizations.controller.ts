@@ -7,6 +7,7 @@ import {
   listChildOrganizationsPortfolio,
   listChildOrganizationsOperationsDashboard,
   updateChildOrganizationByParent,
+  softDeleteChildOrganization,
   updateOrganizationPlanSettings,
   assignParentAgencyMemberToChildWorkspace,
   addAgencyMemberExclusionOnChild,
@@ -131,6 +132,31 @@ export async function patchChildOrganizationHandler(req: Request, res: Response)
       parsed.data
     );
     return res.json({ organization });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Sem permissão";
+    const status = msg.includes("não encontrado") ? 404 : 403;
+    return res.status(status).json({ message: msg });
+  }
+}
+
+export async function deleteChildOrganizationHandler(req: Request, res: Response) {
+  const { user } = req as AuthRequest;
+  const { childId } = req.params;
+  if (!childId) {
+    return res.status(400).json({ message: "ID do workspace obrigatório" });
+  }
+  try {
+    const result = await softDeleteChildOrganization(user.organizationId, user.userId, childId);
+    const { appendAuditLog } = await import("../services/audit-log.service.js");
+    await appendAuditLog({
+      actorUserId: user.userId,
+      organizationId: user.organizationId,
+      action: "client.workspace_deleted",
+      entityType: "Organization",
+      entityId: result.id,
+      metadata: { name: result.name },
+    });
+    return res.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Sem permissão";
     const status = msg.includes("não encontrado") ? 404 : 403;

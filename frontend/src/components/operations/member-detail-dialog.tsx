@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { KeyRound, Shield, Users } from "lucide-react";
+import { Users, Clock, Bell, User, Lock, Briefcase } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -14,8 +14,7 @@ import {
 } from "@/components/ui/select";
 import { StatusBadge } from "@/components/premium";
 import type { MemberRow, PatchMemberPayload } from "@/lib/workspace-api";
-import { patchMember, resetMemberPassword } from "@/lib/workspace-api";
-import { Link } from "react-router-dom";
+import { patchMember, resetMemberPassword, changeAuthenticatedPassword } from "@/lib/workspace-api";
 import { membershipRoleLabelPt } from "@/lib/membership-role-labels";
 import {
   TEAM_ACCESS_LEVEL_OPTIONS,
@@ -26,8 +25,10 @@ import {
   teamModalSelectTriggerClass,
   type TeamJobTitleValue,
 } from "@/lib/team-access-ui";
+import { cn } from "@/lib/utils";
 
 type AccessLevelUi = "ADMIN" | "OPERADOR" | "VIEWER";
+type Tab = "perfil" | "acesso" | "seguranca" | "alertas";
 
 function canEditMemberJobAndAccess(role: string): boolean {
   return role !== "owner" && role !== "workspace_owner" && role !== "agency_owner";
@@ -37,12 +38,9 @@ type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   member: MemberRow | null;
-  /** Contagem exibida na lista (ex.: clientes comerciais na org atual); preparação para permissões por cliente. */
   linkedClientsCount: number | null;
   formatDate: (iso: string) => string;
-  /** Usuário logado — usado para ocultar ações destrutivas em si mesmo. */
   currentUserId?: string;
-  /** Query `organizationId` nas rotas workspace (workspace filho). */
   organizationId?: string;
   onMemberUpdated?: () => void | Promise<void>;
 };
@@ -57,14 +55,16 @@ export function MemberDetailDialog({
   organizationId,
   onMemberUpdated,
 }: Props) {
+  const [tab, setTab] = useState<Tab>("perfil");
   const [draftName, setDraftName] = useState("");
   const [draftEmail, setDraftEmail] = useState("");
   const [draftSuspended, setDraftSuspended] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
   const [forceChangeOnLogin, setForceChangeOnLogin] = useState(true);
   const [busy, setBusy] = useState<"profile" | "password" | "jobAccess" | "alertPrefs" | null>(null);
-  const [localMsg, setLocalMsg] = useState<string | null>(null);
+  const [localMsg, setLocalMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [draftJobTitle, setDraftJobTitle] = useState<TeamJobTitleValue>("traffic_manager");
   const [draftAccessLevel, setDraftAccessLevel] = useState<AccessLevelUi>("OPERADOR");
   const [draftReceiveWhatsappAlerts, setDraftReceiveWhatsappAlerts] = useState(true);
@@ -73,6 +73,7 @@ export function MemberDetailDialog({
 
   useEffect(() => {
     if (!member || !open) return;
+    setTab("perfil");
     setDraftName(member.name);
     setDraftEmail(member.email);
     setDraftSuspended(!!member.suspended);
@@ -83,6 +84,7 @@ export function MemberDetailDialog({
     setDraftAlertEnd(member.alertEndHour?.trim() ?? "");
     setNewPassword("");
     setConfirmPassword("");
+    setCurrentPassword("");
     setForceChangeOnLogin(true);
     setLocalMsg(null);
     setBusy(null);
@@ -90,32 +92,40 @@ export function MemberDetailDialog({
 
   const isDirect = member?.source !== "agency";
   const isSelf = !!(member && currentUserId && member.userId === currentUserId);
-  const showAdminBlock = !!(member && isDirect && !isSelf);
-  const canEditJobAccess = !!(member && showAdminBlock && canEditMemberJobAndAccess(member.role));
+  const canEdit = !!(member && isDirect);
+  const canEditJobAccess = !!(member && canEdit && !isSelf && canEditMemberJobAndAccess(member.role));
+  const canEditProfile = canEdit;
+  const canManageOther = !!(member && isDirect && !isSelf);
+
+  function msg(text: string, type: "success" | "error" = "error") {
+    setLocalMsg({ text, type });
+  }
 
   async function handleSaveProfile() {
-    if (!member || !showAdminBlock) return;
+    if (!member || !canEditProfile) return;
     setLocalMsg(null);
     setBusy("profile");
     try {
       const payload: PatchMemberPayload = {};
       if (draftName.trim() !== member.name) payload.name = draftName.trim();
       if (draftEmail.trim().toLowerCase() !== member.email.toLowerCase()) payload.email = draftEmail.trim();
-      if (draftSuspended !== !!member.suspended) payload.suspended = draftSuspended;
-      if (Object.keys(payload).length === 0) return;
-
+      if (!isSelf && draftSuspended !== !!member.suspended) payload.suspended = draftSuspended;
+      if (Object.keys(payload).length === 0) {
+        setBusy(null);
+        return;
+      }
       await patchMember(member.userId, payload, organizationId);
       await onMemberUpdated?.();
-      onOpenChange(false);
+      msg("Perfil atualizado.", "success");
     } catch (e) {
-      setLocalMsg(e instanceof Error ? e.message : "Erro ao salvar");
+      msg(e instanceof Error ? e.message : "Erro ao salvar");
     } finally {
       setBusy(null);
     }
   }
 
   async function handleSaveAlertPrefs() {
-    if (!member || !showAdminBlock) return;
+    if (!member || !canManageOther) return;
     setLocalMsg(null);
     setBusy("alertPrefs");
     try {
@@ -131,13 +141,15 @@ export function MemberDetailDialog({
       if (draftAlertEnd.trim() !== endWas) {
         payload.alertEndHour = draftAlertEnd.trim() === "" ? "" : draftAlertEnd.trim();
       }
-      if (Object.keys(payload).length === 0) return;
-
+      if (Object.keys(payload).length === 0) {
+        setBusy(null);
+        return;
+      }
       await patchMember(member.userId, payload, organizationId);
       await onMemberUpdated?.();
-      onOpenChange(false);
+      msg("Alertas atualizados.", "success");
     } catch (e) {
-      setLocalMsg(e instanceof Error ? e.message : "Erro ao salvar alertas");
+      msg(e instanceof Error ? e.message : "Erro ao salvar alertas");
     } finally {
       setBusy(null);
     }
@@ -153,42 +165,54 @@ export function MemberDetailDialog({
       const payload: PatchMemberPayload = {};
       if (draftJobTitle !== currentTitle) payload.jobTitle = draftJobTitle;
       if (draftAccessLevel !== currentLevel) payload.accessLevel = draftAccessLevel;
-      if (Object.keys(payload).length === 0) return;
-
+      if (Object.keys(payload).length === 0) {
+        setBusy(null);
+        return;
+      }
       await patchMember(member.userId, payload, organizationId);
       await onMemberUpdated?.();
-      onOpenChange(false);
+      msg("Cargo e nível atualizados.", "success");
     } catch (e) {
-      setLocalMsg(e instanceof Error ? e.message : "Erro ao salvar cargo ou nível");
+      msg(e instanceof Error ? e.message : "Erro ao salvar cargo ou nível");
     } finally {
       setBusy(null);
     }
   }
 
   async function handleResetPassword() {
-    if (!member || !showAdminBlock) return;
+    if (!member || !canManageOther) return;
     setLocalMsg(null);
-    if (newPassword.length < 8) {
-      setLocalMsg("A nova senha deve ter pelo menos 8 caracteres.");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setLocalMsg("Confirmação da senha não confere.");
-      return;
-    }
+    if (newPassword.length < 8) { msg("Mínimo 8 caracteres."); return; }
+    if (newPassword !== confirmPassword) { msg("As senhas não conferem."); return; }
     setBusy("password");
     try {
-      await resetMemberPassword(
-        member.userId,
-        { newPassword, forcePasswordChange: forceChangeOnLogin },
-        organizationId
-      );
+      await resetMemberPassword(member.userId, { newPassword, forcePasswordChange: forceChangeOnLogin }, organizationId);
       setNewPassword("");
       setConfirmPassword("");
       await onMemberUpdated?.();
-      setLocalMsg("Senha atualizada. Sessões anteriores foram encerradas.");
+      msg("Senha redefinida com sucesso.", "success");
     } catch (e) {
-      setLocalMsg(e instanceof Error ? e.message : "Erro ao redefinir senha");
+      msg(e instanceof Error ? e.message : "Erro ao redefinir senha");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleSelfChangePassword() {
+    if (!member || !isSelf) return;
+    setLocalMsg(null);
+    if (!currentPassword) { msg("Informe sua senha atual."); return; }
+    if (newPassword.length < 6) { msg("Mínimo 6 caracteres."); return; }
+    if (newPassword !== confirmPassword) { msg("As senhas não conferem."); return; }
+    setBusy("password");
+    try {
+      await changeAuthenticatedPassword({ currentPassword, newPassword, confirmPassword });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      msg("Senha alterada com sucesso.", "success");
+    } catch (e) {
+      msg(e instanceof Error ? e.message : "Erro ao alterar senha");
     } finally {
       setBusy(null);
     }
@@ -198,7 +222,7 @@ export function MemberDetailDialog({
     !!member &&
     (draftName.trim() !== member.name ||
       draftEmail.trim().toLowerCase() !== member.email.toLowerCase() ||
-      draftSuspended !== !!member.suspended);
+      (!isSelf && draftSuspended !== !!member.suspended));
 
   const jobAccessDirty =
     !!member &&
@@ -208,282 +232,369 @@ export function MemberDetailDialog({
 
   const alertPrefsDirty =
     !!member &&
-    showAdminBlock &&
+    canManageOther &&
     (draftReceiveWhatsappAlerts !== (member.receiveWhatsappAlerts !== false) ||
       draftAlertStart.trim() !== (member.alertStartHour?.trim() ?? "") ||
       draftAlertEnd.trim() !== (member.alertEndHour?.trim() ?? ""));
 
+  const tabs: { id: Tab; label: string; icon: React.ReactNode; show: boolean }[] = [
+    { id: "perfil", label: "Perfil", icon: <User className="h-3.5 w-3.5" />, show: true },
+    { id: "acesso", label: "Acesso", icon: <Briefcase className="h-3.5 w-3.5" />, show: canEditJobAccess },
+    { id: "seguranca", label: "Senha", icon: <Lock className="h-3.5 w-3.5" />, show: canEdit },
+    { id: "alertas", label: "Alertas", icon: <Bell className="h-3.5 w-3.5" />, show: canManageOther },
+  ];
+  const visibleTabs = tabs.filter((t) => t.show);
+
+  if (!member) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent title="Membro da equipe" showClose className="max-w-md" />
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent title="Membro da equipe" showClose className="max-w-md">
-        {member ? (
-          <>
-            <div className="space-y-4 py-1">
-              <div>
-                <h2 className="text-lg font-bold tracking-tight text-foreground">{member.name}</h2>
-                <p className="text-sm text-muted-foreground">{member.email}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge tone="healthy" dot>
+      <DialogContent title="" showClose className="max-w-lg gap-0 p-0 overflow-hidden">
+        {/* ── Header ── */}
+        <div className="bg-gradient-to-br from-primary/5 via-background to-background px-6 pt-6 pb-4">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-lg uppercase">
+              {member.name.charAt(0)}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="truncate text-lg font-semibold tracking-tight">{member.name}</h2>
+              <p className="truncate text-sm text-muted-foreground">{member.email}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                {isSelf ? (
+                  <StatusBadge tone="connected" dot>Você</StatusBadge>
+                ) : null}
+                <StatusBadge
+                  tone={member.source === "agency_excluded" ? "alert" : member.source === "agency" ? "neutral" : "healthy"}
+                  dot
+                >
                   {member.source === "agency_excluded"
-                    ? "Bloqueado neste cliente (herdado)"
+                    ? "Bloqueado (herdado)"
                     : member.source === "agency"
-                      ? "Acesso via agência"
+                      ? "Via agência"
                       : "Membro direto"}
                 </StatusBadge>
-                {member.suspended ? (
-                  <StatusBadge tone="alert" dot>
-                    Bloqueado
-                  </StatusBadge>
-                ) : null}
-                <span className="text-xs text-muted-foreground">
-                  Cargo: <strong className="text-foreground">{jobTitleLabelPt(member.jobTitle)}</strong>
-                  <span className="text-muted-foreground/80"> · </span>
-                  Nível de acesso:{" "}
-                  <strong className="text-foreground">
-                    {accessLevelLabelPt(accessLevelFromSystemRole(member.role))}
-                  </strong>
-                  <span className="text-muted-foreground/80"> · </span>
-                  Função técnica:{" "}
-                  <strong className="text-foreground">{membershipRoleLabelPt(member.role)}</strong>
-                </span>
+                {member.suspended ? <StatusBadge tone="alert" dot>Bloqueado</StatusBadge> : null}
               </div>
-              <div className="grid gap-2 rounded-xl border border-border/45 bg-muted/10 p-3 text-sm">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Users className="h-4 w-4 shrink-0 opacity-70" />
-                  <span>
-                    Clientes comerciais nesta org:{" "}
-                    <strong className="text-foreground">{linkedClientsCount ?? "—"}</strong>
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Shield className="h-4 w-4 shrink-0 opacity-70" />
-                  <span>Desde {formatDate(member.joinedAt)}</span>
-                </div>
-              </div>
-
-              {showAdminBlock ? (
-                <div className="space-y-3 rounded-xl border border-border/50 bg-card/30 p-3">
-                  <p className="text-xs font-bold uppercase tracking-wide text-foreground">Gerenciar pelo painel</p>
-                  {localMsg ? (
-                    <p className="rounded-lg border border-border/50 bg-muted/20 px-2 py-1.5 text-xs text-foreground">
-                      {localMsg}
-                    </p>
-                  ) : null}
-                  {canEditJobAccess ? (
-                    <div className="grid gap-3 rounded-lg border border-border/40 bg-muted/10 p-3 sm:grid-cols-2">
-                      <div className="space-y-1.5 sm:col-span-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          Cargo e nível de acesso
-                        </p>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold">Cargo</Label>
-                        <Select value={draftJobTitle} onValueChange={(v) => setDraftJobTitle(v as TeamJobTitleValue)}>
-                          <SelectTrigger className={teamModalSelectTriggerClass}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {TEAM_JOB_TITLE_OPTIONS.map((o) => (
-                              <SelectItem key={o.value} value={o.value}>
-                                {o.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold">Nível de acesso</Label>
-                        <Select
-                          value={draftAccessLevel}
-                          onValueChange={(v) => setDraftAccessLevel(v as AccessLevelUi)}
-                        >
-                          <SelectTrigger className={teamModalSelectTriggerClass}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {TEAM_ACCESS_LEVEL_OPTIONS.map((o) => (
-                              <SelectItem key={o.value} value={o.value}>
-                                {o.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="sm:col-span-2">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          className="w-full rounded-lg"
-                          disabled={!jobAccessDirty || busy !== null}
-                          onClick={() => void handleSaveJobAccess()}
-                        >
-                          {busy === "jobAccess" ? "Salvando…" : "Salvar cargo e nível"}
-                        </Button>
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className="space-y-1.5">
-                    <Label htmlFor="md-name" className="text-xs font-semibold">
-                      Nome
-                    </Label>
-                    <Input
-                      id="md-name"
-                      value={draftName}
-                      onChange={(e) => setDraftName(e.target.value)}
-                      className="h-9 rounded-lg"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="md-email" className="text-xs font-semibold">
-                      E-mail (login)
-                    </Label>
-                    <Input
-                      id="md-email"
-                      type="email"
-                      value={draftEmail}
-                      onChange={(e) => setDraftEmail(e.target.value)}
-                      className="h-9 rounded-lg"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between gap-3 rounded-lg border border-border/40 px-2 py-2">
-                    <div>
-                      <p className="text-xs font-semibold text-foreground">Bloquear acesso</p>
-                      <p className="text-[11px] text-muted-foreground">Impede login até reativar.</p>
-                    </div>
-                    <Switch checked={draftSuspended} onCheckedChange={setDraftSuspended} id="md-suspended" />
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="w-full rounded-lg"
-                    disabled={!profileDirty || busy !== null}
-                    onClick={() => void handleSaveProfile()}
-                  >
-                    {busy === "profile" ? "Salvando…" : "Salvar nome, e-mail e status"}
-                  </Button>
-
-                  <div className="space-y-3 rounded-lg border border-border/40 bg-muted/10 p-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Alertas WhatsApp
-                    </p>
-                    <p className="text-[11px] leading-snug text-muted-foreground">
-                      Quando uma automação roteia para este membro, só enviamos no horário abaixo (fuso{" "}
-                      <span className="font-medium text-foreground">América/São Paulo</span>). Deixe os horários
-                      vazios para receber 24h.
-                    </p>
-                    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/35 px-2 py-2">
-                      <span className="text-xs font-medium text-foreground">Receber alertas</span>
-                      <Switch
-                        checked={draftReceiveWhatsappAlerts}
-                        onCheckedChange={setDraftReceiveWhatsappAlerts}
-                        disabled={busy !== null}
-                      />
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <div className="space-y-1">
-                        <Label className="text-xs">Início do expediente</Label>
-                        <Input
-                          type="time"
-                          value={draftAlertStart}
-                          onChange={(e) => setDraftAlertStart(e.target.value)}
-                          disabled={busy !== null || !draftReceiveWhatsappAlerts}
-                          className="h-9 rounded-lg"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Fim do expediente</Label>
-                        <Input
-                          type="time"
-                          value={draftAlertEnd}
-                          onChange={(e) => setDraftAlertEnd(e.target.value)}
-                          disabled={busy !== null || !draftReceiveWhatsappAlerts}
-                          className="h-9 rounded-lg"
-                        />
-                      </div>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="w-full rounded-lg"
-                      disabled={!alertPrefsDirty || busy !== null}
-                      onClick={() => void handleSaveAlertPrefs()}
-                    >
-                      {busy === "alertPrefs" ? "Salvando…" : "Salvar horário de alertas"}
-                    </Button>
-                  </div>
-
-                  <div className="border-t border-border/40 pt-3">
-                    <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-foreground">
-                      <KeyRound className="h-3.5 w-3.5" aria-hidden />
-                      Nova senha
-                    </div>
-                    <div className="space-y-2">
-                      <Input
-                        type="password"
-                        autoComplete="new-password"
-                        placeholder="Nova senha (mín. 8)"
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        className="h-9 rounded-lg"
-                      />
-                      <Input
-                        type="password"
-                        autoComplete="new-password"
-                        placeholder="Confirmar senha"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="h-9 rounded-lg"
-                      />
-                      <div className="flex items-center justify-between gap-3 rounded-lg border border-border/40 px-2 py-2">
-                        <span className="text-xs text-muted-foreground">Exigir troca no próximo login</span>
-                        <Switch checked={forceChangeOnLogin} onCheckedChange={setForceChangeOnLogin} />
-                      </div>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        className="w-full rounded-lg"
-                        disabled={busy !== null}
-                        onClick={() => void handleResetPassword()}
-                      >
-                        {busy === "password" ? "Aplicando…" : "Redefinir senha"}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ) : isSelf ? (
-                <p className="text-xs text-muted-foreground">
-                  Para alterar seu próprio perfil ou senha, use{" "}
-                  <Link to="/configuracoes" className="font-medium text-primary underline-offset-2 hover:underline">
-                    Configurações
-                  </Link>
-                  .
-                </p>
-              ) : null}
-
-              <div className="rounded-xl border border-dashed border-border/60 bg-card/20 p-3 text-xs leading-relaxed text-muted-foreground">
-                <p className="font-semibold text-foreground">Permissões por cliente (roadmap)</p>
-                <p className="mt-1">
-                  Em breve: visualizar, editar, campanhas, metas, integrações e gestão de equipe por workspace filho.
-                  Hoje o papel global acima vale para toda a organização ativa.
-                </p>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                A estrutura <Link to="/clientes" className="font-medium text-primary underline-offset-2 hover:underline">Contas</Link>{" "}
-                define os workspaces dos clientes; a equipe acessa cada um após{" "}
-                <strong className="text-foreground">Entrar no cliente</strong>.
-              </p>
             </div>
-            <DialogFooter>
-              <Button type="button" variant="secondary" className="rounded-xl" onClick={() => onOpenChange(false)}>
-                Fechar
-              </Button>
-            </DialogFooter>
-          </>
+          </div>
+
+          {/* ── Resumo compacto ── */}
+          <div className="mt-4 grid grid-cols-3 gap-3">
+            <div className="rounded-lg border border-border/40 bg-card/50 px-3 py-2 text-center">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Cargo</p>
+              <p className="mt-0.5 text-xs font-semibold text-foreground truncate">{jobTitleLabelPt(member.jobTitle)}</p>
+            </div>
+            <div className="rounded-lg border border-border/40 bg-card/50 px-3 py-2 text-center">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Nível</p>
+              <p className="mt-0.5 text-xs font-semibold text-foreground">{accessLevelLabelPt(accessLevelFromSystemRole(member.role))}</p>
+            </div>
+            <div className="rounded-lg border border-border/40 bg-card/50 px-3 py-2 text-center">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Função</p>
+              <p className="mt-0.5 text-xs font-semibold text-foreground truncate">{membershipRoleLabelPt(member.role)}</p>
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <Users className="h-3.5 w-3.5" />
+              {linkedClientsCount ?? 0} clientes
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5" />
+              Desde {formatDate(member.joinedAt)}
+            </span>
+          </div>
+        </div>
+
+        {/* ── Tabs ── */}
+        {visibleTabs.length > 1 ? (
+          <div className="flex border-b border-border/50 bg-muted/20 px-6">
+            {visibleTabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => { setTab(t.id); setLocalMsg(null); }}
+                className={cn(
+                  "flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-medium transition-colors",
+                  tab === t.id
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {t.icon}
+                {t.label}
+              </button>
+            ))}
+          </div>
         ) : null}
+
+        {/* ── Conteúdo da tab ── */}
+        <div className="px-6 py-5 space-y-4 max-h-[50vh] overflow-y-auto">
+          {localMsg ? (
+            <div
+              className={cn(
+                "rounded-lg border px-3 py-2 text-xs font-medium",
+                localMsg.type === "success"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-300"
+                  : "border-red-200 bg-red-50 text-red-700 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-300"
+              )}
+            >
+              {localMsg.text}
+            </div>
+          ) : null}
+
+          {/* ── PERFIL ── */}
+          {tab === "perfil" ? (
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="md-name" className="text-xs font-semibold">Nome</Label>
+                <Input
+                  id="md-name"
+                  value={draftName}
+                  onChange={(e) => setDraftName(e.target.value)}
+                  disabled={!canEditProfile || busy !== null}
+                  className="h-9 rounded-lg"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="md-email" className="text-xs font-semibold">E-mail</Label>
+                <Input
+                  id="md-email"
+                  type="email"
+                  value={draftEmail}
+                  onChange={(e) => setDraftEmail(e.target.value)}
+                  disabled={!canEditProfile || busy !== null}
+                  className="h-9 rounded-lg"
+                />
+              </div>
+              {canManageOther ? (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-border/40 px-3 py-2.5">
+                  <div>
+                    <p className="text-xs font-semibold text-foreground">Bloquear acesso</p>
+                    <p className="text-[11px] text-muted-foreground">Impede o login até reativar.</p>
+                  </div>
+                  <Switch checked={draftSuspended} onCheckedChange={setDraftSuspended} disabled={busy !== null} />
+                </div>
+              ) : null}
+              {canEditProfile ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="w-full rounded-lg"
+                  disabled={!profileDirty || busy !== null}
+                  onClick={() => void handleSaveProfile()}
+                >
+                  {busy === "profile" ? "Salvando…" : "Salvar alterações"}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* ── ACESSO ── */}
+          {tab === "acesso" && canEditJobAccess ? (
+            <div className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Cargo</Label>
+                  <Select value={draftJobTitle} onValueChange={(v) => setDraftJobTitle(v as TeamJobTitleValue)}>
+                    <SelectTrigger className={teamModalSelectTriggerClass}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TEAM_JOB_TITLE_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Nível de acesso</Label>
+                  <Select value={draftAccessLevel} onValueChange={(v) => setDraftAccessLevel(v as AccessLevelUi)}>
+                    <SelectTrigger className={teamModalSelectTriggerClass}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TEAM_ACCESS_LEVEL_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                className="w-full rounded-lg"
+                disabled={!jobAccessDirty || busy !== null}
+                onClick={() => void handleSaveJobAccess()}
+              >
+                {busy === "jobAccess" ? "Salvando…" : "Salvar cargo e nível"}
+              </Button>
+            </div>
+          ) : null}
+
+          {/* ── SEGURANÇA (self) ── */}
+          {tab === "seguranca" && isSelf ? (
+            <div className="space-y-4">
+              <p className="text-xs text-muted-foreground">
+                Para alterar sua senha, informe a senha atual e escolha uma nova.
+              </p>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Senha atual</Label>
+                  <Input
+                    type="password"
+                    autoComplete="current-password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    disabled={busy !== null}
+                    className="h-9 rounded-lg"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Nova senha</Label>
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="Mínimo 6 caracteres"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    disabled={busy !== null}
+                    className="h-9 rounded-lg"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Confirmar nova senha</Label>
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    disabled={busy !== null}
+                    className="h-9 rounded-lg"
+                  />
+                </div>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                className="w-full rounded-lg"
+                disabled={busy !== null || !currentPassword || newPassword.length < 6 || newPassword !== confirmPassword}
+                onClick={() => void handleSelfChangePassword()}
+              >
+                {busy === "password" ? "Alterando…" : "Alterar senha"}
+              </Button>
+            </div>
+          ) : null}
+
+          {/* ── SEGURANÇA (admin reset) ── */}
+          {tab === "seguranca" && canManageOther ? (
+            <div className="space-y-4">
+              <p className="text-xs text-muted-foreground">
+                Defina uma nova senha para este membro. A sessão ativa será encerrada.
+              </p>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Nova senha</Label>
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="Mínimo 8 caracteres"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    disabled={busy !== null}
+                    className="h-9 rounded-lg"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Confirmar senha</Label>
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    disabled={busy !== null}
+                    className="h-9 rounded-lg"
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-border/40 px-3 py-2.5">
+                  <span className="text-xs text-muted-foreground">Exigir troca no próximo login</span>
+                  <Switch checked={forceChangeOnLogin} onCheckedChange={setForceChangeOnLogin} disabled={busy !== null} />
+                </div>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                className="w-full rounded-lg"
+                disabled={busy !== null || newPassword.length < 8 || newPassword !== confirmPassword}
+                onClick={() => void handleResetPassword()}
+              >
+                {busy === "password" ? "Redefinindo…" : "Redefinir senha"}
+              </Button>
+            </div>
+          ) : null}
+
+          {/* ── ALERTAS ── */}
+          {tab === "alertas" && canManageOther ? (
+            <div className="space-y-4">
+              <p className="text-xs text-muted-foreground">
+                Defina o horário em que este membro recebe alertas via WhatsApp (fuso América/São Paulo). Deixe vazio para 24h.
+              </p>
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/40 px-3 py-2.5">
+                <span className="text-xs font-medium">Receber alertas WhatsApp</span>
+                <Switch
+                  checked={draftReceiveWhatsappAlerts}
+                  onCheckedChange={setDraftReceiveWhatsappAlerts}
+                  disabled={busy !== null}
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Início do expediente</Label>
+                  <Input
+                    type="time"
+                    value={draftAlertStart}
+                    onChange={(e) => setDraftAlertStart(e.target.value)}
+                    disabled={busy !== null || !draftReceiveWhatsappAlerts}
+                    className="h-9 rounded-lg"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Fim do expediente</Label>
+                  <Input
+                    type="time"
+                    value={draftAlertEnd}
+                    onChange={(e) => setDraftAlertEnd(e.target.value)}
+                    disabled={busy !== null || !draftReceiveWhatsappAlerts}
+                    className="h-9 rounded-lg"
+                  />
+                </div>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                className="w-full rounded-lg"
+                disabled={!alertPrefsDirty || busy !== null}
+                onClick={() => void handleSaveAlertPrefs()}
+              >
+                {busy === "alertPrefs" ? "Salvando…" : "Salvar alertas"}
+              </Button>
+            </div>
+          ) : null}
+        </div>
+
+        {/* ── Footer ── */}
+        <div className="border-t border-border/40 bg-muted/10 px-6 py-3 flex justify-end">
+          <Button type="button" variant="outline" size="sm" className="rounded-lg" onClick={() => onOpenChange(false)}>
+            Fechar
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

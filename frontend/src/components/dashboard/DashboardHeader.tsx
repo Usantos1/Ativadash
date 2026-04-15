@@ -10,7 +10,7 @@ import type { MarketingPresetId } from "@/lib/marketing-date-presets";
 import { cn } from "@/lib/utils";
 import type { BusinessGoalMode } from "@/lib/business-goal-mode";
 
-function goalShort(mode: BusinessGoalMode): string {
+function goalLabel(mode: BusinessGoalMode): string {
   switch (mode) {
     case "LEADS":
       return "Leads";
@@ -18,6 +18,17 @@ function goalShort(mode: BusinessGoalMode): string {
       return "Vendas";
     default:
       return "Híbrido";
+  }
+}
+
+function goalColor(mode: BusinessGoalMode): string {
+  switch (mode) {
+    case "LEADS":
+      return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
+    case "SALES":
+      return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300";
+    default:
+      return "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300";
   }
 }
 
@@ -56,7 +67,7 @@ export function DashboardHeader({
   const [pdfBusy, setPdfBusy] = useState(false);
 
   return (
-    <div className="flex flex-col gap-3 border-b border-border/25 pb-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="relative z-20 flex flex-col gap-3 border-b border-border/25 pb-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <Button
           type="button"
@@ -66,7 +77,7 @@ export function DashboardHeader({
           onClick={() => setPickerOpen(true)}
         >
           <CalendarRange className="h-3.5 w-3.5 opacity-70" aria-hidden />
-          <span className="max-w-[220px] truncate font-medium">{dateRangeLabel}</span>
+          <span className="max-w-[240px] truncate font-medium">{dateRangeLabel}</span>
         </Button>
         <MarketingDateRangeDialog
           open={pickerOpen}
@@ -78,10 +89,13 @@ export function DashboardHeader({
           onApply={applyDateFilter}
         />
         <span
-          className="rounded-full border border-border/40 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+          className={cn(
+            "inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+            goalColor(goalMode)
+          )}
           title="Objetivo da conta"
         >
-          {goalShort(goalMode)}
+          {goalLabel(goalMode)}
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-2">

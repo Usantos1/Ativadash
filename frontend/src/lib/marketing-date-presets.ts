@@ -85,8 +85,7 @@ export function getPresetRange(id: MarketingPresetId): WallRange {
       return rangeWallToUtc(startLast, endLast);
     }
     case "maximum": {
-      /** Meta Insights costuma falhar ou estourar tempo com séries diárias de anos inteiros; ~36m é faixa estável. */
-      const oldest = startOfDay(subMonths(todayStart, 36));
+      const oldest = startOfDay(subMonths(todayStart, 60));
       return rangeWallToUtc(oldest, todayStart);
     }
     case "custom":
