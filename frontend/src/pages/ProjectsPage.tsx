@@ -39,8 +39,10 @@ import {
 } from "@/lib/workspace-api";
 import { OperationsModuleNav } from "@/components/operations/operations-module-nav";
 import { projectLaunchPulse, projectLaunchPulseLabel } from "@/lib/launch-operational";
+import { formatPageTitle, usePageTitle } from "@/hooks/usePageTitle";
 
 export function ProjectsPage() {
+  usePageTitle(formatPageTitle(["Projetos"]));
   const [clients, setClients] = useState<ClientAccount[]>([]);
   const [rows, setRows] = useState<ProjectRow[]>([]);
   const [launches, setLaunches] = useState<LaunchRow[]>([]);

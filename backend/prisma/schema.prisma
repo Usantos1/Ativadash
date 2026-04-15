@@ -482,7 +482,7 @@ model ManualCampaignRevenue {
   updatedAt      DateTime @updatedAt
   createdAt      DateTime @default(now())
 
-  @@unique([workspaceId, campaignId])
+  @@unique([workspaceId, campaignId, channel])
   @@index([workspaceId])
 }
 
@@ -655,7 +655,6 @@ model Integration {
   /// No PostgreSQL: índice único `Integration_organizationId_slug_key` (migration `20260320170000_add_integration_organization_slug_unique`).
   @@unique([organizationId, slug])
   @@index([organizationId])
-  @@index([organizationId, slug])
   @@index([clientAccountId])
 
   googleAdsAccessibleCustomers GoogleAdsAccessibleCustomer[]

@@ -46,6 +46,7 @@ import { cn } from "@/lib/utils";
 import { AutomationExecutionTimeline } from "@/components/metas-automation/AutomationExecutionTimeline";
 import { AutomationRuleSummaryCard } from "@/components/metas-automation/AutomationRuleSummaryCard";
 import { RuleBuilderSheet } from "@/components/metas-automation/RuleBuilderSheet";
+import { formatPageTitle, usePageTitle } from "@/hooks/usePageTitle";
 import {
   THRESHOLD_REF_LABEL,
   buildDefaultAutomationDrafts,
@@ -68,6 +69,7 @@ function parseMoney(raw: string): number | null {
 }
 
 export function MetasAlertasPage() {
+  usePageTitle(formatPageTitle(["Automação e Metas"]));
   const user = useAuthStore((s) => s.user);
   const memberships = useAuthStore((s) => s.memberships);
   const canEdit = useMemo(() => {

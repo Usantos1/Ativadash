@@ -9,28 +9,28 @@ export function resolveTopbarCrumbs(pathname: string): TopbarCrumb[] {
   const p = pathname.replace(/\/$/, "") || "/";
   if (p === "/" || p === "/dashboard") return [];
 
-  if (p === "/marketing") return [{ label: "Marketing" }];
+  if (p === "/marketing") return [{ label: "Painel ADS" }];
   if (p === "/marketing/captacao") {
     return [
-      { label: "Marketing", href: "/marketing" },
+      { label: "Painel ADS", href: "/marketing" },
       { label: "Captação" },
     ];
   }
   if (p === "/marketing/conversao") {
     return [
-      { label: "Marketing", href: "/marketing" },
+      { label: "Painel ADS", href: "/marketing" },
       { label: "Conversão" },
     ];
   }
   if (p === "/marketing/receita") {
     return [
-      { label: "Marketing", href: "/marketing" },
+      { label: "Painel ADS", href: "/marketing" },
       { label: "Receita" },
     ];
   }
   if (p === "/marketing/integracoes") {
     return [
-      { label: "Marketing", href: "/marketing" },
+      { label: "Painel ADS", href: "/marketing" },
       { label: "Integrações" },
     ];
   }
@@ -38,7 +38,7 @@ export function resolveTopbarCrumbs(pathname: string): TopbarCrumb[] {
     const slug = p.slice("/marketing/integracoes/".length);
     const item = hubItemByRouteSlug(slug);
     return [
-      { label: "Marketing", href: "/marketing" },
+      { label: "Painel ADS", href: "/marketing" },
       { label: "Integrações", href: "/marketing/integracoes" },
       { label: item?.name ?? slug },
     ];
@@ -47,8 +47,8 @@ export function resolveTopbarCrumbs(pathname: string): TopbarCrumb[] {
     const leaf =
       p === "/ads/metas-operacao"
         ? "Operação por canal"
-        : "Metas e alertas";
-    return [{ label: "Marketing", href: "/marketing" }, { label: leaf }];
+        : "Automação e Metas";
+    return [{ label: "Painel ADS", href: "/marketing" }, { label: leaf }];
   }
 
   if (p === "/clientes") return [{ label: "Clientes" }];

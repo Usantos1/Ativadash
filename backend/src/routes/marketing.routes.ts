@@ -34,7 +34,6 @@ import {
   getMetaAdsetsHandler,
   getMetaAdsLevelHandler,
   getMetaDemographicsHandler,
-  postMetaCampaignStatusHandler,
   patchMetaCampaignStatusContractHandler,
   patchMetaCampaignBudgetContractHandler,
   patchGoogleCampaignStatusContractHandler,
@@ -85,7 +84,6 @@ router.get("/dashboard", ...authCtx, getMarketingDashboardHandler);
 router.get("/meta-ads/adsets", ...authCtx, getMetaAdsetsHandler);
 router.get("/meta-ads/ads", ...authCtx, getMetaAdsLevelHandler);
 router.get("/meta-ads/demographics", ...authCtx, getMetaDemographicsHandler);
-router.post("/meta-ads/campaigns/:campaignId/status", ...authCtx, postMetaCampaignStatusHandler);
 router.patch("/meta/campaigns/:externalId/status", ...authCtx, patchMetaCampaignStatusContractHandler);
 router.patch("/meta/campaigns/:externalId/budget", ...authCtx, patchMetaCampaignBudgetContractHandler);
 router.patch("/google/campaigns/:externalId/status", ...authCtx, patchGoogleCampaignStatusContractHandler);

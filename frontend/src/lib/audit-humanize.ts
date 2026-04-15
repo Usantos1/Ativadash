@@ -77,6 +77,10 @@ export function auditActionDescription(action: string, metadata: unknown): strin
       return "Membro movido entre empresas";
     case "ADMIN_ENTER_CHILD_ORG":
       return `Administrador entrou no workspace (${name(m.childName) ?? "—"})`;
+    case "IMPERSONATION_STARTED":
+      return `Impersonação iniciada → ${name(m.targetOrganizationName) ?? name(m.targetOrganizationId) ?? "—"}`;
+    case "IMPERSONATION_STOPPED":
+      return `Impersonação encerrada ← ${name(m.targetOrganizationName) ?? name(m.targetOrganizationId) ?? "—"}`;
     case "media.meta.campaign.status":
     case "media.meta.campaign.status.rollback":
       return `Meta · estado da campanha: ${String(m.status ?? "—")}`;

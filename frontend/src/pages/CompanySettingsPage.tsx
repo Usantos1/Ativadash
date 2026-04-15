@@ -9,8 +9,10 @@ import { fetchOrganizationContext, patchOrganizationName } from "@/lib/organizat
 import type { OrganizationContext } from "@/lib/organization-api";
 import { useAuthStore } from "@/stores/auth-store";
 import { isAgencyClientPortalUser } from "@/lib/navigation-mode";
+import { formatPageTitle, usePageTitle } from "@/hooks/usePageTitle";
 
 export function CompanySettingsPage() {
+  usePageTitle(formatPageTitle(["Empresa"]));
   const [ctx, setCtx] = useState<OrganizationContext | null>(null);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);

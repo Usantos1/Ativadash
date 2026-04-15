@@ -18,12 +18,21 @@ const loginLimiter = rateLimit({
   skipSuccessfulRequests: true,
 });
 
+const sensitiveLimiter = rateLimit({
+  windowMs: env.API_RATE_LIMIT_WINDOW_MS,
+  max: 20,
+  message: { message: "Muitas tentativas. Aguarde alguns minutos." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+});
+
 router.post("/login", loginLimiter, authController.login);
-router.post("/register", authController.register);
+router.post("/register", sensitiveLimiter, authController.register);
 router.get("/invite-preview", authController.invitePreview);
-router.post("/register-with-invite", authController.registerWithInvite);
-router.post("/forgot-password", authController.forgotPassword);
-router.post("/refresh", authController.refresh);
+router.post("/register-with-invite", sensitiveLimiter, authController.registerWithInvite);
+router.post("/forgot-password", sensitiveLimiter, authController.forgotPassword);
+router.post("/refresh", sensitiveLimiter, authController.refresh);
 router.get("/me", authMiddleware, requireJwtOrganizationAccess, authController.me);
 router.get("/me/context", authMiddleware, requireJwtOrganizationAccess, authController.meContext);
 router.post("/accept-invite", authMiddleware, requireJwtOrganizationAccess, authController.acceptInviteLoggedIn);

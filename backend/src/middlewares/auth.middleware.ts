@@ -26,7 +26,10 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
         where: { id: decoded.userId, deletedAt: null },
         select: { suspendedAt: true },
       });
-      if (u?.suspendedAt) {
+      if (!u) {
+        return res.status(401).json({ message: "Conta não encontrada ou removida." });
+      }
+      if (u.suspendedAt) {
         return res.status(403).json({ message: "Conta suspensa. Contate o administrador." });
       }
       (req as Request & { user: JwtPayload }).user = decoded;

@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { env } from "./config/env.js";
 import { prisma } from "./utils/prisma.js";
@@ -27,6 +28,7 @@ app.use(
     credentials: true,
   })
 );
+app.use(helmet({ contentSecurityPolicy: false }));
 
 const webhookIngestLimiter = rateLimit({
   windowMs: 60_000,
@@ -45,7 +47,16 @@ app.use(
 
 app.use(express.json());
 
-app.post("/api/internal/automation-tick", async (req, res) => {
+const automationTickLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 10,
+  message: { message: "Limite excedido" },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+});
+
+app.post("/api/internal/automation-tick", automationTickLimiter, async (req, res) => {
   const secret = env.AUTOMATION_INTERNAL_SECRET;
   if (!secret) {
     return res.status(404).json({ message: "Not found" });

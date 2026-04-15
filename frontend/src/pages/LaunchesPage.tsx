@@ -38,6 +38,7 @@ import {
 import { OperationsModuleNav } from "@/components/operations/operations-module-nav";
 import { launchWindowKind, launchWindowLabel } from "@/lib/launch-operational";
 import { cn } from "@/lib/utils";
+import { formatPageTitle, usePageTitle } from "@/hooks/usePageTitle";
 
 function toDateInput(iso: string | null): string {
   if (!iso) return "";
@@ -54,6 +55,7 @@ function fromDateInput(s: string): string | undefined {
 type StatusFilter = "all" | "active" | "future" | "ended";
 
 export function LaunchesPage() {
+  usePageTitle(formatPageTitle(["Lançamentos"]));
   const [searchParams, setSearchParams] = useSearchParams();
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [allRows, setAllRows] = useState<LaunchRow[]>([]);

@@ -105,3 +105,14 @@ export const env = {
    */
   AUTOMATION_INTERNAL_SECRET: (process.env.AUTOMATION_INTERNAL_SECRET ?? "").trim(),
 };
+
+if (
+  env.NODE_ENV === "production" &&
+  (env.JWT_SECRET === "dev-secret" || env.JWT_REFRESH_SECRET === "dev-refresh-secret")
+) {
+  console.error(
+    "[ativadash] JWT_SECRET e/ou JWT_REFRESH_SECRET estão com valores padrão de desenvolvimento.\n" +
+      "  Em produção, defina segredos fortes no .env (mínimo 32 caracteres aleatórios)."
+  );
+  process.exit(1);
+}

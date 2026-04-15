@@ -106,7 +106,7 @@ export function RevendaHealthPage() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Indicadores</CardTitle>
-          <CardDescription>Totais nas contas filhas visíveis para o seu utilizador na matriz.</CardDescription>
+          <CardDescription>Totais nas contas filhas visíveis para o seu usuário na matriz.</CardDescription>
         </CardHeader>
         <CardContent>
           {loading && !data ? (
@@ -127,7 +127,7 @@ export function RevendaHealthPage() {
                 </p>
               </li>
               <li className="rounded-lg border border-border/50 bg-card px-3 py-2 shadow-sm">
-                <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Utilizadores</span>
+                <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Usuários</span>
                 <p className="text-lg font-bold tabular-nums">{data.summary.usersTotalAcrossChildren}</p>
               </li>
               <li className="rounded-lg border border-border/50 bg-card px-3 py-2 shadow-sm">

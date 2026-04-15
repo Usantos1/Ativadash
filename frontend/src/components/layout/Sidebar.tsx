@@ -124,7 +124,7 @@ function buildNavGroups(
       return [
         {
           label: "Visão geral",
-          items: [{ to: "/dashboard", label: "Visão geral", icon: LayoutDashboard }],
+          items: [{ to: "/dashboard", label: "Dashboard", icon: LayoutDashboard }],
         },
         adsGroup,
         conexoes,

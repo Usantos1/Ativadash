@@ -338,7 +338,7 @@ export async function register(data: RegisterInput) {
 }
 
 export async function login(data: LoginInput) {
-  const user = await prisma.user.findUnique({ where: { email: data.email } });
+  const user = await prisma.user.findFirst({ where: { email: data.email, deletedAt: null } });
   if (!user) {
     throw new Error("E-mail ou senha inválidos");
   }
@@ -605,8 +605,8 @@ async function createTokens(
     payload.impersonationSessionId = impersonation.impersonationSessionId;
     payload.sourceOrganizationId = impersonation.sourceOrganizationId;
   }
-  const accessOpts: SignOptions = { expiresIn: "15m" };
-  const refreshOpts: SignOptions = { expiresIn: "7d" };
+  const accessOpts: SignOptions = { expiresIn: env.JWT_EXPIRES_IN as string };
+  const refreshOpts: SignOptions = { expiresIn: env.JWT_REFRESH_EXPIRES_IN as string };
   const accessToken = jwt.sign(payload, env.JWT_SECRET, accessOpts);
   const refreshToken = jwt.sign(
     {

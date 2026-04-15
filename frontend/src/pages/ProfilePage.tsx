@@ -5,8 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthStore } from "@/stores/auth-store";
 import { acceptInviteLoggedIn, patchProfile } from "@/lib/workspace-api";
+import { formatPageTitle, usePageTitle } from "@/hooks/usePageTitle";
 
 export function ProfilePage() {
+  usePageTitle(formatPageTitle(["Perfil"]));
   const user = useAuthStore((s) => s.user);
   const setAuth = useAuthStore((s) => s.setAuth);
   const accessToken = useAuthStore((s) => s.accessToken);

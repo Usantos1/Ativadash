@@ -41,11 +41,11 @@ import {
   fetchChildrenOperationsDashboard,
   formatPlanCap,
   patchChildWorkspace,
-  setActiveOrganization,
   type ChildWorkspaceOperationsRow,
   type ResellerOrgKind,
   type WorkspaceStatus,
 } from "@/lib/organization-api";
+import { startImpersonation } from "@/lib/impersonation-api";
 import { getWorkspaceHealth } from "@/lib/revenda-workspace-metrics";
 import { OperationsModuleNav } from "@/components/operations/operations-module-nav";
 import { ClientDetailDialog } from "@/components/operations/client-detail-dialog";
@@ -181,11 +181,11 @@ export function ClientsPage() {
     summary.childSlotsCap > 0 &&
     summary.childSlotsUsed >= summary.childSlotsCap;
 
-  async function switchToClient(organizationId: string, thenPath: string) {
+  async function impersonateClient(organizationId: string, thenPath = "/dashboard") {
     setSwitchingId(organizationId);
     setError(null);
     try {
-      const res = await setActiveOrganization(organizationId);
+      const res = await startImpersonation(organizationId);
       setAuth(
         { ...res.user, organization: res.user.organization },
         res.accessToken,
@@ -197,7 +197,7 @@ export function ClientsPage() {
       );
       navigate(thenPath, { replace: true });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Não foi possível entrar no cliente.");
+      setError(e instanceof Error ? e.message : "Não foi possível acessar como admin.");
     } finally {
       setSwitchingId(null);
     }
@@ -483,10 +483,10 @@ export function ClientsPage() {
                     <Button
                       className="h-10 rounded-xl"
                       disabled={busy}
-                      onClick={() => void switchToClient(row.id, "/marketing")}
+                      onClick={() => void impersonateClient(row.id)}
                     >
                       {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogIn className="mr-2 h-4 w-4" />}
-                      Entrar no cliente
+                      Acessar como admin
                     </Button>
                     <DropdownMenu.Root>
                       <DropdownMenu.Trigger asChild>
@@ -526,11 +526,11 @@ export function ClientsPage() {
                             className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
                             onSelect={(e) => {
                               e.preventDefault();
-                              void switchToClient(row.id, "/usuarios");
+                              void impersonateClient(row.id, "/usuarios");
                             }}
                           >
                             <UserCog className="h-4 w-4 opacity-70" />
-                            Entrar e abrir Usuários
+                            Acessar e abrir Usuários
                           </DropdownMenu.Item>
                           {canPatchChild ? (
                             <DropdownMenu.Item
@@ -548,7 +548,7 @@ export function ClientsPage() {
                             className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-muted"
                             onSelect={(e) => {
                               e.preventDefault();
-                              void switchToClient(row.id, "/ads/metas-alertas");
+                              void impersonateClient(row.id, "/ads/metas-alertas");
                             }}
                           >
                             <Settings className="h-4 w-4 opacity-70" />
@@ -719,33 +719,10 @@ export function ClientsPage() {
               </div>
               <div>
                 <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                  Próximos passos
+                  Configure o cliente
                 </p>
                 <ul className="space-y-2">
-                  <li className="flex items-start gap-3 rounded-lg border border-border/50 bg-card/50 px-3 py-2.5">
-                    <input
-                      type="checkbox"
-                      id="chk-team"
-                      className="mt-1 h-4 w-4 rounded border-border"
-                      checked={checklistTeam}
-                      onChange={(e) => setChecklistTeam(e.target.checked)}
-                    />
-                    <label htmlFor="chk-team" className="flex-1 cursor-pointer text-sm leading-snug">
-                      <span className="font-medium text-foreground">Convidar a equipa</span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">
-                        Adicione utilizadores e papéis no workspace do cliente.
-                      </span>
-                      <Button
-                        type="button"
-                        variant="link"
-                        className="mt-1 h-auto p-0 text-xs font-semibold"
-                        onClick={() => void switchToClient(createdOrg.id, "/usuarios")}
-                      >
-                        Abrir utilizadores neste cliente
-                      </Button>
-                    </label>
-                  </li>
-                  <li className="flex items-start gap-3 rounded-lg border border-border/50 bg-card/50 px-3 py-2.5">
+                  <li className="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/[0.04] px-3 py-2.5">
                     <input
                       type="checkbox"
                       id="chk-integ"
@@ -756,18 +733,19 @@ export function ClientsPage() {
                     <label htmlFor="chk-integ" className="flex-1 cursor-pointer text-sm leading-snug">
                       <span className="inline-flex items-center gap-1 font-medium text-foreground">
                         <Link2 className="h-3.5 w-3.5" aria-hidden />
-                        Ligar integrações
+                        Conectar contas de anúncio
                       </span>
                       <span className="mt-0.5 block text-xs text-muted-foreground">
-                        Meta Ads e Google Ads para métricas no painel.
+                        Acesse o workspace do cliente e conecte as contas Meta Ads e Google Ads.
+                        As métricas do painel só aparecem após essa conexão.
                       </span>
                       <Button
                         type="button"
                         variant="link"
                         className="mt-1 h-auto p-0 text-xs font-semibold"
-                        onClick={() => void switchToClient(createdOrg.id, "/marketing/integracoes")}
+                        onClick={() => void impersonateClient(createdOrg.id, "/marketing/integracoes")}
                       >
-                        Abrir integrações
+                        Acessar como admin e conectar contas
                       </Button>
                     </label>
                   </li>
@@ -782,18 +760,41 @@ export function ClientsPage() {
                     <label htmlFor="chk-metas" className="flex-1 cursor-pointer text-sm leading-snug">
                       <span className="inline-flex items-center gap-1 font-medium text-foreground">
                         <Target className="h-3.5 w-3.5" aria-hidden />
-                        Metas de operação
+                        Definir metas de operação
                       </span>
                       <span className="mt-0.5 block text-xs text-muted-foreground">
-                        CPL, ROAS e alertas por canal.
+                        CPL alvo, ROAS esperado e alertas automáticos por canal.
                       </span>
                       <Button
                         type="button"
                         variant="link"
                         className="mt-1 h-auto p-0 text-xs font-semibold"
-                        onClick={() => void switchToClient(createdOrg.id, "/marketing/ads/metas-operacao")}
+                        onClick={() => void impersonateClient(createdOrg.id, "/ads/metas-alertas")}
                       >
-                        Abrir metas por canal
+                        Acessar como admin e configurar metas
+                      </Button>
+                    </label>
+                  </li>
+                  <li className="flex items-start gap-3 rounded-lg border border-border/50 bg-card/50 px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      id="chk-team"
+                      className="mt-1 h-4 w-4 rounded border-border"
+                      checked={checklistTeam}
+                      onChange={(e) => setChecklistTeam(e.target.checked)}
+                    />
+                    <label htmlFor="chk-team" className="flex-1 cursor-pointer text-sm leading-snug">
+                      <span className="font-medium text-foreground">Convidar equipe do cliente</span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
+                        Opcional — adicione o cliente ou sua equipe para visualizar os dados.
+                      </span>
+                      <Button
+                        type="button"
+                        variant="link"
+                        className="mt-1 h-auto p-0 text-xs font-semibold"
+                        onClick={() => void impersonateClient(createdOrg.id, "/usuarios")}
+                      >
+                        Acessar como admin e convidar
                       </Button>
                     </label>
                   </li>
@@ -811,7 +812,7 @@ export function ClientsPage() {
                 <Button
                   type="button"
                   className="rounded-lg"
-                  onClick={() => void switchToClient(createdOrg!.id, "/marketing")}
+                  onClick={() => void impersonateClient(createdOrg!.id)}
                 >
                   <LogIn className="mr-2 h-4 w-4" />
                   Entrar no cliente
@@ -914,8 +915,8 @@ export function ClientsPage() {
           statusLabel={displayClientStatus(detailRow).label}
           statusTone={displayClientStatus(detailRow).tone}
           statusCritical={displayClientStatus(detailRow).critical}
-          onEnterClient={(id) => void switchToClient(id, "/marketing")}
-          onManageAccess={(id) => void switchToClient(id, "/usuarios")}
+          onEnterClient={(id) => void impersonateClient(id)}
+          onManageAccess={(id) => void impersonateClient(id, "/usuarios")}
           entering={switchingId === detailRow.id}
           formatDate={formatShortDate}
         />

@@ -1,8 +1,7 @@
 import { useEffect } from "react";
 import { formatPageTitle, usePageTitle } from "@/hooks/usePageTitle";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { useAuthStore } from "@/stores/auth-store";
-import { canAccessMatrizResellerNav } from "@/lib/navigation-mode";
 import { RevendaShellNav } from "@/pages/revenda/RevendaShellNav";
 import { PageHint } from "@/pages/revenda/PageHint";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -21,7 +20,7 @@ function RevendaHeader({ isPlatformRoute }: { isPlatformRoute: boolean }) {
 
   return (
     <header className="flex flex-wrap items-center gap-2 border-b border-border/40 pb-3">
-      <h1 className="text-lg font-semibold tracking-tight">Matriz</h1>
+      <h1 className="text-lg font-semibold tracking-tight">Admin Plataforma</h1>
       <PageHint label="Sobre este painel">
         Contas, planos e usuários da sua revenda. Anúncios e relatórios ficam no dashboard e no marketing.
       </PageHint>
@@ -30,22 +29,12 @@ function RevendaHeader({ isPlatformRoute }: { isPlatformRoute: boolean }) {
 }
 
 export function RevendaLayout() {
-  usePageTitle(formatPageTitle(["Matriz"]));
-  const navigate = useNavigate();
+  usePageTitle(formatPageTitle(["Admin Plataforma"]));
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
-  const memberships = useAuthStore((s) => s.memberships);
-  const accessToken = useAuthStore((s) => s.accessToken);
   const platformAdmin = user?.platformAdmin === true;
 
   const isPlatformRoute = location.pathname === "/revenda/plataforma";
-
-  useEffect(() => {
-    if (!accessToken || !user) return;
-    if (!canAccessMatrizResellerNav(user, memberships)) {
-      navigate("/dashboard", { replace: true });
-    }
-  }, [accessToken, user, memberships, navigate]);
 
   useEffect(() => {
     window.scrollTo(0, 0);

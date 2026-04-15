@@ -62,6 +62,7 @@ import {
   type TeamJobTitleValue,
 } from "@/lib/team-access-ui";
 import { cn } from "@/lib/utils";
+import { formatPageTitle, usePageTitle } from "@/hooks/usePageTitle";
 
 type AccessLevelUi = "ADMIN" | "OPERADOR" | "VIEWER";
 
@@ -87,6 +88,7 @@ function canChangeOrRemoveRole(role: string): boolean {
 }
 
 export function TeamPage() {
+  usePageTitle(formatPageTitle(["Equipe"]));
   const orgName = useAuthStore((s) => s.user?.organization?.name);
   const currentUserId = useAuthStore((s) => s.user?.id);
   const [rows, setRows] = useState<MemberRow[]>([]);

@@ -58,7 +58,7 @@ function emptyForm(): FormState {
   return {
     name: "",
     slug: "",
-    planType: "standard",
+    planType: "custom",
     descriptionInternal: "",
     active: true,
     maxIntegrations: String(DEFAULT_NUM.maxIntegrations),

@@ -22,6 +22,7 @@ import {
   type IntegrationFromApi,
 } from "@/lib/integrations-api";
 import { cn } from "@/lib/utils";
+import { formatPageTitle, usePageTitle } from "@/hooks/usePageTitle";
 
 const EMPTY_ATIVA_CRM_HUB: AtivaCrmHubFromApi = {
   connected: false,
@@ -92,10 +93,12 @@ function matchesFilter(
 }
 
 export function IntegrationsHubPage() {
+  usePageTitle(formatPageTitle(["Integrações"]));
   const location = useLocation();
   const [list, setList] = useState<IntegrationFromApi[]>([]);
   const [ativaCrmHub, setAtivaCrmHub] = useState<AtivaCrmHubFromApi>(EMPTY_ATIVA_CRM_HUB);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<IntegrationHubStatusFilter>("all");
 
@@ -105,9 +108,11 @@ export function IntegrationsHubPage() {
       const res = await fetchIntegrations();
       setList(res.integrations);
       setAtivaCrmHub(res.ativaCrmHub ?? EMPTY_ATIVA_CRM_HUB);
+      setFetchError(false);
     } catch {
       setList([]);
       setAtivaCrmHub(EMPTY_ATIVA_CRM_HUB);
+      setFetchError(true);
     } finally {
       setLoading(false);
     }
@@ -196,6 +201,12 @@ export function IntegrationsHubPage() {
         toolbar={toolbar}
         stats={stats}
       />
+
+      {fetchError && !loading && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+          Não foi possível carregar as integrações. <button type="button" className="underline font-medium" onClick={() => void load()}>Tentar novamente</button>
+        </div>
+      )}
 
       {loading ? (
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">

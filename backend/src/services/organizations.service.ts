@@ -1,7 +1,7 @@
 import type { ResellerOrgKind, WorkspaceStatus } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../utils/prisma.js";
-import { getOrganizationRootId, getRootResellerPartnerFlag } from "../utils/org-hierarchy.js";
+import { getRootResellerPartnerFlag } from "../utils/org-hierarchy.js";
 import { computeMatrizNavEligible } from "../utils/matriz-nav-eligible.js";
 import { isPlatformAdminEmail } from "../utils/platform-admin.js";
 import { slugifyOrganizationName, uniqueOrganizationSlug } from "../utils/org-slug.js";
@@ -187,11 +187,6 @@ export async function createChildOrganization(
   }
 ) {
   await assertDirectOrgAdmin(userId, parentOrganizationId);
-  const rootId = await getOrganizationRootId(parentOrganizationId);
-  if (!rootId) {
-    throw new Error("Organização pai inválida");
-  }
-  await assertRootMayResellPlans(rootId, userId);
   await assertCanAddChildOrganization(parentOrganizationId, userId);
   const inherit = options?.inheritPlanFromParent !== false;
   const parent = await prisma.organization.findFirst({
