@@ -71,7 +71,7 @@ export const INTEGRATION_HUB_SECTIONS: IntegrationHubSectionDef[] = [
   },
   {
     title: "Automação e integrações",
-    description: "Webhooks, API e atendimento no Ativa CRM.",
+    description: "Webhooks e atendimento no Ativa CRM.",
     category: "automation",
     items: [
       {
@@ -83,16 +83,6 @@ export const INTEGRATION_HUB_SECTIONS: IntegrationHubSectionDef[] = [
         available: true,
         logoSrc: "/integrations/webhook.svg",
         tagline: "Receba eventos HTTP e integre com fluxos externos.",
-      },
-      {
-        id: "api",
-        name: "API",
-        routeSlug: "api",
-        category: "automation",
-        categoryLabel: "Automação",
-        available: false,
-        logoSrc: "/integrations/api.png",
-        tagline: "Integração via requisições externas e endpoints REST.",
       },
       {
         id: "ativa-crm",
