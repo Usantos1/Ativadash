@@ -323,6 +323,7 @@ export async function putMarketingSettingsHandler(req: Request, res: Response) {
   }
   try {
     const settings = await updateMarketingSettings(user.organizationId, parsed.data);
+    await appendAuditLog({ actorUserId: user.userId, organizationId: user.organizationId, action: "marketing.settings.updated", entityType: "MarketingSettings", metadata: { keys: Object.keys(parsed.data) } });
     return res.json({ settings });
   } catch (e) {
     console.error(e);

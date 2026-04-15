@@ -10,6 +10,7 @@ import {
   type DashboardShareSections,
 } from "../services/dashboard-share.service.js";
 import { expirationToDate, postDashboardShareBodySchema } from "../validators/dashboard-share.validator.js";
+import { appendAuditLog } from "../services/audit-log.service.js";
 
 async function guardRead(userId: string, organizationId: string, res: Response): Promise<boolean> {
   const ok = await userCanReadMarketing(userId, organizationId);
@@ -50,6 +51,7 @@ export async function postDashboardShareHandler(req: Request, res: Response) {
       periodLabel,
       expiresAt,
     });
+    await appendAuditLog({ actorUserId: userId, organizationId, action: "dashboard.share_created", entityType: "DashboardShareLink", metadata: { page, expiration } });
     return res.status(201).json({ token });
   } catch (e) {
     console.error(e);

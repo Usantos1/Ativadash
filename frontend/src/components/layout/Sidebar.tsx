@@ -21,6 +21,7 @@ import {
   Users2,
   Layers,
   Bell,
+  ScrollText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -75,6 +76,7 @@ const FULL_NAV_GROUPS: NavGroup[] = [
       { to: "/projetos", label: "Projetos", icon: FolderKanban },
       { to: "/lancamentos", label: "Lançamentos", icon: Rocket },
       { to: "/usuarios", label: "Equipe", icon: Users2 },
+      { to: "/atividades", label: "Log de Atividades", icon: ScrollText },
     ],
   },
 ];

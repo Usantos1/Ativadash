@@ -26,6 +26,7 @@ import {
 } from "../services/invitations.service.js";
 import { updateProfileSchema } from "../validators/workspace.validator.js";
 import { respondIfDatabaseUnavailable } from "../utils/prisma-connection-error.js";
+import { appendAuditLog } from "../services/audit-log.service.js";
 
 export async function login(req: Request, res: Response) {
   const parsed = loginSchema.safeParse(req.body);
@@ -36,6 +37,7 @@ export async function login(req: Request, res: Response) {
   }
   try {
     const result = await loginService(parsed.data);
+    await appendAuditLog({ actorUserId: result.user.id, organizationId: result.user.organizationId, action: "auth.login", entityType: "UserSession", ip: req.ip, userAgent: req.headers["user-agent"] as string ?? null });
     return res.json(result);
   } catch (e) {
     if (respondIfDatabaseUnavailable(res, e, "POST /api/auth/login")) return;
@@ -184,6 +186,7 @@ export async function patchProfile(req: Request, res: Response) {
   }
   try {
     const user = await updateProfile(jwtUser.userId, parsed.data.name);
+    await appendAuditLog({ actorUserId: jwtUser.userId, action: "profile.updated", entityType: "User", entityId: jwtUser.userId, metadata: { name: parsed.data.name } });
     return res.json(user);
   } catch {
     return res.status(500).json({ message: "Erro ao atualizar perfil" });
@@ -199,6 +202,7 @@ export async function patchPassword(req: Request, res: Response) {
   }
   try {
     await changePasswordForUser(jwtUser.userId, parsed.data.currentPassword, parsed.data.newPassword);
+    await appendAuditLog({ actorUserId: jwtUser.userId, action: "auth.password_changed", entityType: "User", entityId: jwtUser.userId });
     return res.json({ ok: true });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Erro ao alterar senha";

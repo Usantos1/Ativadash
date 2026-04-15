@@ -110,6 +110,48 @@ export function auditActionDescription(action: string, metadata: unknown): strin
       return "Webhook atualizado";
     case "webhook.event.replayed":
       return "Evento de webhook reenviado";
+    case "auth.login":
+      return "Login realizado";
+    case "auth.password_changed":
+      return "Senha alterada";
+    case "profile.updated":
+      return `Perfil atualizado (${name(m.name) ?? "—"})`;
+    case "client.created":
+      return `Cliente criado: ${name(m.name) ?? "—"}`;
+    case "client.updated":
+      return `Cliente atualizado: ${name(m.name) ?? "—"}`;
+    case "client.deleted":
+      return "Cliente removido";
+    case "project.created":
+      return `Projeto criado: ${name(m.name) ?? "—"}`;
+    case "project.updated":
+      return "Projeto atualizado";
+    case "project.deleted":
+      return "Projeto removido";
+    case "launch.created":
+      return `Lançamento criado: ${name(m.name) ?? "—"}`;
+    case "launch.updated":
+      return "Lançamento atualizado";
+    case "launch.deleted":
+      return "Lançamento removido";
+    case "invitation.created":
+      return `Convite enviado para ${name(m.email) ?? "—"}`;
+    case "invitation.revoked":
+      return "Convite revogado";
+    case "member.created":
+      return `Membro adicionado: ${name(m.email) ?? "—"}`;
+    case "member.updated":
+      return "Membro atualizado";
+    case "member.removed":
+      return "Membro removido";
+    case "member.password_reset":
+      return "Senha do membro redefinida";
+    case "marketing.settings.updated":
+      return "Configurações de marketing atualizadas";
+    case "integration.disconnected":
+      return "Integração desconectada";
+    case "dashboard.share_created":
+      return `Link de compartilhamento criado (${name(m.page) ?? "dashboard"})`;
     default:
       return action.replace(/\./g, " · ");
   }
@@ -159,16 +201,36 @@ export const RESELLER_AUDIT_ACTION_OPTIONS: { value: string; label: string }[] =
 
 /** Filtros sugeridos para atividade nas empresas (campanhas, regras, automação). */
 export const NETWORK_ACTIVITY_ACTION_OPTIONS: { value: string; label: string }[] = [
+  { value: "auth.login", label: "Login" },
+  { value: "auth.password_changed", label: "Senha alterada" },
+  { value: "profile.updated", label: "Perfil atualizado" },
+  { value: "client.created", label: "Cliente criado" },
+  { value: "client.updated", label: "Cliente atualizado" },
+  { value: "client.deleted", label: "Cliente removido" },
+  { value: "project.created", label: "Projeto criado" },
+  { value: "project.updated", label: "Projeto atualizado" },
+  { value: "project.deleted", label: "Projeto removido" },
+  { value: "launch.created", label: "Lançamento criado" },
+  { value: "launch.updated", label: "Lançamento atualizado" },
+  { value: "launch.deleted", label: "Lançamento removido" },
+  { value: "invitation.created", label: "Convite enviado" },
+  { value: "invitation.revoked", label: "Convite revogado" },
+  { value: "member.created", label: "Membro adicionado" },
+  { value: "member.updated", label: "Membro atualizado" },
+  { value: "member.removed", label: "Membro removido" },
+  { value: "member.password_reset", label: "Senha redefinida" },
   { value: "media.meta.campaign.status", label: "Meta · estado da campanha" },
   { value: "media.meta.campaign.budget", label: "Meta · orçamento da campanha" },
   { value: "media.google.campaign.status", label: "Google · estado da campanha" },
-  { value: "marketing.alert_rule.create", label: "Criar regra de alerta" },
-  { value: "marketing.alert_rule.update", label: "Atualizar regra" },
-  { value: "marketing.alert_rule.delete", label: "Eliminar regra" },
+  { value: "marketing.settings.updated", label: "Config. marketing atualizadas" },
+  { value: "marketing.alert_rule.create", label: "Regra de alerta criada" },
+  { value: "marketing.alert_rule.update", label: "Regra de alerta atualizada" },
+  { value: "marketing.alert_rule.delete", label: "Regra de alerta removida" },
+  { value: "integration.disconnected", label: "Integração desconectada" },
+  { value: "webhook.endpoint.created", label: "Webhook criado" },
+  { value: "webhook.endpoint.updated", label: "Webhook atualizado" },
+  { value: "dashboard.share_created", label: "Link compartilhado" },
   { value: "session.active_organization.changed", label: "Troca de empresa ativa" },
-  { value: "PAUSE_ASSET", label: "Automação · pausar ativo" },
-  { value: "INCREASE_BUDGET_20", label: "Automação · subir orçamento" },
-  { value: "DECREASE_BUDGET_20", label: "Automação · baixar orçamento" },
 ];
 
 /** @deprecated use RESELLER_AUDIT_ACTION_OPTIONS */

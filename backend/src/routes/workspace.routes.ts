@@ -4,6 +4,7 @@ import { requireJwtOrganizationAccess } from "../middlewares/organization-contex
 import * as workspace from "../controllers/workspace.controller.js";
 import * as webhooks from "../controllers/webhooks.controller.js";
 import * as checkout from "../controllers/checkout.controller.js";
+import * as auditLog from "../controllers/audit-log.controller.js";
 
 const router = Router();
 
@@ -48,5 +49,7 @@ router.get("/checkout-events/by-campaign", checkout.checkoutRevenueByCampaign);
 router.get("/checkout-product-mappings", checkout.checkoutMappingsList);
 router.post("/checkout-product-mappings", checkout.checkoutMappingsUpsert);
 router.delete("/checkout-product-mappings/:id", checkout.checkoutMappingsDelete);
+
+router.get("/audit-logs", auditLog.auditLogsList);
 
 export default router;

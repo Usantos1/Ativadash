@@ -39,6 +39,7 @@ import {
 } from "../services/invitations.service.js";
 import { removeMember } from "../services/members.service.js";
 import { assertManagedDescendantOrganization } from "../services/organizations.service.js";
+import { appendAuditLog } from "../services/audit-log.service.js";
 
 type AuthRequest = Request & { user: JwtPayload };
 
@@ -72,13 +73,14 @@ export async function clientsList(req: Request, res: Response) {
 }
 
 export async function clientsCreate(req: Request, res: Response) {
-  const { organizationId } = (req as AuthRequest).user;
+  const { organizationId, userId } = (req as AuthRequest).user;
   const parsed = createClientSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Dados inválidos" });
   }
   try {
     const row = await createClient(organizationId, parsed.data.name);
+    await appendAuditLog({ actorUserId: userId, organizationId, action: "client.created", entityType: "ClientAccount", entityId: row.id, metadata: { name: parsed.data.name } });
     return res.status(201).json(row);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro ao criar cliente";
@@ -91,7 +93,7 @@ export async function clientsCreate(req: Request, res: Response) {
 }
 
 export async function clientsUpdate(req: Request, res: Response) {
-  const { organizationId } = (req as AuthRequest).user;
+  const { organizationId, userId } = (req as AuthRequest).user;
   const { id } = req.params;
   const parsed = updateClientSchema.safeParse(req.body);
   if (!parsed.success || !parsed.data.name) {
@@ -99,14 +101,16 @@ export async function clientsUpdate(req: Request, res: Response) {
   }
   const row = await updateClient(organizationId, id, parsed.data.name);
   if (!row) return res.status(404).json({ message: "Cliente não encontrado" });
+  await appendAuditLog({ actorUserId: userId, organizationId, action: "client.updated", entityType: "ClientAccount", entityId: id, metadata: { name: parsed.data.name } });
   return res.json(row);
 }
 
 export async function clientsDelete(req: Request, res: Response) {
-  const { organizationId } = (req as AuthRequest).user;
+  const { organizationId, userId } = (req as AuthRequest).user;
   const { id } = req.params;
   const ok = await deleteClient(organizationId, id);
   if (!ok) return res.status(404).json({ message: "Cliente não encontrado" });
+  await appendAuditLog({ actorUserId: userId, organizationId, action: "client.deleted", entityType: "ClientAccount", entityId: id });
   return res.status(204).send();
 }
 
@@ -128,6 +132,7 @@ export async function projectsCreate(req: Request, res: Response) {
   const cid = parsed.data.clientAccountId === "" ? null : parsed.data.clientAccountId ?? null;
   try {
     const row = await createProject(organizationId, parsed.data.name, cid);
+    await appendAuditLog({ actorUserId: (req as AuthRequest).user.userId, organizationId, action: "project.created", entityType: "Project", entityId: row.id, metadata: { name: parsed.data.name } });
     return res.status(201).json(row);
   } catch (e) {
     return res.status(400).json({ message: e instanceof Error ? e.message : "Erro ao criar projeto" });
@@ -153,6 +158,7 @@ export async function projectsUpdate(req: Request, res: Response) {
   try {
     const row = await updateProject(organizationId, id, data);
     if (!row) return res.status(404).json({ message: "Projeto não encontrado" });
+    await appendAuditLog({ actorUserId: (req as AuthRequest).user.userId, organizationId, action: "project.updated", entityType: "Project", entityId: id, metadata: { keys: Object.keys(data) } });
     return res.json(row);
   } catch (e) {
     return res.status(400).json({ message: e instanceof Error ? e.message : "Erro ao atualizar" });
@@ -160,10 +166,11 @@ export async function projectsUpdate(req: Request, res: Response) {
 }
 
 export async function projectsDelete(req: Request, res: Response) {
-  const { organizationId } = (req as AuthRequest).user;
+  const { organizationId, userId } = (req as AuthRequest).user;
   const { id } = req.params;
   const ok = await deleteProject(organizationId, id);
   if (!ok) return res.status(404).json({ message: "Projeto não encontrado" });
+  await appendAuditLog({ actorUserId: userId, organizationId, action: "project.deleted", entityType: "Project", entityId: id });
   return res.status(204).send();
 }
 
@@ -198,6 +205,7 @@ export async function launchesCreate(req: Request, res: Response) {
       startDate,
       endDate
     );
+    await appendAuditLog({ actorUserId: (req as AuthRequest).user.userId, organizationId, action: "launch.created", entityType: "Launch", entityId: row.id, metadata: { name: parsed.data.name } });
     return res.status(201).json(row);
   } catch (e) {
     return res.status(400).json({ message: e instanceof Error ? e.message : "Erro ao criar lançamento" });
@@ -231,14 +239,16 @@ export async function launchesUpdate(req: Request, res: Response) {
   }
   const row = await updateLaunch(organizationId, id, data);
   if (!row) return res.status(404).json({ message: "Lançamento não encontrado" });
+  await appendAuditLog({ actorUserId: (req as AuthRequest).user.userId, organizationId, action: "launch.updated", entityType: "Launch", entityId: id, metadata: { keys: Object.keys(data) } });
   return res.json(row);
 }
 
 export async function launchesDelete(req: Request, res: Response) {
-  const { organizationId } = (req as AuthRequest).user;
+  const { organizationId, userId } = (req as AuthRequest).user;
   const { id } = req.params;
   const ok = await deleteLaunch(organizationId, id);
   if (!ok) return res.status(404).json({ message: "Lançamento não encontrado" });
+  await appendAuditLog({ actorUserId: userId, organizationId, action: "launch.deleted", entityType: "Launch", entityId: id });
   return res.status(204).send();
 }
 
@@ -279,6 +289,7 @@ export async function invitationsCreate(req: Request, res: Response) {
       jobTitle: parsed.data.jobTitle,
       whatsappNumber: parsed.data.whatsappNumber,
     });
+    await appendAuditLog({ actorUserId: userId, organizationId: targetOrg, action: "invitation.created", entityType: "Invitation", metadata: { email: parsed.data.email, role: parsed.data.role } });
     return res.status(201).json(out);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro ao convidar";
@@ -314,6 +325,7 @@ export async function invitationsRevoke(req: Request, res: Response) {
     await assertManagedDescendantOrganization(jwtOrg, invOrg);
     const ok = await revokeInvitation(invOrg, userId, id);
     if (!ok) return res.status(404).json({ message: "Convite não encontrado" });
+    await appendAuditLog({ actorUserId: userId, organizationId: invOrg, action: "invitation.revoked", entityType: "Invitation", entityId: id });
     return res.status(204).send();
   } catch (e) {
     return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
@@ -330,6 +342,7 @@ export async function membersCreate(req: Request, res: Response) {
   try {
     const orgId = await scopedWorkspaceOrganizationId(authReq);
     const row = await createWorkspaceDirectMember(orgId, userId, parsed.data);
+    await appendAuditLog({ actorUserId: userId, organizationId: orgId, action: "member.created", entityType: "Membership", metadata: { email: parsed.data.email, accessLevel: parsed.data.accessLevel } });
     return res.status(201).json(row);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro ao criar membro";
@@ -353,6 +366,7 @@ export async function membersPatch(req: Request, res: Response) {
     if (!result.ok) {
       return res.status(400).json({ message: result.message });
     }
+    await appendAuditLog({ actorUserId: userId, organizationId: orgId, action: "member.updated", entityType: "Membership", entityId: targetUserId, metadata: { keys: Object.keys(parsed.data) } });
     return res.json({ success: true });
   } catch (e) {
     return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });
@@ -372,6 +386,7 @@ export async function membersResetPassword(req: Request, res: Response) {
     await resetWorkspaceMemberPassword(orgId, userId, targetUserId, parsed.data.newPassword, {
       forcePasswordChange: parsed.data.forcePasswordChange,
     });
+    await appendAuditLog({ actorUserId: userId, organizationId: orgId, action: "member.password_reset", entityType: "User", entityId: targetUserId });
     return res.json({ success: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro";
@@ -391,6 +406,7 @@ export async function membersRemove(req: Request, res: Response) {
     if (!result.ok) {
       return res.status(400).json({ message: result.message });
     }
+    await appendAuditLog({ actorUserId: userId, organizationId: orgId, action: "member.removed", entityType: "Membership", entityId: targetUserId });
     return res.status(204).send();
   } catch (e) {
     return res.status(403).json({ message: e instanceof Error ? e.message : "Sem permissão" });

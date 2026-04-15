@@ -13,6 +13,7 @@ import { WhatsAppIntegrationPage } from "@/pages/integrations/WhatsAppIntegratio
 import { WebhooksIntegrationPage } from "@/pages/integrations/WebhooksIntegrationPage";
 import { IntegrationComingSoonPage } from "@/pages/integrations/IntegrationComingSoonPage";
 import { HotmartIntegrationPage } from "@/pages/integrations/HotmartIntegrationPage";
+import { ActivityLogPage } from "@/pages/ActivityLogPage";
 import { MetasAlertasPage } from "@/pages/MetasAlertasPage";
 import { MarketingFunnelPage } from "@/pages/MarketingFunnelPage";
 import { ClientsPage } from "@/pages/ClientsPage";
@@ -90,6 +91,7 @@ export default function App() {
           <Route path="configuracoes/admin" element={<AdminSettingsPage />} />
           <Route path="perfil" element={<ProfilePage />} />
           <Route path="usuarios" element={<TeamPage />} />
+          <Route path="atividades" element={<ActivityLogPage />} />
           <Route path="revenda" element={<RevendaLayout />}>
             <Route index element={<RevendaOverviewPage />} />
             <Route path="empresas" element={<RevendaTenantsPage kind="CLIENT" />} />

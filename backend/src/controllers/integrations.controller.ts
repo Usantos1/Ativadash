@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
+import { appendAuditLog } from "../services/audit-log.service.js";
 import {
   getGoogleAdsAuthUrl,
   exchangeGoogleAdsCode,
@@ -50,7 +51,7 @@ const putMetaAdsAssignmentSchema = z.object({
   adAccountId: z.string().min(1),
 });
 
-type AuthRequest = Request & { user: { organizationId: string } };
+type AuthRequest = Request & { user: { userId: string; organizationId: string } };
 
 export async function getGoogleAdsAuthUrlHandler(req: Request, res: Response) {
   const { user } = req as AuthRequest;
@@ -182,6 +183,7 @@ export async function disconnectHandler(req: Request, res: Response) {
     if (!ok) {
       return res.status(404).json({ message: "Integração não encontrada" });
     }
+    await appendAuditLog({ actorUserId: user.userId, organizationId: user.organizationId, action: "integration.disconnected", entityType: "Integration", entityId: id });
     return res.json({ success: true });
   } catch (e) {
     console.error(e);
