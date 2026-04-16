@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import {
   Bar,
   CartesianGrid,
@@ -43,6 +43,10 @@ export function DashboardDailyChartSection({
   businessGoalMode,
   chartSeries,
   onSeriesChange,
+  title,
+  showSeriesToggles = true,
+  extraActions,
+  emptyText = "Sem dados suficientes para exibir a série no período.",
 }: {
   chartData: DailyChartRow[];
   loading?: boolean;
@@ -51,6 +55,10 @@ export function DashboardDailyChartSection({
   businessGoalMode: BusinessGoalMode;
   chartSeries: SeriesKey;
   onSeriesChange: (s: SeriesKey) => void;
+  title?: string;
+  showSeriesToggles?: boolean;
+  extraActions?: ReactNode;
+  emptyText?: string;
 }) {
   const leadFocus = businessGoalMode === "LEADS" || businessGoalMode === "HYBRID";
 
@@ -72,7 +80,7 @@ export function DashboardDailyChartSection({
     { key: "ctr", label: "CTR" },
   ];
 
-  const title =
+  const defaultTitle =
     chartSeries === "spend"
       ? "Série diária · investimento"
       : chartSeries === "leads"
@@ -83,7 +91,7 @@ export function DashboardDailyChartSection({
 
   return (
     <ChartPanelPremium
-      title={title}
+      title={title ?? defaultTitle}
       actions={
         <div className="flex flex-wrap items-center gap-1.5">
           {refreshing ? (
@@ -92,23 +100,26 @@ export function DashboardDailyChartSection({
               Atualizando
             </span>
           ) : null}
-          {toggles.map(({ key, label }) => (
-            <Button
-              key={key}
-              type="button"
-              variant={chartSeries === key ? "secondary" : "outline"}
-              size="sm"
-              className={cn(
-                "h-8 rounded-lg px-2.5 text-xs",
-                leadFocus && (key === "leads" || key === "cpl") && chartSeries !== key
-                  ? "border-primary/25"
-                  : ""
-              )}
-              onClick={() => onSeriesChange(key)}
-            >
-              {label}
-            </Button>
-          ))}
+          {extraActions}
+          {showSeriesToggles
+            ? toggles.map(({ key, label }) => (
+                <Button
+                  key={key}
+                  type="button"
+                  variant={chartSeries === key ? "secondary" : "outline"}
+                  size="sm"
+                  className={cn(
+                    "h-8 rounded-lg px-2.5 text-xs",
+                    leadFocus && (key === "leads" || key === "cpl") && chartSeries !== key
+                      ? "border-primary/25"
+                      : ""
+                  )}
+                  onClick={() => onSeriesChange(key)}
+                >
+                  {label}
+                </Button>
+              ))
+            : null}
         </div>
       }
       contentClassName="pt-2"
@@ -116,6 +127,10 @@ export function DashboardDailyChartSection({
       {errorText ? <p className="mb-2 text-xs text-amber-700 dark:text-amber-300">{errorText}</p> : null}
       {loading ? (
         <Skeleton className="h-[300px] w-full rounded-lg" />
+      ) : !chartData.length ? (
+        <div className="flex h-[300px] items-center justify-center rounded-lg border border-dashed border-border/60 px-6 text-center text-sm text-muted-foreground">
+          {emptyText}
+        </div>
       ) : (
         <div className="h-[300px] w-full min-w-0">
           <ResponsiveContainer width="100%" height="100%">

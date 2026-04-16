@@ -49,7 +49,10 @@ import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
 import { useMarketingDashboardBlocks } from "@/hooks/useMarketingDashboardBlocks";
 import { DashboardFunnelRatesWidget } from "@/components/dashboard/dashboard-funnel-rates-widget";
 import { DashboardAttributionPanel } from "@/components/dashboard/DashboardAttributionPanel";
-import { DashboardDailyChartSection } from "@/components/dashboard/DashboardDailyChartSection";
+import {
+  DashboardDailyChartSection,
+  type DailyChartRow,
+} from "@/components/dashboard/DashboardDailyChartSection";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DashboardPlatformDiagnostics } from "@/components/dashboard/DashboardPlatformDiagnostics";
 import { DashboardPerformanceTable } from "@/components/dashboard/dashboard-performance-table";
@@ -76,6 +79,49 @@ function relDelta(
 ): { pct: number } | undefined {
   if (!compareEnabled || prev <= 0 || !Number.isFinite(current) || !Number.isFinite(prev)) return undefined;
   return { pct: ((current - prev) / prev) * 100 };
+}
+
+type DailyChartSourceRow = {
+  date: string;
+  impressions: number;
+  clicks: number;
+  spend: number;
+  leads: number;
+  ctrPct: number | null;
+};
+
+function buildDailyChartRows(
+  startDate: string,
+  endDate: string,
+  rows: DailyChartSourceRow[]
+): DailyChartRow[] {
+  if (!rows.length) return [];
+  const map = new Map(rows.map((row) => [row.date, row]));
+  const from = parseISO(startDate);
+  const to = parseISO(endDate);
+  const days = eachDayOfInterval({ start: from, end: to });
+  return days.map((day) => {
+    const key = format(day, "yyyy-MM-dd");
+    const row = map.get(key);
+    const imp = row?.impressions ?? 0;
+    const clk = row?.clicks ?? 0;
+    const spend = row?.spend ?? 0;
+    const leads = row?.leads ?? 0;
+    return {
+      label: format(day, "d/MMM", { locale: ptBR }),
+      spend,
+      leads,
+      ctr: row?.ctrPct ?? (imp > 0 ? (clk / imp) * 100 : null),
+      cpl: leads > 0 && spend > 0 ? spend / leads : null,
+    };
+  });
+}
+
+function dailySeriesTitle(series: "spend" | "leads" | "ctr" | "cpl"): string {
+  if (series === "spend") return "Série diária · investimento";
+  if (series === "leads") return "Série diária · leads";
+  if (series === "cpl") return "Série diária · CPL";
+  return "Série diária · CTR";
 }
 
 type MetaLevel = "campaign" | "adset" | "ad";
@@ -248,28 +294,37 @@ export function DashboardSingleClient() {
     [marketingSettings]
   );
 
-  const chartData = useMemo(() => {
+  const metaChartData = useMemo(() => {
     if (!metaOk || !dash.timeseries.length) return [];
-    const map = new Map(dash.timeseries.map((t) => [t.date, t]));
-    const from = parseISO(dateRange.startDate);
-    const to = parseISO(dateRange.endDate);
-    const days = eachDayOfInterval({ start: from, end: to });
-    return days.map((day) => {
-      const key = format(day, "yyyy-MM-dd");
-      const row = map.get(key);
-      const imp = row?.impressions ?? 0;
-      const clk = row?.clicks ?? 0;
-      const spend = row?.spend ?? 0;
-      const leads = row?.leads ?? 0;
-      return {
-        label: format(day, "d/MMM", { locale: ptBR }),
-        spend,
-        leads,
-        ctr: row?.ctrPct ?? (imp > 0 ? (clk / imp) * 100 : null) as number | null,
-        cpl: leads > 0 && spend > 0 ? spend / leads : null,
-      };
-    });
+    return buildDailyChartRows(
+      dateRange.startDate,
+      dateRange.endDate,
+      dash.timeseries.map((row) => ({
+        date: row.date,
+        impressions: row.impressions,
+        clicks: row.clicks,
+        spend: row.spend,
+        leads: row.leads,
+        ctrPct: row.ctrPct,
+      }))
+    );
   }, [metaOk, dash, dateRange.startDate, dateRange.endDate]);
+
+  const googleChartData = useMemo(() => {
+    if (!googleOk || !metrics?.ok || !metrics.daily?.length) return [];
+    return buildDailyChartRows(
+      dateRange.startDate,
+      dateRange.endDate,
+      metrics.daily.map((row) => ({
+        date: row.date,
+        impressions: row.impressions,
+        clicks: row.clicks,
+        spend: row.costMicros / 1_000_000,
+        leads: row.conversions,
+        ctrPct: row.impressions > 0 ? (row.clicks / row.impressions) * 100 : null,
+      }))
+    );
+  }, [googleOk, metrics, dateRange.startDate, dateRange.endDate]);
 
   const perfRows = useMemo(() => {
     if (!metaOk) return { campaign: [] as MarketingDashboardPerfRow[], adset: [], ad: [] };
@@ -374,6 +429,7 @@ export function DashboardSingleClient() {
     googleDerived.spend <= 0 &&
     metrics!.summary.impressions <= 0 &&
     metrics!.summary.clicks <= 0;
+  const currentDailySeriesTitle = dailySeriesTitle(chartSeries);
 
   const channelCompare = useMemo(() => {
     const empty = { meta: null, google: null, efficiencyWinner: null } as const;
@@ -1073,15 +1129,31 @@ export function DashboardSingleClient() {
                   </span>
                 ) : null}
               </div>
-              <DashboardDailyChartSection
-                chartData={chartData}
-                loading={Boolean(blocks.timeseries.loading && slice.timeseries === undefined)}
-                refreshing={blocks.timeseries.refreshing}
-                errorText={blocks.timeseries.error}
-                businessGoalMode={goalCtx.businessGoalMode}
-                chartSeries={chartSeries}
-                onSeriesChange={setChartSeries}
-              />
+              <div className={cn("grid gap-4", hasGoogle ? "xl:grid-cols-2" : "")}>
+                <DashboardDailyChartSection
+                  title={`${currentDailySeriesTitle} · Meta Ads`}
+                  chartData={metaChartData}
+                  loading={Boolean(blocks.timeseries.loading && slice.timeseries === undefined)}
+                  errorText={blocks.timeseries.error}
+                  businessGoalMode={goalCtx.businessGoalMode}
+                  chartSeries={chartSeries}
+                  onSeriesChange={setChartSeries}
+                  emptyText="Sem dados da Meta Ads no período selecionado."
+                />
+                {hasGoogle ? (
+                  <DashboardDailyChartSection
+                    title={`${currentDailySeriesTitle} · Google Ads`}
+                    chartData={googleChartData}
+                    loading={googleWidgetLoading}
+                    errorText={googleBlockError}
+                    businessGoalMode={goalCtx.businessGoalMode}
+                    chartSeries={chartSeries}
+                    onSeriesChange={setChartSeries}
+                    showSeriesToggles={false}
+                    emptyText="Sem dados do Google Ads no período selecionado."
+                  />
+                ) : null}
+              </div>
             </section>
 
             <section className="space-y-3">
