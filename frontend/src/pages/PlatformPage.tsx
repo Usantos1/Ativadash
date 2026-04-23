@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { Ban, FileText, Pencil, PlayCircle, Search, Trash2 } from "lucide-react";
+import { Ban, FileText, Pencil, PlayCircle, RefreshCw, Search, Shield, Trash2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -537,24 +537,40 @@ export function PlatformPage() {
   }
 
   if (!platformAdmin) {
-    return <Navigate to="/revenda" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return (
     <div className="min-w-0 max-w-full space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Plataforma</h1>
-          <p className="text-sm text-muted-foreground">
-            Empresas raiz, catálogo de planos e assinaturas. Use as abas para separar cada área.
-          </p>
+      <div className="rounded-2xl border border-amber-500/35 bg-gradient-to-br from-amber-500/[0.07] via-amber-500/[0.03] to-background p-4 shadow-[var(--shadow-surface-sm)] sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-700 ring-1 ring-amber-500/30 dark:text-amber-300">
+              <Shield className="h-5 w-5" aria-hidden />
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl font-semibold tracking-tight text-foreground">Admin Ativa Dash</h1>
+                <span className="rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-200">
+                  Staff · produto
+                </span>
+              </div>
+              <p className="max-w-3xl text-sm text-muted-foreground">
+                Backoffice interno da Ativa Dash: gerencia <strong className="text-foreground">empresas raiz</strong> de todos os
+                ecossistemas, o <strong className="text-foreground">catálogo global de planos</strong> e{" "}
+                <strong className="text-foreground">assinaturas do SaaS</strong>. Não confunda com{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-xs">/revenda</code> (que opera apenas a sua rede).
+              </p>
+            </div>
+          </div>
+          <Button type="button" variant="outline" size="sm" className="shrink-0 gap-2 rounded-lg" onClick={handleSyncSubs}>
+            <RefreshCw className="h-3.5 w-3.5" />
+            Sincronizar assinaturas
+          </Button>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={handleSyncSubs}>
-          Sincronizar assinaturas (org → subscription)
-        </Button>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
       {loading && <p className="text-sm text-muted-foreground">Carregando…</p>}
 
       <Dialog open={!!manageOrg} onOpenChange={(o) => !o && setManageOrg(null)}>
@@ -849,8 +865,8 @@ export function PlatformPage() {
 
       <Tabs value={platformTab} onValueChange={setPlatformTab} className="w-full min-w-0 space-y-4">
         <TabsList className="h-auto w-full flex-wrap justify-start gap-1 bg-muted/80 p-1">
-          <TabsTrigger value="empresas">Empresas</TabsTrigger>
-          <TabsTrigger value="planos">Planos</TabsTrigger>
+          <TabsTrigger value="empresas">Empresas raiz</TabsTrigger>
+          <TabsTrigger value="planos">Catálogo global de planos</TabsTrigger>
           <TabsTrigger value="assinaturas">Assinaturas</TabsTrigger>
           <TabsTrigger value="auditoria" className="gap-1.5">
             <FileText className="h-3.5 w-3.5" aria-hidden />

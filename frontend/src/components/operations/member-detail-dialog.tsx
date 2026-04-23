@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { StatusBadge } from "@/components/premium";
 import type { MemberRow, PatchMemberPayload } from "@/lib/workspace-api";
-import { patchMember, resetMemberPassword, changeAuthenticatedPassword } from "@/lib/workspace-api";
+import { patchMember, resetMemberPassword } from "@/lib/workspace-api";
 import { membershipRoleLabelPt } from "@/lib/membership-role-labels";
 import {
   TEAM_ACCESS_LEVEL_OPTIONS,
@@ -61,7 +61,6 @@ export function MemberDetailDialog({
   const [draftSuspended, setDraftSuspended] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [currentPassword, setCurrentPassword] = useState("");
   const [forceChangeOnLogin, setForceChangeOnLogin] = useState(true);
   const [busy, setBusy] = useState<"profile" | "password" | "jobAccess" | "alertPrefs" | null>(null);
   const [localMsg, setLocalMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
@@ -84,7 +83,6 @@ export function MemberDetailDialog({
     setDraftAlertEnd(member.alertEndHour?.trim() ?? "");
     setNewPassword("");
     setConfirmPassword("");
-    setCurrentPassword("");
     setForceChangeOnLogin(true);
     setLocalMsg(null);
     setBusy(null);
@@ -93,9 +91,10 @@ export function MemberDetailDialog({
   const isDirect = member?.source !== "agency";
   const isSelf = !!(member && currentUserId && member.userId === currentUserId);
   const canEdit = !!(member && isDirect);
-  const canEditJobAccess = !!(member && canEdit && !isSelf && canEditMemberJobAndAccess(member.role));
+  const canEditJobAccess = !!(member && canEdit && canEditMemberJobAndAccess(member.role));
   const canEditProfile = canEdit;
   const canManageOther = !!(member && isDirect && !isSelf);
+  const canChangePassword = !!(member && canEdit);
 
   function msg(text: string, type: "success" | "error" = "error") {
     setLocalMsg({ text, type });
@@ -180,39 +179,23 @@ export function MemberDetailDialog({
   }
 
   async function handleResetPassword() {
-    if (!member || !canManageOther) return;
+    if (!member || !canChangePassword) return;
     setLocalMsg(null);
     if (newPassword.length < 8) { msg("Mínimo 8 caracteres."); return; }
     if (newPassword !== confirmPassword) { msg("As senhas não conferem."); return; }
     setBusy("password");
     try {
-      await resetMemberPassword(member.userId, { newPassword, forcePasswordChange: forceChangeOnLogin }, organizationId);
+      await resetMemberPassword(
+        member.userId,
+        { newPassword, forcePasswordChange: isSelf ? false : forceChangeOnLogin },
+        organizationId
+      );
       setNewPassword("");
       setConfirmPassword("");
       await onMemberUpdated?.();
-      msg("Senha redefinida com sucesso.", "success");
+      msg(isSelf ? "Sua senha foi alterada." : "Senha redefinida com sucesso.", "success");
     } catch (e) {
       msg(e instanceof Error ? e.message : "Erro ao redefinir senha");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function handleSelfChangePassword() {
-    if (!member || !isSelf) return;
-    setLocalMsg(null);
-    if (!currentPassword) { msg("Informe sua senha atual."); return; }
-    if (newPassword.length < 6) { msg("Mínimo 6 caracteres."); return; }
-    if (newPassword !== confirmPassword) { msg("As senhas não conferem."); return; }
-    setBusy("password");
-    try {
-      await changeAuthenticatedPassword({ currentPassword, newPassword, confirmPassword });
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      msg("Senha alterada com sucesso.", "success");
-    } catch (e) {
-      msg(e instanceof Error ? e.message : "Erro ao alterar senha");
     } finally {
       setBusy(null);
     }
@@ -240,7 +223,7 @@ export function MemberDetailDialog({
   const tabs: { id: Tab; label: string; icon: React.ReactNode; show: boolean }[] = [
     { id: "perfil", label: "Perfil", icon: <User className="h-3.5 w-3.5" />, show: true },
     { id: "acesso", label: "Acesso", icon: <Briefcase className="h-3.5 w-3.5" />, show: canEditJobAccess },
-    { id: "seguranca", label: "Senha", icon: <Lock className="h-3.5 w-3.5" />, show: canEdit },
+    { id: "seguranca", label: "Senha", icon: <Lock className="h-3.5 w-3.5" />, show: canChangePassword },
     { id: "alertas", label: "Alertas", icon: <Bell className="h-3.5 w-3.5" />, show: canManageOther },
   ];
   const visibleTabs = tabs.filter((t) => t.show);
@@ -439,65 +422,13 @@ export function MemberDetailDialog({
             </div>
           ) : null}
 
-          {/* ── SEGURANÇA (self) ── */}
-          {tab === "seguranca" && isSelf ? (
+          {/* ── SEGURANÇA ── */}
+          {tab === "seguranca" && canChangePassword ? (
             <div className="space-y-4">
               <p className="text-xs text-muted-foreground">
-                Para alterar sua senha, informe a senha atual e escolha uma nova.
-              </p>
-              <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">Senha atual</Label>
-                  <Input
-                    type="password"
-                    autoComplete="current-password"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    disabled={busy !== null}
-                    className="h-9 rounded-lg"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">Nova senha</Label>
-                  <Input
-                    type="password"
-                    autoComplete="new-password"
-                    placeholder="Mínimo 6 caracteres"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    disabled={busy !== null}
-                    className="h-9 rounded-lg"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">Confirmar nova senha</Label>
-                  <Input
-                    type="password"
-                    autoComplete="new-password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    disabled={busy !== null}
-                    className="h-9 rounded-lg"
-                  />
-                </div>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                className="w-full rounded-lg"
-                disabled={busy !== null || !currentPassword || newPassword.length < 6 || newPassword !== confirmPassword}
-                onClick={() => void handleSelfChangePassword()}
-              >
-                {busy === "password" ? "Alterando…" : "Alterar senha"}
-              </Button>
-            </div>
-          ) : null}
-
-          {/* ── SEGURANÇA (admin reset) ── */}
-          {tab === "seguranca" && canManageOther ? (
-            <div className="space-y-4">
-              <p className="text-xs text-muted-foreground">
-                Defina uma nova senha para este membro. A sessão ativa será encerrada.
+                {isSelf
+                  ? "Defina uma nova senha. Use 8 caracteres ou mais, combinando letras e números."
+                  : "Defina uma nova senha para este membro. A sessão ativa dele será encerrada."}
               </p>
               <div className="space-y-3">
                 <div className="space-y-1.5">
@@ -523,10 +454,12 @@ export function MemberDetailDialog({
                     className="h-9 rounded-lg"
                   />
                 </div>
-                <div className="flex items-center justify-between gap-3 rounded-lg border border-border/40 px-3 py-2.5">
-                  <span className="text-xs text-muted-foreground">Exigir troca no próximo login</span>
-                  <Switch checked={forceChangeOnLogin} onCheckedChange={setForceChangeOnLogin} disabled={busy !== null} />
-                </div>
+                {!isSelf ? (
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-border/40 px-3 py-2.5">
+                    <span className="text-xs text-muted-foreground">Exigir troca no próximo login</span>
+                    <Switch checked={forceChangeOnLogin} onCheckedChange={setForceChangeOnLogin} disabled={busy !== null} />
+                  </div>
+                ) : null}
               </div>
               <Button
                 type="button"
@@ -535,7 +468,7 @@ export function MemberDetailDialog({
                 disabled={busy !== null || newPassword.length < 8 || newPassword !== confirmPassword}
                 onClick={() => void handleResetPassword()}
               >
-                {busy === "password" ? "Redefinindo…" : "Redefinir senha"}
+                {busy === "password" ? (isSelf ? "Alterando…" : "Redefinindo…") : isSelf ? "Alterar senha" : "Redefinir senha"}
               </Button>
             </div>
           ) : null}

@@ -72,9 +72,12 @@ export function resolveTopbarCrumbs(pathname: string): TopbarCrumb[] {
   if (p === "/revenda" || p === "/assinatura") return [{ label: "Revenda" }];
 
   const revendaSection: Record<string, string> = {
+    "/revenda/contas": "Contas",
+    "/revenda/clientes": "Clientes",
     "/revenda/empresas": "Clientes",
     "/revenda/agencias": "Agências",
-    "/revenda/usuarios": "Usuários",
+    "/revenda/pessoas": "Pessoas",
+    "/revenda/usuarios": "Pessoas",
     "/revenda/planos": "Planos",
     "/revenda/modulos": "Módulos",
     "/revenda/saude": "Saúde",
@@ -84,13 +87,9 @@ export function resolveTopbarCrumbs(pathname: string): TopbarCrumb[] {
     return [{ label: "Revenda", href: "/revenda" }, { label: revendaSection[p] }];
   }
 
-  if (p === "/revenda/plataforma") {
-    return [
-      { label: "Revenda", href: "/revenda" },
-      { label: "Produto (global)" },
-    ];
+  if (p === "/revenda/plataforma" || p === "/plataforma") {
+    return [{ label: "Admin Ativa Dash" }];
   }
-  if (p === "/plataforma") return [{ label: "Revenda", href: "/revenda" }];
   if (p === "/admin") {
     return [
       { label: "Configurações", href: "/configuracoes" },

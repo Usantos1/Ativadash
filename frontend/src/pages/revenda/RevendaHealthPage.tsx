@@ -90,11 +90,11 @@ export function RevendaHealthPage() {
       </div>
 
       <div className="flex flex-wrap gap-2 text-sm">
-        <Link to="/revenda/agencias" className="font-medium text-primary underline-offset-4 hover:underline">
+        <Link to="/revenda/contas?kind=AGENCY" className="font-medium text-primary underline-offset-4 hover:underline">
           Agências
         </Link>
         <span className="text-muted-foreground">·</span>
-        <Link to="/revenda/empresas" className="font-medium text-primary underline-offset-4 hover:underline">
+        <Link to="/revenda/contas?kind=CLIENT" className="font-medium text-primary underline-offset-4 hover:underline">
           Clientes (matriz)
         </Link>
         <span className="text-muted-foreground">·</span>
@@ -271,7 +271,7 @@ export function RevendaHealthPage() {
                   </p>
                 </div>
                 <Button size="sm" variant="outline" asChild>
-                  <Link to="/revenda/empresas">Abrir na revenda</Link>
+                  <Link to="/revenda/contas?kind=CLIENT">Abrir na revenda</Link>
                 </Button>
               </div>
             ))

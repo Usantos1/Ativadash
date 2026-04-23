@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Ban, Link2Off, Loader2, LogIn, Pencil, PlayCircle, Plus, Trash2 } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Ban, Building2, Link2Off, Loader2, LogIn, Pencil, PlayCircle, Plus, Store, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
@@ -43,7 +44,10 @@ const STATUS_PT: Record<WorkspaceStatus, string> = {
   ARCHIVED: "Arquivada",
 };
 
-type Props = { kind: ResellerOrgKind };
+type Props = {
+  /** Kind inicial (legado). Se ausente, lê `?kind=` da URL e cai em "CLIENT". */
+  kind?: ResellerOrgKind;
+};
 
 function defaultFeatureDraft(ctx: { enabledFeatures: EnabledFeatures }): EnabledFeatures {
   return { ...ctx.enabledFeatures };
@@ -129,10 +133,22 @@ function isClientCreateFormValid(c: ClientCadastroForm): boolean {
   return true;
 }
 
-export function RevendaTenantsPage({ kind }: Props) {
+export function RevendaTenantsPage({ kind: kindProp }: Props) {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const setAuth = useAuthStore((s) => s.setAuth);
   const currentOrgId = useAuthStore((s) => s.user?.organizationId);
+  const kindParam = searchParams.get("kind");
+  const kind: ResellerOrgKind = kindProp ?? (kindParam === "AGENCY" ? "AGENCY" : "CLIENT");
+
+  const setKind = useCallback(
+    (next: ResellerOrgKind) => {
+      const sp = new URLSearchParams(searchParams);
+      sp.set("kind", next);
+      setSearchParams(sp, { replace: true });
+    },
+    [searchParams, setSearchParams]
+  );
 
   const [rows, setRows] = useState<ChildWorkspaceOperationsRow[]>([]);
   const [ecosystem, setEcosystem] = useState<ResellerEcosystemOrgRow[]>([]);
@@ -168,7 +184,6 @@ export function RevendaTenantsPage({ kind }: Props) {
   const [rowActionId, setRowActionId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const title = kind === "AGENCY" ? "Agências" : "Clientes";
   /** Cadastro com administrador (e-mail, senha, WhatsApp) — obrigatório para cliente e para nova agência. */
   const needsOwnerBootstrap = kind === "CLIENT" || kind === "AGENCY";
 
@@ -178,8 +193,25 @@ export function RevendaTenantsPage({ kind }: Props) {
     [ecosystem]
   );
 
-  /** IDs de agências filiais — clientes sob uma agência aparecem em /revenda/agencias, não em /revenda/empresas. */
+  /** IDs de agências filiais — clientes sob uma agência aparecem na aba Agências, não em Clientes. */
   const agencyBranchIds = useMemo(() => new Set(agencyOptions.map((o) => o.id)), [agencyOptions]);
+
+  const kindCounts = useMemo(() => {
+    const isClientLike = (r: ChildWorkspaceOperationsRow) => (r.resellerOrgKind ?? "CLIENT") === "CLIENT";
+    let clients = 0;
+    let agencies = 0;
+    for (const r of rows) {
+      if (r.resellerOrgKind === "AGENCY" || (isClientLike(r) && r.parentOrganizationId != null && agencyBranchIds.has(r.parentOrganizationId))) {
+        agencies += 1;
+      } else if (isClientLike(r)) {
+        clients += 1;
+      }
+    }
+    return { clients, agencies };
+  }, [rows, agencyBranchIds]);
+
+  const activeCount = useMemo(() => rows.filter((r) => r.workspaceStatus === "ACTIVE").length, [rows]);
+  const pausedCount = useMemo(() => rows.filter((r) => r.workspaceStatus === "PAUSED").length, [rows]);
 
   const filtered = useMemo(() => {
     const isClientLike = (r: ChildWorkspaceOperationsRow) => (r.resellerOrgKind ?? "CLIENT") === "CLIENT";
@@ -490,14 +522,17 @@ export function RevendaTenantsPage({ kind }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-1">
-          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-          <PageHint>
-            {kind === "AGENCY"
-              ? "Filiais com equipe própria e clientes por baixo."
-              : "Marcas com dados separados. CNPJ/contrato próprio: use Desvincular para painel independente."}
-          </PageHint>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold tracking-tight text-foreground">Contas da rede</h2>
+            <PageHint>
+              Clientes finais e agências filiais da sua rede. Clientes têm CNPJ/contrato próprio; agências têm equipe e podem cadastrar clientes abaixo.
+            </PageHint>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {activeCount} ativas · {pausedCount} pausadas · {rows.length} contas no total
+          </p>
         </div>
         <Button
           type="button"
@@ -506,12 +541,12 @@ export function RevendaTenantsPage({ kind }: Props) {
             setClientCadastro({ ...EMPTY_CLIENT_CADASTRO });
             setCreateOpen(true);
           }}
-          className="shrink-0 gap-2"
+          className="h-10 shrink-0 gap-2 rounded-xl px-4 shadow-sm"
         >
           <Plus className="h-4 w-4" />
           Nova {kind === "AGENCY" ? "agência" : "empresa"}
         </Button>
-      </div>
+      </header>
 
       {actionError ? (
         <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -519,9 +554,53 @@ export function RevendaTenantsPage({ kind }: Props) {
         </p>
       ) : null}
 
+      <div
+        className="inline-flex rounded-xl border border-border/60 bg-muted/30 p-1"
+        role="tablist"
+        aria-label="Tipo de conta"
+      >
+        {[
+          { value: "CLIENT" as const, label: "Clientes", icon: Building2, count: kindCounts.clients, hint: "Contas finais com CNPJ/contrato próprio" },
+          { value: "AGENCY" as const, label: "Agências", icon: Store, count: kindCounts.agencies, hint: "Filiais com equipe e clientes por baixo" },
+        ].map((t) => {
+          const active = kind === t.value;
+          const Icon = t.icon;
+          return (
+            <button
+              key={t.value}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              aria-label={`${t.label} (${t.count})`}
+              title={t.hint}
+              onClick={() => setKind(t.value)}
+              className={cn(
+                "inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold transition-colors",
+                active
+                  ? "bg-background text-foreground shadow-sm ring-1 ring-primary/25"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Icon className="h-4 w-4 opacity-80" aria-hidden />
+              <span>{t.label}</span>
+              <span
+                className={cn(
+                  "rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums",
+                  active ? "bg-primary/15 text-primary" : "bg-muted-foreground/10 text-muted-foreground"
+                )}
+              >
+                {t.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Lista ({filtered.length})</CardTitle>
+          <CardTitle className="text-base">
+            {kind === "AGENCY" ? "Agências" : "Clientes"} ({filtered.length})
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (

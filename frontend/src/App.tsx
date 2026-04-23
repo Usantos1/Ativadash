@@ -90,19 +90,22 @@ export default function App() {
           <Route path="atividades" element={<ActivityLogPage />} />
           <Route path="revenda" element={<RevendaLayout />}>
             <Route index element={<RevendaOverviewPage />} />
-            <Route path="empresas" element={<RevendaTenantsPage kind="CLIENT" />} />
-            <Route path="agencias" element={<RevendaTenantsPage kind="AGENCY" />} />
-            <Route path="usuarios" element={<RevendaUsersPage />} />
+            <Route path="contas" element={<RevendaTenantsPage />} />
+            <Route path="clientes" element={<Navigate to="/revenda/contas?kind=CLIENT" replace />} />
+            <Route path="agencias" element={<Navigate to="/revenda/contas?kind=AGENCY" replace />} />
+            <Route path="empresas" element={<Navigate to="/revenda/contas?kind=CLIENT" replace />} />
+            <Route path="pessoas" element={<RevendaUsersPage />} />
+            <Route path="usuarios" element={<Navigate to="/revenda/pessoas" replace />} />
             <Route path="planos" element={<RevendaPlansPage />} />
             <Route path="modulos" element={<RevendaModulesPage />} />
             <Route path="saude" element={<RevendaHealthPage />} />
             <Route path="auditoria" element={<RevendaAuditPage />} />
-            <Route path="plataforma" element={<PlatformPage />} />
+            <Route path="plataforma" element={<Navigate to="/plataforma" replace />} />
           </Route>
           <Route path="assinatura" element={<Navigate to="/revenda" replace />} />
           <Route path="planos" element={<Navigate to="/revenda" replace />} />
           <Route path="admin" element={<AdminPage />} />
-          <Route path="plataforma" element={<Navigate to="/revenda/plataforma" replace />} />
+          <Route path="plataforma" element={<PlatformPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

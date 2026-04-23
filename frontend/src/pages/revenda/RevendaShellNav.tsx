@@ -2,13 +2,11 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   Building2,
-  Store,
   Users,
   CreditCard,
   Puzzle,
   Activity,
   ScrollText,
-  Shield,
   HelpCircle,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -27,13 +25,12 @@ type NavDef = {
 const NAV_ITEMS: NavDef[] = [
   { to: "/revenda", end: true, label: "Resumo", hint: "Números da matriz: contas, usuários, integrações e alertas.", icon: LayoutDashboard },
   {
-    to: "/revenda/empresas",
-    label: "Clientes",
-    hint: "Contas finais na rede. Agências também cadastram clientes em Operação → Clientes (sem sair da própria empresa).",
+    to: "/revenda/contas",
+    label: "Contas",
+    hint: "Clientes finais e agências filiais da sua rede — em abas. Clientes são contas finais; agências têm equipe e clientes próprios abaixo.",
     icon: Building2,
   },
-  { to: "/revenda/agencias", label: "Agências", hint: "Filiais com equipe própria e clientes vinculados.", icon: Store },
-  { to: "/revenda/usuarios", label: "Usuários", hint: "Quem entra na matriz e nas contas abaixo: convite, papel e bloqueio.", icon: Users },
+  { to: "/revenda/pessoas", label: "Pessoas", hint: "Todos usuários da matriz e contas filhas: convite, papel, bloqueio e reset de senha.", icon: Users },
   { to: "/revenda/planos", label: "Planos", hint: "Ofertas que você vende; definem o padrão de recursos e números.", icon: CreditCard },
   {
     to: "/revenda/modulos",
@@ -102,7 +99,7 @@ function NavEntry({ to, end, label, hint, icon: Icon }: NavDef) {
   );
 }
 
-export function RevendaShellNav({ platformAdmin }: { platformAdmin: boolean }) {
+export function RevendaShellNav() {
   return (
     <nav
       className="flex flex-wrap items-center gap-1.5"
@@ -111,16 +108,6 @@ export function RevendaShellNav({ platformAdmin }: { platformAdmin: boolean }) {
       {NAV_ITEMS.map((item) => (
         <NavEntry key={item.to} {...item} />
       ))}
-      {platformAdmin ? (
-        <div className="ml-auto flex items-center border-l border-border/60 pl-2 max-sm:ml-0 max-sm:border-l-0 max-sm:pl-0">
-          <NavEntry
-            to="/revenda/plataforma"
-            label="Admin"
-            hint="Uso interno Ativa Dash: empresas raiz e planos de todo o produto."
-            icon={Shield}
-          />
-        </div>
-      ) : null}
     </nav>
   );
 }

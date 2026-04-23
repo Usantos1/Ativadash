@@ -8,6 +8,7 @@ import {
   Plug,
   ScrollText,
   Settings,
+  Shield,
   Target,
   TrendingUp,
   Users,
@@ -117,7 +118,7 @@ const FULL_NAV_GROUPS: AppNavGroup[] = [
 
 export function buildAppNavGroups(
   variant: SidebarNavVariant,
-  opts: { showMatrizNav: boolean }
+  opts: { showMatrizNav: boolean; platformAdmin?: boolean }
 ): AppNavGroup[] {
   const contaItems: AppNavItem[] = [];
   if (opts.showMatrizNav) {
@@ -134,6 +135,14 @@ export function buildAppNavGroups(
     icon: Settings,
     description: "Preferências do workspace, integrações e conta.",
   });
+  if (opts.platformAdmin) {
+    contaItems.push({
+      to: "/plataforma",
+      label: "Admin Ativa Dash",
+      icon: Shield,
+      description: "Staff Ativa Dash: empresas raiz, catálogo global de planos e assinaturas do produto.",
+    });
+  }
 
   if (variant === "agency_client_portal") {
     return [

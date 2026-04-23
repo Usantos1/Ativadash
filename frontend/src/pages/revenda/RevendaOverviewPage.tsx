@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  Bell,
+  Building2,
+  Plug,
+  RefreshCw,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { IndeterminateLoadingBar } from "@/components/ui/indeterminate-loading-bar";
@@ -11,36 +19,68 @@ import type { ChildrenOperationsDashboard } from "@/lib/organization-api";
 import { buildAttentionQueue, sortRowsByLastActivity } from "@/lib/revenda-workspace-metrics";
 import { cn } from "@/lib/utils";
 
+type KpiTone = "neutral" | "amber" | "rose" | "emerald" | "primary";
+
+const KPI_TONE: Record<KpiTone, { wrap: string; icon: string }> = {
+  primary: {
+    wrap: "border-primary/25 bg-primary/[0.04] dark:bg-primary/[0.08]",
+    icon: "bg-primary/15 text-primary",
+  },
+  emerald: {
+    wrap: "border-emerald-500/30 bg-emerald-500/[0.05] dark:bg-emerald-950/25",
+    icon: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  },
+  amber: {
+    wrap: "border-amber-500/30 bg-amber-500/[0.05] dark:bg-amber-950/20",
+    icon: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  },
+  rose: {
+    wrap: "border-rose-500/30 bg-rose-500/[0.05] dark:bg-rose-950/25",
+    icon: "bg-rose-500/15 text-rose-700 dark:text-rose-300",
+  },
+  neutral: {
+    wrap: "border-border/60 bg-muted/20",
+    icon: "bg-muted text-muted-foreground",
+  },
+};
+
 function Kpi({
   label,
   value,
   hint,
+  icon: Icon,
   tone = "neutral",
+  pulse = false,
 }: {
   label: string;
   value: string;
   hint?: string;
-  tone?: "neutral" | "amber" | "rose" | "emerald";
+  icon: LucideIcon;
+  tone?: KpiTone;
+  pulse?: boolean;
 }) {
-  const border =
-    tone === "amber"
-      ? "border-l-amber-500"
-      : tone === "rose"
-        ? "border-l-rose-500"
-        : tone === "emerald"
-          ? "border-l-emerald-500"
-          : "border-l-primary";
+  const styles = KPI_TONE[tone];
   return (
     <div
       className={cn(
-        "rounded-xl border border-border/60 bg-card/95 py-3 pl-4 pr-3 shadow-sm ring-1 ring-black/[0.04] dark:ring-white/[0.06]",
-        "border-l-4",
-        border
+        "flex items-start gap-3 rounded-2xl border p-3.5 shadow-[var(--shadow-surface-sm)] sm:p-4",
+        styles.wrap
       )}
     >
-      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-      <p className="mt-1.5 text-2xl font-bold tabular-nums text-foreground">{value}</p>
-      {hint ? <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{hint}</p> : null}
+      <div className={cn("relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", styles.icon)}>
+        <Icon className="h-4 w-4" aria-hidden />
+        {pulse ? (
+          <span className="absolute -right-0.5 -top-0.5 flex h-2 w-2">
+            <span className="absolute inset-0 animate-ping rounded-full bg-amber-500/60" aria-hidden />
+            <span className="relative h-2 w-2 rounded-full bg-amber-500" aria-hidden />
+          </span>
+        ) : null}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
+        <p className="mt-0.5 text-xl font-bold tabular-nums tracking-tight text-foreground sm:text-2xl">{value}</p>
+        {hint ? <p className="mt-1 truncate text-[11px] text-muted-foreground">{hint}</p> : null}
+      </div>
     </div>
   );
 }
@@ -136,7 +176,7 @@ export function RevendaOverviewPage() {
     return sortRowsByLastActivity(dash.organizations, "desc").slice(0, 6);
   }, [dash]);
 
-  /** IDs de agências filiais na lista — clientes com esse pai aparecem em /revenda/agencias. */
+  /** IDs de agências filiais na lista — clientes com esse pai aparecem na aba Agências de /revenda/contas. */
   const agencyChildIds = useMemo(
     () =>
       new Set(
@@ -234,16 +274,33 @@ export function RevendaOverviewPage() {
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi
+          icon={Building2}
           label="Contas"
           value={String(summary.totalWorkspaces)}
           hint={`${summary.activeWorkspaces} ativas · ${summary.pausedWorkspaces} paus. · ${summary.archivedWorkspaces} arq.`}
+          tone={summary.totalWorkspaces > 0 ? "primary" : "neutral"}
         />
-        <Kpi label="Usuários" value={String(summary.usersTotalAcrossChildren)} />
-        <Kpi label="Integrações" value={String(summary.integrationsTotalAcrossChildren)} />
         <Kpi
+          icon={Users}
+          label="Usuários"
+          value={String(summary.usersTotalAcrossChildren)}
+          hint="Membros somados em todas as contas filhas"
+          tone={summary.usersTotalAcrossChildren > 0 ? "emerald" : "neutral"}
+        />
+        <Kpi
+          icon={Plug}
+          label="Integrações"
+          value={String(summary.integrationsTotalAcrossChildren)}
+          hint={summary.withoutIntegration > 0 ? `${summary.withoutIntegration} sem integração` : "Todas contas integradas"}
+          tone={summary.withoutIntegration > 0 ? "amber" : "emerald"}
+        />
+        <Kpi
+          icon={Bell}
           label="Alertas"
           value={String(alertCount)}
+          hint={alertCount > 0 ? "Workspaces exigem atenção" : "Nenhum alerta crítico ativo"}
           tone={alertCount > 0 ? "amber" : "emerald"}
+          pulse={alertCount > 0}
         />
       </div>
 
@@ -305,18 +362,18 @@ export function RevendaOverviewPage() {
                     to={
                       o.resellerOrgKind === "AGENCY" ||
                       (o.parentOrganizationId != null && agencyChildIds.has(o.parentOrganizationId))
-                        ? "/revenda/agencias"
-                        : "/revenda/empresas"
+                        ? "/revenda/contas?kind=AGENCY"
+                        : "/revenda/contas?kind=CLIENT"
                     }
                     className="text-xs font-semibold text-primary underline-offset-4 hover:underline"
                   >
                     Lista
                   </Link>
                   <Link
-                    to={`/revenda/usuarios?organizationId=${encodeURIComponent(o.id)}`}
+                    to={`/revenda/pessoas?organizationId=${encodeURIComponent(o.id)}`}
                     className="text-xs font-semibold text-primary underline-offset-4 hover:underline"
                   >
-                    Usuários
+                    Pessoas
                   </Link>
                 </div>
               </div>

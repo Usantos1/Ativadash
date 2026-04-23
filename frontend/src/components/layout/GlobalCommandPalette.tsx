@@ -41,9 +41,11 @@ export function GlobalCommandPalette() {
 
   const navGroups = useMemo(
     () =>
-      filterNavGroupsByPlan(buildAppNavGroups(navVariant, { showMatrizNav }), planFeatures, {
-        bypassPlanFeatures: user?.platformAdmin === true,
-      }),
+      filterNavGroupsByPlan(
+        buildAppNavGroups(navVariant, { showMatrizNav, platformAdmin: user?.platformAdmin === true }),
+        planFeatures,
+        { bypassPlanFeatures: user?.platformAdmin === true }
+      ),
     [navVariant, planFeatures, showMatrizNav, user?.platformAdmin]
   );
 

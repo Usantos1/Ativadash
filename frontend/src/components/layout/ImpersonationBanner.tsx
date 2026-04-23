@@ -26,7 +26,7 @@ export function ImpersonationBanner() {
         res.refreshToken,
         { memberships: res.memberships, managedOrganizations: res.managedOrganizations }
       );
-      navigate("/revenda/empresas", { replace: true });
+      navigate("/revenda/contas?kind=CLIENT", { replace: true });
     } catch {
       /* 401 redireciona via api.ts */
     } finally {

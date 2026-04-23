@@ -1,6 +1,10 @@
 import { prisma } from "../utils/prisma.js";
 import { assertOrgAdminOrParentAgency } from "./auth.service.js";
-import { ASSIGNABLE_MEMBER_ROLES, isPrimaryOwnerRole } from "../constants/roles.js";
+import {
+  ASSIGNABLE_MEMBER_ROLES,
+  isPrimaryOwnerRole,
+  isWorkspaceAdminRole,
+} from "../constants/roles.js";
 
 const ASSIGNABLE_ROLES = new Set<string>(ASSIGNABLE_MEMBER_ROLES);
 
@@ -11,10 +15,6 @@ export async function updateMemberRole(
   role: string
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   await assertOrgAdminOrParentAgency(actorUserId, organizationId);
-
-  if (targetUserId === actorUserId) {
-    return { ok: false, message: "Não é possível alterar o próprio papel por aqui" };
-  }
 
   const r = role.trim();
   if (!ASSIGNABLE_ROLES.has(r)) {
@@ -30,6 +30,29 @@ export async function updateMemberRole(
 
   if (target.role === "owner") {
     return { ok: false, message: "Não é possível alterar o proprietário" };
+  }
+
+  const isSelf = targetUserId === actorUserId;
+
+  if (isSelf) {
+    const currentIsAdmin = isWorkspaceAdminRole(target.role);
+    const nextIsAdmin = isWorkspaceAdminRole(r);
+    if (currentIsAdmin && !nextIsAdmin) {
+      const otherAdmins = await prisma.membership.count({
+        where: {
+          organizationId,
+          NOT: { userId: actorUserId },
+          role: { in: ["workspace_owner", "workspace_admin", "owner", "admin"] },
+        },
+      });
+      if (otherAdmins === 0) {
+        return {
+          ok: false,
+          message:
+            "Você é o único administrador desta empresa. Promova outro membro a Administrador antes de rebaixar seu próprio nível.",
+        };
+      }
+    }
   }
 
   await prisma.membership.update({

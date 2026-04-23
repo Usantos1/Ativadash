@@ -92,7 +92,7 @@ export function RevendaModulesPage() {
           <PageHint>
             Veja o estado real dos módulos e limites de cada organização. Clique em uma empresa para expandir.
             Para editar, vá em{" "}
-            <Link to="/revenda/empresas" className="font-medium text-primary underline-offset-4 hover:underline">
+            <Link to="/revenda/contas?kind=CLIENT" className="font-medium text-primary underline-offset-4 hover:underline">
               Clientes
             </Link>{" "}
             ou{" "}
@@ -233,7 +233,7 @@ export function RevendaModulesPage() {
 
                         <div className="flex gap-2 pt-1">
                           <Button variant="outline" size="sm" className="h-8 text-xs" asChild>
-                            <Link to="/revenda/empresas">Editar governança</Link>
+                            <Link to="/revenda/contas?kind=CLIENT">Editar governança</Link>
                           </Button>
                           <Button variant="outline" size="sm" className="h-8 text-xs" asChild>
                             <Link to="/revenda/planos">Ver planos</Link>
