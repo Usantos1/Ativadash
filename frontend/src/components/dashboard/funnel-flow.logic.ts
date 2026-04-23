@@ -156,11 +156,13 @@ export function buildStepsFromSummaryForBusinessGoal(
 
   let steps = buildStepsFromSummary(summary);
   if (funnelVariant === "lead") {
-    steps = steps.filter((s) => !["chk", "pur", "link"].includes(s.id));
-    /** Sem LPV reportado: funil coerente impressões → cliques → leads. */
-    if (summary.landingPageViews <= 0) {
-      steps = steps.filter((s) => s.id !== "lpv");
-    }
+    /**
+     * LPV é removido do funil de leads porque, quando a maior parte das conversões
+     * vem de mensagens (WhatsApp/Messenger), o pixel não carrega na jornada e o LPV
+     * fica artificialmente baixo — pode aparecer menor que leads e quebrar a
+     * ordenação do funil. Leads e CPL são as métricas corretas para esse objetivo.
+     */
+    steps = steps.filter((s) => !["chk", "pur", "link", "lpv"].includes(s.id));
   }
   const lab = primaryConversionLabel?.trim();
   if (lab) {

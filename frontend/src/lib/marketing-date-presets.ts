@@ -112,7 +112,12 @@ export function formatRangeShortPt(fromStr: string, toStr: string): string {
   try {
     const from = parseISO(fromStr);
     const to = parseISO(toStr);
-    return `${formatInTimeZone(from, MARKETING_TZ, "d MMM", { locale: ptBR })} – ${formatInTimeZone(to, MARKETING_TZ, "d MMM yy", { locale: ptBR })}`;
+    const fromYear = formatInTimeZone(from, MARKETING_TZ, "yy");
+    const toYear = formatInTimeZone(to, MARKETING_TZ, "yy");
+    // Mostra o ano no início apenas quando diferir do fim — evita poluir ranges curtos
+    // como "23 abr – 25 abr 26", mas explicita ranges longos como "23 abr 25 – 23 abr 26".
+    const fromFmt = fromYear === toYear ? "d MMM" : "d MMM yy";
+    return `${formatInTimeZone(from, MARKETING_TZ, fromFmt, { locale: ptBR })} – ${formatInTimeZone(to, MARKETING_TZ, "d MMM yy", { locale: ptBR })}`;
   } catch {
     return `${fromStr} – ${toStr}`;
   }

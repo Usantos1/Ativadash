@@ -47,7 +47,7 @@ import {
   patchMarketingMetaCampaignBudget,
   patchMarketingMetaCampaignStatus,
 } from "@/lib/marketing-contract-api";
-import { canUserMutateMarketingAds } from "@/lib/marketing-ads-permissions";
+import { canUserMutateMarketingAdsEffective } from "@/lib/marketing-ads-permissions";
 import { isAgencyClientPortalUser } from "@/lib/navigation-mode";
 import { fetchIntegrations, type IntegrationFromApi } from "@/lib/integrations-api";
 import { isNonDefaultPeriod } from "@/lib/marketing-period-storage";
@@ -244,14 +244,17 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
   const [checkoutSummary, setCheckoutSummary] = useState<CheckoutRevenueSummary | null>(null);
   const [checkoutByCampaign, setCheckoutByCampaign] = useState<CheckoutCampaignRevenue[]>([]);
   const reloadManualRevenues = useCallback(() => {
-    fetchManualRevenues()
+    fetchManualRevenues({
+      start: dateRange.startDate || undefined,
+      end: dateRange.endDate || undefined,
+    })
       .then((rows) => {
         const m = new Map<string, number>();
         for (const r of rows) m.set(r.campaignId, r.manualRevenue);
         setManualRevMap(m);
       })
       .catch(() => {});
-  }, []);
+  }, [dateRange.startDate, dateRange.endDate]);
 
   useEffect(() => {
     reloadManualRevenues();
@@ -300,7 +303,14 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
     () => isAgencyClientPortalUser(user, memberships ?? null),
     [user, memberships]
   );
-  const canMutateAds = canUserMutateMarketingAds(membershipRole) && !isClientPortalUser;
+  // Modo suporte não cria Membership direta no filho — herda do matriz (ver backend
+  // `effectiveWorkspaceRole`). Usuário de portal de cliente nunca edita, mesmo herdando.
+  const canMutateAds =
+    canUserMutateMarketingAdsEffective({
+      directRole: membershipRole,
+      isImpersonating: user?.isImpersonating === true,
+      memberships: memberships ?? null,
+    }) && !isClientPortalUser;
   const planAllowsCampaignWrite = orgCtx?.enabledFeatures?.campaignWrite !== false;
   const canMutateCampaigns = canMutateAds && planAllowsCampaignWrite;
 

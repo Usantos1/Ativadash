@@ -41,7 +41,7 @@ import {
   type AutomationExecutionLogDto,
 } from "@/lib/alert-rules-api";
 import { fetchMembers, type MemberRow } from "@/lib/workspace-api";
-import { canUserEditMarketingSettings } from "@/lib/marketing-ads-permissions";
+import { canUserEditMarketingSettingsEffective } from "@/lib/marketing-ads-permissions";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
 import { AutomationExecutionTimeline } from "@/components/metas-automation/AutomationExecutionTimeline";
@@ -94,9 +94,18 @@ export function MetasAlertasPage() {
   const memberships = useAuthStore((s) => s.memberships);
   const canEdit = useMemo(() => {
     if (!user?.organizationId) return false;
-    const r = memberships?.find((m) => m.organizationId === user.organizationId)?.role;
-    return canUserEditMarketingSettings(r);
-  }, [user?.organizationId, memberships]);
+    const directRole = memberships?.find((m) => m.organizationId === user.organizationId)?.role;
+    /**
+     * Modo suporte (impersonação) vira um agency_owner em contexto do cliente filho —
+     * não há Membership direta, mas o backend permite via `effectiveWorkspaceRole`.
+     * Usamos a versão efetiva para que a UI não bloqueie edição indevidamente.
+     */
+    return canUserEditMarketingSettingsEffective({
+      directRole,
+      isImpersonating: user?.isImpersonating === true,
+      memberships: memberships ?? null,
+    });
+  }, [user?.organizationId, user?.isImpersonating, memberships]);
 
   const [tab, setTab] = useState("metas");
   const [automationChannel, setAutomationChannel] = useState<ChannelKey>("meta");

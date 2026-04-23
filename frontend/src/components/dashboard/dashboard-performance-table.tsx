@@ -27,6 +27,21 @@ const DISPLAY_CAP = 120;
 
 type Level = "campaign" | "adset" | "ad";
 
+/**
+ * LPV só é semanticamente válido quando o fluxo passa por uma landing com pixel.
+ * Em campanhas que mandam para WhatsApp/Messenger (ou DM direto), o pixel não carrega
+ * e `landingPageViews` fica artificialmente baixo — pode aparecer menor que `leads`,
+ * quebrando a leitura do funil. Nesses casos preferimos ocultar o número
+ * (mostrar "—" com explicação) em vez de expor dado enganoso.
+ */
+function isMessagingDominatedRow(row: MarketingDashboardPerfRow): boolean {
+  const hasMessaging = row.messagingConversations > 0;
+  const leadsAboveLpv = row.leads > row.landingPageViews;
+  if (hasMessaging && row.messagingConversations >= row.landingPageViews) return true;
+  if (leadsAboveLpv && row.landingPageViews < Math.max(1, row.clicks * 0.3)) return true;
+  return false;
+}
+
 function RowChrome({ flags }: { flags: PerfHighlightFlags }) {
   if (!flags.bestCpl && !flags.maxSpend && !flags.weakCtr) return null;
   return (
@@ -334,7 +349,16 @@ export function DashboardPerformanceTable({
                         </td>
                         {showLpv ? (
                           <td className="text-right align-middle text-sm text-muted-foreground">
-                            {formatNumber(row.landingPageViews)}
+                            {isMessagingDominatedRow(row) ? (
+                              <span
+                                className="cursor-help text-muted-foreground/60"
+                                title="Campanha com destino em WhatsApp/Messenger — o pixel não carrega e LPV não reflete a jornada. Use Leads e CPL para avaliar."
+                              >
+                                —
+                              </span>
+                            ) : (
+                              formatNumber(row.landingPageViews)
+                            )}
                           </td>
                         ) : null}
                       </>

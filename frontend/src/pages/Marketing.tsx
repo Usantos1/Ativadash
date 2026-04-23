@@ -61,7 +61,7 @@ import { downloadPainelAdsReportPdf, type PainelAdsKpiRow, type PainelAdsCampaig
 import { openMailtoWithReportNote } from "@/lib/export-csv";
 import { fetchManualRevenues } from "@/lib/manual-revenue-api";
 import { fetchCheckoutRevenueSummary, type CheckoutRevenueSummary } from "@/lib/checkout-api";
-import { canUserMutateMarketingAds } from "@/lib/marketing-ads-permissions";
+import { canUserMutateMarketingAdsEffective } from "@/lib/marketing-ads-permissions";
 import {
   aggregateGoogle,
   aggregateMeta,
@@ -126,20 +126,29 @@ export function Marketing() {
   const [manualRevMap, setManualRevMap] = useState<Map<string, number>>(new Map());
   const [checkoutSummary, setCheckoutSummary] = useState<CheckoutRevenueSummary | null>(null);
   const reloadManualRevenues = useCallback(() => {
-    fetchManualRevenues()
+    fetchManualRevenues({
+      start: dateRange.startDate || undefined,
+      end: dateRange.endDate || undefined,
+    })
       .then((rows) => {
         const m = new Map<string, number>();
         for (const r of rows) m.set(r.campaignId, r.manualRevenue);
         setManualRevMap(m);
       })
       .catch(() => {});
-  }, []);
+  }, [dateRange.startDate, dateRange.endDate]);
 
   const membershipRole = useMemo(() => {
     if (!user?.organizationId) return null;
     return memberships?.find((m) => m.organizationId === user.organizationId)?.role ?? null;
   }, [user?.organizationId, memberships]);
-  const canMutateAds = canUserMutateMarketingAds(membershipRole);
+  // Modo suporte não cria Membership direta no filho — herda do matriz (ver backend
+  // `effectiveWorkspaceRole`). Usamos a versão efetiva para não bloquear a UI.
+  const canMutateAds = canUserMutateMarketingAdsEffective({
+    directRole: membershipRole,
+    isImpersonating: user?.isImpersonating === true,
+    memberships: memberships ?? null,
+  });
   const planAllowsCampaignWrite = orgCtx?.enabledFeatures?.campaignWrite !== false;
   const canMutateCampaigns = canMutateAds && planAllowsCampaignWrite;
 

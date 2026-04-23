@@ -473,7 +473,10 @@ model AlertOccurrence {
   @@index([organizationId, createdAt])
 }
 
-/// Receita manual por campanha (Offline Conversions / Atribuição Manual)
+/// Receita manual por campanha, atribuída a um dia específico.
+/// Cada entrada representa uma receita offline creditada para a jornada de um dia.
+/// Permite múltiplas entradas por (campanha, canal) em dias distintos e respeita filtros
+/// de período do dashboard (soma entradas com referenceDate dentro do intervalo).
 model ManualCampaignRevenue {
   id             String   @id @default(cuid())
   workspaceId    String
@@ -481,11 +484,14 @@ model ManualCampaignRevenue {
   campaignId     String
   channel        String   @db.VarChar(16)
   manualRevenue  Float
+  /// Data a que a receita é atribuída (granularidade diária, sem hora). Default = dia da criação.
+  referenceDate  DateTime @db.Date
   updatedAt      DateTime @updatedAt
   createdAt      DateTime @default(now())
 
-  @@unique([workspaceId, campaignId, channel])
+  @@unique([workspaceId, campaignId, channel, referenceDate])
   @@index([workspaceId])
+  @@index([workspaceId, referenceDate])
 }
 
 /// Link público somente leitura (token opaco) para compartilhar visão do painel ADS / funil
