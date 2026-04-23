@@ -24,11 +24,20 @@ export function loadStoredMarketingPeriod(): StoredMarketingPeriod | null {
     if (!o.startDate || !o.endDate || !o.label || !o.presetId || !isPresetId(o.presetId)) return null;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(o.startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(o.endDate)) return null;
     if (o.startDate > o.endDate) return null;
+    /**
+     * Recomputa o label na leitura usando o formatador atual. Como o label é persistido
+     * por até 120 chars, labels antigos (ex.: sem ano no início quando o range cruza anos)
+     * continuariam aparecendo mesmo após deploys que mudam a formatação. Regerar aqui
+     * garante consistência visual sem exigir que o usuário reaplique o filtro.
+     */
+    const datePart = formatRangeShortPt(o.startDate, o.endDate);
+    const label =
+      o.presetId === "custom" ? datePart : `${labelForPreset(o.presetId)} · ${datePart}`;
     return {
       presetId: o.presetId,
       startDate: o.startDate,
       endDate: o.endDate,
-      label: o.label.slice(0, 120),
+      label: label.slice(0, 120),
     };
   } catch {
     return null;
