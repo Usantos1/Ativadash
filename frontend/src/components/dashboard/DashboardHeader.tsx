@@ -67,39 +67,36 @@ export function DashboardHeader({
   const [pdfBusy, setPdfBusy] = useState(false);
 
   return (
-    <div className="relative z-20 flex flex-col gap-3 border-b border-border/25 pb-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-9 gap-2 rounded-xl border-border/40 bg-background/50"
-          onClick={() => setPickerOpen(true)}
-        >
-          <CalendarRange className="h-3.5 w-3.5 opacity-70" aria-hidden />
-          <span className="max-w-[240px] truncate font-medium">{dateRangeLabel}</span>
-        </Button>
-        <MarketingDateRangeDialog
-          open={pickerOpen}
-          onOpenChange={setPickerOpen}
-          initial={dateRange}
-          initialLabel={dateRangeLabel}
-          initialPresetId={presetId}
-          initialCompare={compareEnabled}
-          onApply={applyDateFilter}
-        />
-        <span
-          className={cn(
-            "inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-            goalColor(goalMode)
-          )}
-          title="Objetivo da conta"
-        >
-          {goalLabel(goalMode)}
-        </span>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        {showRefresh ? (
+    <div className="relative z-20 flex flex-wrap items-center justify-center gap-2 border-b border-border/25 pb-4">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-9 gap-2 rounded-xl border-border/40 bg-background/50"
+        onClick={() => setPickerOpen(true)}
+      >
+        <CalendarRange className="h-3.5 w-3.5 opacity-70" aria-hidden />
+        <span className="max-w-[240px] truncate font-medium">{dateRangeLabel}</span>
+      </Button>
+      <MarketingDateRangeDialog
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        initial={dateRange}
+        initialLabel={dateRangeLabel}
+        initialPresetId={presetId}
+        initialCompare={compareEnabled}
+        onApply={applyDateFilter}
+      />
+      <span
+        className={cn(
+          "inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+          goalColor(goalMode)
+        )}
+        title="Objetivo da conta"
+      >
+        {goalLabel(goalMode)}
+      </span>
+      {showRefresh ? (
           <Button
             variant="outline"
             size="sm"
@@ -163,10 +160,9 @@ export function DashboardHeader({
             ) : null}
           </>
         ) : null}
-        <Button variant="ghost" size="sm" className="h-9 rounded-xl text-muted-foreground" asChild>
-          <Link to="/ads/metas-alertas">Automação e Metas</Link>
-        </Button>
-      </div>
+      <Button variant="ghost" size="sm" className="h-9 rounded-xl text-muted-foreground" asChild>
+        <Link to="/ads/metas-alertas">Automação e Metas</Link>
+      </Button>
     </div>
   );
 }
