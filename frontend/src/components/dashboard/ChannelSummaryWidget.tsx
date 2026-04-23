@@ -21,6 +21,13 @@ export type ChannelSummaryWidgetProps = {
   performanceChip?: string | null;
   /** Badge executivo (metas, volume, comparativo entre redes). */
   executiveBadge?: ExecutiveChannelBadge;
+  /**
+   * Identificação da conta de anúncio em uso (nome / ID). Quando presente, aparece como
+   * subtítulo do card para evidenciar qual conta originou os números. Tipicamente:
+   *  - Meta: `{ name: "Minha Empresa", id: "act_1234567890" }`
+   *  - Google: `{ name: "Minha Empresa", id: "123-456-7890" }`
+   */
+  accountInfo?: { name?: string | null; id?: string | null } | null;
   layout?: ChannelPerformanceLayout;
   loading?: boolean;
   errorMessage?: string | null;
@@ -98,12 +105,15 @@ export function ChannelSummaryWidget({
   integrationTone,
   performanceChip,
   executiveBadge,
+  accountInfo,
   layout,
   loading,
   errorMessage,
   notConnected,
   emptyMessage,
 }: ChannelSummaryWidgetProps) {
+  const accountName = accountInfo?.name?.trim() || null;
+  const accountId = accountInfo?.id?.trim() || null;
   const iconWrap =
     accent === "purple"
       ? "bg-blue-500/[0.14] text-[#1877F2] dark:text-blue-100"
@@ -137,7 +147,7 @@ export function ChannelSummaryWidget({
               <GoogleAdsMark className="h-5 w-5" />
             )}
           </div>
-          <div className="min-w-0 space-y-1.5">
+          <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <h3 className="text-sm font-bold tracking-tight text-foreground">{title}</h3>
               <StatusBadge label={integrationLabel} tone={integrationTone} accent={accent} />
@@ -148,6 +158,20 @@ export function ChannelSummaryWidget({
                 </span>
               ) : null}
             </div>
+            {accountName || accountId ? (
+              <p
+                className="truncate text-[11px] leading-tight text-muted-foreground"
+                title={[accountName, accountId].filter(Boolean).join(" · ")}
+              >
+                {accountName ? (
+                  <span className="font-medium text-foreground/80">{accountName}</span>
+                ) : null}
+                {accountName && accountId ? <span className="mx-1 opacity-50">·</span> : null}
+                {accountId ? (
+                  <span className="font-mono text-[10.5px] tabular-nums opacity-80">{accountId}</span>
+                ) : null}
+              </p>
+            ) : null}
           </div>
         </div>
         <div className="shrink-0 text-[10px] tabular-nums text-muted-foreground">

@@ -23,6 +23,8 @@ import { buildConsolidatedAccountKpis } from "@/lib/consolidated-account-kpis";
 import {
   fetchGoogleAdsAdGroups,
   fetchGoogleAdsAds,
+  fetchGoogleAdsSetup,
+  fetchMetaAdsSetup,
   type GoogleAdsAdGroupRow,
   type GoogleAdsAdRow,
 } from "@/lib/integrations-api";
@@ -233,6 +235,15 @@ export function DashboardSingleClient() {
   const [googleDeepLoading, setGoogleDeepLoading] = useState(false);
   const [googleDeepError, setGoogleDeepError] = useState<string | null>(null);
 
+  /**
+   * Identificação da conta ativa por canal (usada nos headers dos ChannelWidgets).
+   * Carregada apenas quando o canal está conectado para não pagar setup call desnecessário.
+   * Meta: nome vem de `adAccounts[]` filtrando por `defaultAdAccountId`; fallback para facebookUserName.
+   * Google: nome vem de `customers[]` filtrando por `defaultCustomerId`.
+   */
+  const [metaAccountInfo, setMetaAccountInfo] = useState<{ name: string | null; id: string | null } | null>(null);
+  const [googleAccountInfo, setGoogleAccountInfo] = useState<{ name: string | null; id: string | null } | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     fetchMarketingSettings()
@@ -246,6 +257,53 @@ export function DashboardSingleClient() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const metaConnected = dash?.ok && dash.integrationStatus.metaAds.connected;
+    if (!metaConnected) {
+      setMetaAccountInfo(null);
+      return;
+    }
+    let cancelled = false;
+    fetchMetaAdsSetup()
+      .then((s) => {
+        if (cancelled) return;
+        const id = s.defaultAdAccountId ?? null;
+        const match = id ? s.adAccounts.find((a) => a.accountId === id) : null;
+        const name = match?.name?.trim() || s.facebookUserName?.trim() || null;
+        setMetaAccountInfo({ name, id: id ? `act_${id}` : null });
+      })
+      .catch(() => {
+        if (!cancelled) setMetaAccountInfo(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dash]);
+
+  useEffect(() => {
+    const googleConnected = dash?.ok && dash.integrationStatus.googleAds.connected;
+    if (!googleConnected) {
+      setGoogleAccountInfo(null);
+      return;
+    }
+    let cancelled = false;
+    fetchGoogleAdsSetup()
+      .then((s) => {
+        if (cancelled) return;
+        const id = s.defaultCustomerId ?? null;
+        const match = id ? s.customers.find((c) => c.customerId === id) : null;
+        const name = match?.descriptiveName?.trim() || null;
+        const idDisplay = id ? id.replace(/(\d{3})(\d{3})(\d{4})/, "$1-$2-$3") : null;
+        setGoogleAccountInfo({ name, id: idDisplay });
+      })
+      .catch(() => {
+        if (!cancelled) setGoogleAccountInfo(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dash]);
 
   useEffect(() => {
     if (!hasGoogle || metrics?.ok !== true) {
@@ -790,6 +848,7 @@ export function DashboardSingleClient() {
                   businessGoalMode={goalCtx.businessGoalMode}
                   title="Meta Ads"
                   syncAt={displayUpdatedAt}
+                  accountInfo={metaAccountInfo}
                   integrationLabel={
                     dash.integrationStatus.metaAds.connected
                       ? dash.integrationStatus.metaAds.healthy
@@ -831,6 +890,7 @@ export function DashboardSingleClient() {
                     businessGoalMode={goalCtx.businessGoalMode}
                     title="Google Ads"
                     syncAt={displayUpdatedAt}
+                    accountInfo={googleAccountInfo}
                     integrationLabel={
                       googleStatus === "connected"
                         ? "Conectado"
