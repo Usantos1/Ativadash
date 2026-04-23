@@ -47,21 +47,31 @@ function TrendIcon({ trend, deltaInvert }: { trend: MetricTrend; deltaInvert?: b
 
 export function DashboardMetricTile({ m }: { m: DashboardChannelMetric }) {
   const showDelta = m.deltaPct != null && Number.isFinite(m.deltaPct);
+  const deltaTone =
+    m.deltaPct == null
+      ? "text-muted-foreground"
+      : (m.deltaInvert ? m.deltaPct < 0 : m.deltaPct >= 0)
+        ? "text-emerald-700 dark:text-emerald-300"
+        : "text-rose-700 dark:text-rose-300";
   return (
-    <div className="min-w-0 rounded-lg border border-border/35 bg-background/50 px-2.5 py-2">
-      <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">{m.label}</p>
-      <div className="mt-1 flex items-center gap-1.5">
-        <p className="truncate text-base font-bold tabular-nums text-foreground sm:text-lg">{m.value}</p>
+    <div className="min-w-0 rounded-lg border border-border/70 bg-card px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.06)] transition-colors hover:border-border">
+      <div className="flex items-center justify-between gap-2">
+        <p className="truncate text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground">{m.label}</p>
         <HealthDot health={m.health} />
+      </div>
+      <div className="mt-1.5 flex items-center gap-1.5">
+        <p className="truncate text-lg font-extrabold tabular-nums tracking-tight text-foreground sm:text-xl">
+          {m.value}
+        </p>
         <TrendIcon trend={m.trend} deltaInvert={m.deltaInvert} />
       </div>
       {showDelta ? (
-        <p className="mt-0.5 text-[9px] font-semibold tabular-nums text-muted-foreground">
+        <p className={cn("mt-1 text-[10px] font-semibold tabular-nums", deltaTone)}>
           {m.deltaPct! >= 0 ? "+" : ""}
           {m.deltaPct!.toFixed(1)}% vs ant.
         </p>
       ) : (
-        <p className="mt-0.5 h-3 text-[9px] text-transparent">.</p>
+        <p className="mt-1 h-3 text-[10px] text-transparent">.</p>
       )}
     </div>
   );
@@ -77,8 +87,8 @@ function Block({
   cols: string;
 }) {
   return (
-    <div className="rounded-xl border border-border/30 bg-muted/[0.06] p-2.5 sm:p-3">
-      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{title}</p>
+    <div className="rounded-xl border border-border/55 bg-background/80 p-2.5 shadow-[var(--shadow-surface-sm)] sm:p-3 dark:bg-background/40">
+      <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-foreground/70">{title}</p>
       <div className={cn("grid gap-2", cols)}>{children}</div>
     </div>
   );

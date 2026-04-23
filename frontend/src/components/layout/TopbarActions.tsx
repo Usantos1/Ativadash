@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { NotificationsSheet } from "@/components/layout/NotificationsSheet";
 
 const iconBtn =
-  "relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/90 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+  "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 export function TopbarActions({ onLogout }: { onLogout: () => void }) {
   const theme = useUIStore((s) => s.theme);
@@ -15,7 +15,7 @@ export function TopbarActions({ onLogout }: { onLogout: () => void }) {
   const user = useAuthStore((s) => s.user);
 
   return (
-    <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+    <div className="flex shrink-0 items-center gap-1.5">
       <button
         type="button"
         className={iconBtn}
@@ -32,7 +32,7 @@ export function TopbarActions({ onLogout }: { onLogout: () => void }) {
           <button
             type="button"
             className={cn(
-              "ml-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/70 bg-gradient-to-b from-muted/50 to-muted/25 text-muted-foreground shadow-sm ring-1 ring-black/[0.04] transition-all hover:border-border hover:from-muted/70 hover:to-muted/40 hover:text-foreground dark:ring-white/[0.06]",
+              "ml-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             )}
             aria-label="Menu do usuário"

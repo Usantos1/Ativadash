@@ -43,7 +43,7 @@ function StatusBadge({
         "inline-flex max-w-full items-center truncate rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
         tone === "success" &&
           (accent === "purple"
-            ? "bg-violet-500/15 text-violet-900 dark:text-violet-100"
+            ? "bg-blue-500/15 text-blue-900 dark:text-blue-100"
             : "bg-emerald-600/15 text-emerald-950 dark:text-emerald-100"),
         tone === "warning" && "bg-amber-500/15 text-amber-950 dark:text-amber-100",
         tone === "muted" && "bg-muted/60 text-muted-foreground",
@@ -106,18 +106,18 @@ export function ChannelSummaryWidget({
 }: ChannelSummaryWidgetProps) {
   const iconWrap =
     accent === "purple"
-      ? "bg-violet-500/[0.14] text-violet-800 dark:text-violet-100"
+      ? "bg-blue-500/[0.14] text-[#1877F2] dark:text-blue-100"
       : "bg-emerald-600/[0.16] text-emerald-900 dark:text-emerald-100";
 
   const shell =
     accent === "purple"
       ? cn(
-          "border-violet-500/25 bg-violet-500/[0.03] dark:bg-violet-950/10",
-          "ring-1 ring-violet-500/[0.08]"
+          "border-blue-500/45 bg-blue-500/[0.05] dark:bg-blue-950/25",
+          "ring-1 ring-blue-500/15"
         )
       : cn(
-          "border-emerald-600/30 bg-emerald-500/[0.07] dark:bg-emerald-950/25",
-          "ring-1 ring-emerald-600/10"
+          "border-emerald-600/45 bg-emerald-500/[0.07] dark:bg-emerald-950/30",
+          "ring-1 ring-emerald-600/15"
         );
 
   return (

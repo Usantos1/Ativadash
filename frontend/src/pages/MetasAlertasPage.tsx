@@ -1,16 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
+  AlertCircle,
+  CheckCircle2,
+  DollarSign,
+  History,
   Loader2,
   MessageCircle,
   Plus,
   RefreshCw,
   Save,
-  ScrollText,
+  Shuffle,
+  Sparkles,
+  Sliders,
+  Target,
+  Users,
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -37,7 +45,9 @@ import { canUserEditMarketingSettings } from "@/lib/marketing-ads-permissions";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
 import { AutomationExecutionTimeline } from "@/components/metas-automation/AutomationExecutionTimeline";
+import { AutomationOverviewCards } from "@/components/metas-automation/AutomationOverviewCards";
 import { AutomationRuleSummaryCard } from "@/components/metas-automation/AutomationRuleSummaryCard";
+import { AutomationTemplateCard } from "@/components/metas-automation/AutomationTemplateCard";
 import { RuleBuilderSheet } from "@/components/metas-automation/RuleBuilderSheet";
 import { formatPageTitle, usePageTitle } from "@/hooks/usePageTitle";
 import {
@@ -61,6 +71,23 @@ function parseMoney(raw: string): number | null {
   return n === 0 ? null : n;
 }
 
+type ChannelKey = "meta" | "google";
+
+const CHANNEL_META: Record<ChannelKey, { label: string; dot: string; accent: string; soft: string }> = {
+  meta: {
+    label: "Meta Ads",
+    dot: "bg-[#1877F2]",
+    accent: "text-[#1877F2]",
+    soft: "bg-[#1877F2]/10 border-[#1877F2]/25",
+  },
+  google: {
+    label: "Google Ads",
+    dot: "bg-[#34A853]",
+    accent: "text-[#34A853]",
+    soft: "bg-[#34A853]/10 border-[#34A853]/25",
+  },
+};
+
 export function MetasAlertasPage() {
   usePageTitle(formatPageTitle(["Automação e Metas"]));
   const user = useAuthStore((s) => s.user);
@@ -72,7 +99,7 @@ export function MetasAlertasPage() {
   }, [user?.organizationId, memberships]);
 
   const [tab, setTab] = useState("metas");
-  const [automationChannel, setAutomationChannel] = useState<"meta" | "google">("meta");
+  const [automationChannel, setAutomationChannel] = useState<ChannelKey>("meta");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -131,6 +158,16 @@ export function MetasAlertasPage() {
     [filteredAutomationRules]
   );
 
+  const templateInstanceCounts = useMemo(() => {
+    const counts = { stopLoss: 0, takeProfit: 0, desmame: 0 };
+    for (const r of rules) {
+      if (r.actionType === "PAUSE_ASSET" && r.metric === "cpa") counts.stopLoss++;
+      else if (r.actionType === "INCREASE_BUDGET_20" && r.metric === "roas") counts.takeProfit++;
+      else if (r.actionType === "DECREASE_BUDGET_20" && r.operator === "cpa_band") counts.desmame++;
+    }
+    return counts;
+  }, [rules]);
+
   function thresholdRefSelectOptions(r: RuleDraft): { value: AlertRuleThresholdRef | "fixed"; label: string }[] {
     const opts: { value: AlertRuleThresholdRef | "fixed"; label: string }[] = [
       { value: "fixed", label: "Valor fixo (R$ / × / %)" },
@@ -177,6 +214,15 @@ export function MetasAlertasPage() {
             : [];
       setRules(drafts);
       loadedRuleIdsRef.current = pack.items.map((x) => x.id);
+
+      // Carrega logs recentes para alimentar os KPIs de overview.
+      if (pack.performanceAlerts) {
+        setExecLogsLoading(true);
+        fetchAutomationExecutionLogs(150)
+          .then((res) => setExecLogs(res.items))
+          .catch(() => setExecLogs([]))
+          .finally(() => setExecLogsLoading(false));
+      }
     } catch {
       setError("Não foi possível carregar metas e regras.");
     } finally {
@@ -187,25 +233,6 @@ export function MetasAlertasPage() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    if (tab !== "historico" || !performanceAlerts) return;
-    let cancelled = false;
-    setExecLogsLoading(true);
-    void fetchAutomationExecutionLogs(150)
-      .then((res) => {
-        if (!cancelled) setExecLogs(res.items);
-      })
-      .catch(() => {
-        if (!cancelled) setExecLogs([]);
-      })
-      .finally(() => {
-        if (!cancelled) setExecLogsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [tab, performanceAlerts]);
 
   function refreshExecLogs() {
     setExecLogsLoading(true);
@@ -299,7 +326,7 @@ export function MetasAlertasPage() {
           },
         },
       });
-      setOk("Metas globais salvas.");
+      setOk("Metas globais salvas com sucesso.");
       dispatchMarketingSettingsRefresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao salvar.");
@@ -352,7 +379,7 @@ export function MetasAlertasPage() {
         setEditingKey(null);
         setSheetOpen(false);
       }
-      setOk("Automações salvas.");
+      setOk("Automações salvas com sucesso.");
       dispatchMarketingSettingsRefresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao salvar regras.");
@@ -373,6 +400,12 @@ export function MetasAlertasPage() {
     return (
       <div className="w-full space-y-6 pb-12">
         <Skeleton className="h-24 w-full rounded-2xl" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Skeleton className="h-24 rounded-2xl" />
+          <Skeleton className="h-24 rounded-2xl" />
+          <Skeleton className="h-24 rounded-2xl" />
+          <Skeleton className="h-24 rounded-2xl" />
+        </div>
         <Skeleton className="h-96 w-full rounded-2xl" />
       </div>
     );
@@ -384,34 +417,51 @@ export function MetasAlertasPage() {
         eyebrow="Automação"
         breadcrumbs={[{ label: "Painel ADS", href: "/marketing" }, { label: "Automação e Metas" }]}
         title="Automação e Metas"
-        subtitle="Metas globais, regras compactas com editor lateral e histórico de execuções do motor."
+        subtitle="Defina metas por canal e crie regras que o motor executa automaticamente: pausar, escalar, notificar."
         meta={
-          <span className="inline-flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span className="rounded-md border border-border/50 bg-muted/30 px-2 py-1">Fuso: {tz}</span>
-            <span className="rounded-md border border-border/50 bg-muted/30 px-2 py-1">
-              <MessageCircle className="mr-1 inline h-3.5 w-3.5" />
+          <>
+            <span className="inline-flex items-center gap-1.5">
+              <History className="h-3.5 w-3.5" aria-hidden />
+              Fuso: <strong className="font-semibold text-foreground">{tz}</strong>
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <MessageCircle className="h-3.5 w-3.5" aria-hidden />
               Integração:{" "}
-              <Link className="font-medium text-primary underline-offset-4 hover:underline" to="/marketing/integracoes">
+              <Link className="font-semibold text-primary underline-offset-4 hover:underline" to="/marketing/integracoes">
                 Ativa CRM
               </Link>
             </span>
-          </span>
+          </>
         }
         className="border-b border-border/45 pb-5"
       />
 
+      <AutomationOverviewCards rules={rules} execLogs={execLogs} performanceAlerts={performanceAlerts} />
+
       {error && (
-        <div className="flex items-start gap-3 rounded-xl border border-destructive/35 bg-destructive/[0.08] px-4 py-3 text-sm text-destructive">
-          <span className="flex-1">{error}</span>
-          <button type="button" onClick={() => setError(null)} className="shrink-0 text-destructive/60 hover:text-destructive">
+        <div className="flex items-start gap-3 rounded-xl border border-destructive/35 bg-destructive/[0.08] px-4 py-3 text-sm text-destructive shadow-sm">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span className="flex-1 font-medium">{error}</span>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="shrink-0 rounded-md px-1.5 text-destructive/60 hover:bg-destructive/10 hover:text-destructive"
+            aria-label="Fechar"
+          >
             ✕
           </button>
         </div>
       )}
       {ok && (
-        <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] px-4 py-3 text-sm font-medium text-emerald-900 dark:text-emerald-200">
+        <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] px-4 py-3 text-sm font-medium text-emerald-900 shadow-sm dark:text-emerald-200">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
           <span className="flex-1">{ok}</span>
-          <button type="button" onClick={() => setOk(null)} className="shrink-0 text-emerald-700/60 hover:text-emerald-900 dark:text-emerald-400/60 dark:hover:text-emerald-200">
+          <button
+            type="button"
+            onClick={() => setOk(null)}
+            className="shrink-0 rounded-md px-1.5 text-emerald-700/60 hover:bg-emerald-500/10 hover:text-emerald-900 dark:text-emerald-400/60 dark:hover:text-emerald-200"
+            aria-label="Fechar"
+          >
             ✕
           </button>
         </div>
@@ -433,22 +483,34 @@ export function MetasAlertasPage() {
       />
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">
-        <TabsList className="grid h-auto w-full max-w-4xl grid-cols-3 rounded-xl border border-border/40 bg-muted/30 p-1">
-          <TabsTrigger value="metas" className="rounded-lg text-xs sm:text-sm">
+        <TabsList className="inline-flex h-11 w-full max-w-2xl items-center gap-1 rounded-xl border border-border/50 bg-muted/30 p-1 sm:w-auto">
+          <TabsTrigger
+            value="metas"
+            className="flex-1 gap-2 rounded-lg px-4 text-xs font-semibold data-[state=active]:shadow-sm sm:flex-initial sm:text-sm"
+          >
+            <Target className="h-4 w-4" aria-hidden />
             Metas globais
           </TabsTrigger>
-          <TabsTrigger value="regras" className="rounded-lg text-xs sm:text-sm">
+          <TabsTrigger
+            value="regras"
+            className="flex-1 gap-2 rounded-lg px-4 text-xs font-semibold data-[state=active]:shadow-sm sm:flex-initial sm:text-sm"
+          >
+            <Sliders className="h-4 w-4" aria-hidden />
             Regras
             {rules.length > 0 && (
-              <span className="ml-1.5 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold text-primary">
+              <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-primary">
                 {rules.length}
               </span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="historico" className="rounded-lg text-xs sm:text-sm">
+          <TabsTrigger
+            value="historico"
+            className="flex-1 gap-2 rounded-lg px-4 text-xs font-semibold data-[state=active]:shadow-sm sm:flex-initial sm:text-sm"
+          >
+            <History className="h-4 w-4" aria-hidden />
             Histórico
             {execLogs.length > 0 && (
-              <span className="ml-1.5 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold text-primary">
+              <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-primary">
                 {execLogs.length}
               </span>
             )}
@@ -456,364 +518,396 @@ export function MetasAlertasPage() {
         </TabsList>
 
         {/* ── Metas globais ── */}
-        <TabsContent value="metas" className="mt-6">
-          <form onSubmit={handleSaveMetas} className="space-y-4">
-            <div className="rounded-xl border border-primary/15 bg-gradient-to-br from-primary/[0.06] to-transparent px-4 py-3 text-sm text-muted-foreground">
-              <strong className="text-foreground">Como funcionam as metas:</strong>{" "}
-              Estes valores são usados pelo motor de automação como referência para regras dinâmicas
-              (ex: &quot;CPL acima do teto → pausar&quot;). Defina por canal para maior precisão.
-            </div>
-
-            <Card className="border-border/50 bg-card shadow-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base font-semibold">Modo de negócio</CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Altera os indicadores em destaque no cockpit e nas automações.
-                </p>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  {([
-                    { value: "LEADS", label: "Leads", desc: "Geração de contatos", icon: "👥" },
-                    { value: "SALES", label: "Vendas", desc: "E-commerce / ROAS", icon: "💰" },
-                    { value: "HYBRID", label: "Híbrido", desc: "Leads + Vendas", icon: "🔄" },
-                  ] as const).map((opt) => (
+        <TabsContent value="metas" className="mt-6 space-y-5 outline-none">
+          <form onSubmit={handleSaveMetas} className="space-y-5">
+            <section className="space-y-3">
+              <header className="flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <h2 className="text-sm font-bold tracking-tight text-foreground">Modo de negócio</h2>
+                  <p className="text-xs text-muted-foreground">
+                    Define quais indicadores guiam o cockpit e as automações.
+                  </p>
+                </div>
+              </header>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {(
+                  [
+                    { value: "LEADS", label: "Leads", desc: "Geração de contatos", Icon: Users },
+                    { value: "SALES", label: "Vendas", desc: "E-commerce / ROAS", Icon: DollarSign },
+                    { value: "HYBRID", label: "Híbrido", desc: "Leads + Vendas", Icon: Shuffle },
+                  ] as const
+                ).map((opt) => {
+                  const active = businessGoalMode === opt.value;
+                  return (
                     <button
                       key={opt.value}
                       type="button"
                       disabled={!canEdit}
                       onClick={() => setBusinessGoalMode(opt.value)}
                       className={cn(
-                        "flex flex-col items-center gap-1.5 rounded-xl border-2 p-4 text-center transition-all",
-                        businessGoalMode === opt.value
-                          ? "border-primary bg-primary/5 shadow-sm"
-                          : "border-border/50 hover:border-border hover:bg-muted/30"
+                        "group relative flex items-center gap-3 rounded-xl border p-3.5 text-left transition-all",
+                        active
+                          ? "border-primary bg-primary/[0.06] shadow-[0_1px_0_rgba(0,0,0,0.04),0_0_0_3px_hsl(var(--primary)/0.08)]"
+                          : "border-border/50 bg-card hover:border-border hover:bg-muted/30",
+                        !canEdit && "cursor-not-allowed opacity-60"
                       )}
                     >
-                      <span className="text-2xl">{opt.icon}</span>
-                      <span className="text-sm font-semibold">{opt.label}</span>
-                      <span className="text-[11px] text-muted-foreground">{opt.desc}</span>
+                      <div
+                        className={cn(
+                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors",
+                          active
+                            ? "bg-primary/15 text-primary"
+                            : "bg-muted text-muted-foreground group-hover:bg-muted/80"
+                        )}
+                      >
+                        <opt.Icon className="h-5 w-5" aria-hidden />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className={cn("text-sm font-semibold", active ? "text-foreground" : "text-foreground/90")}>
+                          {opt.label}
+                        </p>
+                        <p className="truncate text-[11px] text-muted-foreground">{opt.desc}</p>
+                      </div>
+                      {active ? (
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                      ) : null}
                     </button>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                  );
+                })}
+              </div>
+            </section>
 
-            <div className="grid gap-4 lg:grid-cols-2">
-              {(
-                [
-                  {
-                    key: "meta" as const,
-                    title: "Meta Ads",
-                    desc: "CPL, ROAS e orçamentos usados nas regras e no painel deste canal.",
-                    state: metaGoals,
-                    setState: setMetaGoals,
-                  },
-                  {
-                    key: "google" as const,
-                    title: "Google Ads",
-                    desc: "Metas independentes para busca, PMax e demais contas Google vinculadas.",
-                    state: googleGoals,
-                    setState: setGoogleGoals,
-                  },
-                ] as const
-              ).map((col) => (
-                <Card key={col.key} className="border-border/50 bg-card shadow-sm">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base font-semibold">{col.title}</CardTitle>
-                    <p className="text-xs text-muted-foreground">{col.desc}</p>
-                  </CardHeader>
-                  <CardContent className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-1.5 sm:col-span-1">
-                      <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        CPL alvo (R$)
-                      </Label>
-                      <Input
-                        inputMode="decimal"
-                        value={col.state.cplAlvo}
-                        disabled={!canEdit}
-                        onChange={(e) => col.setState((s) => ({ ...s, cplAlvo: e.target.value }))}
-                        className="h-10 rounded-xl"
-                        placeholder="ex: 35"
-                      />
-                    </div>
-                    <div className="space-y-1.5 sm:col-span-1">
-                      <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Teto de CPA (R$)
-                      </Label>
-                      <Input
-                        inputMode="decimal"
-                        value={col.state.tetoCpa}
-                        disabled={!canEdit}
-                        onChange={(e) => col.setState((s) => ({ ...s, tetoCpa: e.target.value }))}
-                        className="h-10 rounded-xl"
-                        placeholder="ex: 55"
-                      />
-                    </div>
-                    <div className="space-y-1.5 sm:col-span-1">
-                      <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Meta de ROAS (×)
-                      </Label>
-                      <Input
-                        inputMode="decimal"
-                        value={col.state.metaRoas}
-                        disabled={!canEdit}
-                        onChange={(e) => col.setState((s) => ({ ...s, metaRoas: e.target.value }))}
-                        className="h-10 rounded-xl"
-                        placeholder="ex: 2.5"
-                      />
-                    </div>
-                    <div className="space-y-1.5 sm:col-span-1">
-                      <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Orçamento esperado diário (R$)
-                      </Label>
-                      <Input
-                        inputMode="decimal"
-                        value={col.state.orcamentoDiario}
-                        disabled={!canEdit}
-                        onChange={(e) => col.setState((s) => ({ ...s, orcamentoDiario: e.target.value }))}
-                        className="h-10 rounded-xl"
-                        placeholder="ex: 500"
-                      />
-                    </div>
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Orçamento máximo diário (R$)
-                      </Label>
-                      <p className="text-[10px] text-muted-foreground">
-                        Teto duro para alertas de sangria (regra &quot;todos os canais&quot; soma Meta + Google).
-                      </p>
-                      <Input
-                        inputMode="decimal"
-                        value={col.state.orcamentoMaxDiario}
-                        disabled={!canEdit}
-                        onChange={(e) => col.setState((s) => ({ ...s, orcamentoMaxDiario: e.target.value }))}
-                        className="h-10 rounded-xl"
-                        placeholder="ex: 800"
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+            <section className="space-y-3">
+              <header className="flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <h2 className="text-sm font-bold tracking-tight text-foreground">Metas por canal</h2>
+                  <p className="text-xs text-muted-foreground">
+                    Valores usados pelo motor como referência para regras dinâmicas (CPL, ROAS, orçamento).
+                  </p>
+                </div>
+              </header>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                {(
+                  [
+                    {
+                      key: "meta" as const,
+                      desc: "CPL, ROAS e orçamentos usados nas regras e no painel deste canal.",
+                      state: metaGoals,
+                      setState: setMetaGoals,
+                    },
+                    {
+                      key: "google" as const,
+                      desc: "Metas independentes para busca, PMax e demais contas Google vinculadas.",
+                      state: googleGoals,
+                      setState: setGoogleGoals,
+                    },
+                  ] as const
+                ).map((col) => {
+                  const meta = CHANNEL_META[col.key];
+                  return (
+                    <Card
+                      key={col.key}
+                      className={cn("overflow-hidden border shadow-[var(--shadow-surface-sm)]", meta.soft)}
+                    >
+                      <div className="flex items-center gap-2.5 border-b border-border/40 bg-background/70 px-4 py-3 dark:bg-background/40">
+                        <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", meta.dot)} aria-hidden />
+                        <div className="min-w-0 flex-1">
+                          <h3 className={cn("text-sm font-bold tracking-tight", meta.accent)}>{meta.label}</h3>
+                          <p className="truncate text-[11px] text-muted-foreground">{col.desc}</p>
+                        </div>
+                      </div>
+                      <CardContent className="grid gap-3 p-4 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            CPL alvo <span className="font-mono normal-case">(R$)</span>
+                          </Label>
+                          <Input
+                            inputMode="decimal"
+                            value={col.state.cplAlvo}
+                            disabled={!canEdit}
+                            onChange={(e) => col.setState((s) => ({ ...s, cplAlvo: e.target.value }))}
+                            className="h-10 rounded-xl"
+                            placeholder="ex: 35"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Teto de CPA <span className="font-mono normal-case">(R$)</span>
+                          </Label>
+                          <Input
+                            inputMode="decimal"
+                            value={col.state.tetoCpa}
+                            disabled={!canEdit}
+                            onChange={(e) => col.setState((s) => ({ ...s, tetoCpa: e.target.value }))}
+                            className="h-10 rounded-xl"
+                            placeholder="ex: 55"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Meta de ROAS <span className="font-mono normal-case">(×)</span>
+                          </Label>
+                          <Input
+                            inputMode="decimal"
+                            value={col.state.metaRoas}
+                            disabled={!canEdit}
+                            onChange={(e) => col.setState((s) => ({ ...s, metaRoas: e.target.value }))}
+                            className="h-10 rounded-xl"
+                            placeholder="ex: 2.5"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Orçamento esperado/dia <span className="font-mono normal-case">(R$)</span>
+                          </Label>
+                          <Input
+                            inputMode="decimal"
+                            value={col.state.orcamentoDiario}
+                            disabled={!canEdit}
+                            onChange={(e) => col.setState((s) => ({ ...s, orcamentoDiario: e.target.value }))}
+                            className="h-10 rounded-xl"
+                            placeholder="ex: 500"
+                          />
+                        </div>
+                        <div className="space-y-1.5 sm:col-span-2">
+                          <Label className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Orçamento máximo/dia <span className="font-mono normal-case">(R$)</span>
+                          </Label>
+                          <p className="text-[11px] text-muted-foreground">
+                            Teto duro para alertas de sangria · regras &quot;todos os canais&quot; somam Meta + Google.
+                          </p>
+                          <Input
+                            inputMode="decimal"
+                            value={col.state.orcamentoMaxDiario}
+                            disabled={!canEdit}
+                            onChange={(e) => col.setState((s) => ({ ...s, orcamentoMaxDiario: e.target.value }))}
+                            className="h-10 rounded-xl"
+                            placeholder="ex: 800"
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </section>
+
+            <div className="flex items-center justify-end gap-3 border-t border-border/40 pt-4">
+              <p className="mr-auto text-xs text-muted-foreground">
+                Alterações afetam todas as regras que usam variáveis globais.
+              </p>
+              <Button type="submit" disabled={saving || !canEdit} className="rounded-xl">
+                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Salvar metas
+              </Button>
             </div>
-            <Button type="submit" disabled={saving || !canEdit} className="rounded-xl">
-              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              Salvar metas
-            </Button>
           </form>
         </TabsContent>
 
         {/* ── Motor de automações ── */}
-        <TabsContent value="regras" className="mt-6 space-y-4">
+        <TabsContent value="regras" className="mt-6 space-y-5 outline-none">
           {!performanceAlerts ? (
             <Card className="border-border/50">
-              <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                Regras customizadas não estão disponíveis no plano atual.
+              <CardContent className="flex flex-col items-center gap-3 py-12 text-center text-sm text-muted-foreground">
+                <Sparkles className="h-10 w-10 text-muted-foreground/40" aria-hidden />
+                <p className="max-w-md">
+                  Regras customizadas não estão disponíveis no plano atual. Fale com seu representante para habilitar o
+                  motor de automação.
+                </p>
               </CardContent>
             </Card>
           ) : (
             <>
-              <div className="rounded-xl border border-primary/15 bg-gradient-to-br from-primary/[0.06] to-transparent px-4 py-3 text-sm">
-                <strong className="text-foreground">Motor autônomo:</strong>{" "}
-                <span className="text-muted-foreground">
-                  cartões resumidos à esquerda; <span className="font-medium text-foreground">Editar</span> abre o
-                  construtor (QUANDO / SE / ENTÃO / ONDE). Salve todas as alterações no fim da página.
-                </span>
-              </div>
+              <section className="space-y-3">
+                <header className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-300">
+                      <Zap className="h-4 w-4" aria-hidden />
+                    </div>
+                    <div className="space-y-0.5">
+                      <h2 className="text-sm font-bold tracking-tight text-foreground">Templates rápidos</h2>
+                      <p className="text-xs text-muted-foreground">
+                        Um clique cria uma regra pré-configurada para o canal selecionado abaixo. Edite no construtor
+                        antes de salvar.
+                      </p>
+                    </div>
+                  </div>
+                </header>
 
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <Zap className="h-4 w-4 text-amber-500" />
-                  Templates (1 clique → editor pré-preenchido)
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Canal atual:{" "}
-                  <strong className="text-foreground">{automationChannel === "meta" ? "Meta Ads" : "Google Ads"}</strong>.
-                </p>
                 <div className="grid gap-3 md:grid-cols-3">
-                  <Card className="border-l-4 border-l-red-500 border-border/50 bg-card shadow-sm">
-                    <CardHeader className="space-y-1 pb-2">
-                      <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                        <span>🛑</span> Stop-Loss
-                      </CardTitle>
-                      <p className="text-[11px] leading-snug text-muted-foreground">
-                        CPL acima do teto → pausar anúncio + notificar.
-                      </p>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        className="w-full rounded-xl"
-                        disabled={!canEdit}
-                        onClick={() => applyTemplate(() => optimizationProfileDraftStopLoss(automationChannel))}
-                      >
-                        Usar template →
-                      </Button>
-                    </CardContent>
-                  </Card>
-                  <Card className="border-l-4 border-l-emerald-500 border-border/50 bg-card shadow-sm">
-                    <CardHeader className="space-y-1 pb-2">
-                      <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                        <span>📈</span> Take-Profit
-                      </CardTitle>
-                      <p className="text-[11px] leading-snug text-muted-foreground">
-                        ROAS acima da meta → escalar orçamento (% configurável).
-                      </p>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        className="w-full rounded-xl"
-                        disabled={!canEdit}
-                        onClick={() => applyTemplate(() => optimizationProfileDraftTakeProfit(automationChannel))}
-                      >
-                        Usar template →
-                      </Button>
-                    </CardContent>
-                  </Card>
-                  <Card className="border-l-4 border-l-amber-500 border-border/50 bg-card shadow-sm">
-                    <CardHeader className="space-y-1 pb-2">
-                      <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                        <span>📉</span> Desmame
-                      </CardTitle>
-                      <p className="text-[11px] leading-snug text-muted-foreground">
-                        CPL na faixa entre alvo e teto → reduzir orçamento.
-                      </p>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        className="w-full rounded-xl"
-                        disabled={!canEdit}
-                        onClick={() => applyTemplate(() => optimizationProfileDraftDesmame(automationChannel))}
-                      >
-                        Usar template →
-                      </Button>
-                    </CardContent>
-                  </Card>
+                  <AutomationTemplateCard
+                    id="stop-loss"
+                    tone="risk"
+                    title="Proteção de orçamento"
+                    subtitle="Corta automaticamente anúncios com CPL acima do teto."
+                    trigger="CPL > teto do canal"
+                    action="Pausar anúncio + WhatsApp crítico"
+                    instances={templateInstanceCounts.stopLoss}
+                    canEdit={canEdit}
+                    onApply={() => applyTemplate(() => optimizationProfileDraftStopLoss(automationChannel))}
+                  />
+                  <AutomationTemplateCard
+                    id="take-profit"
+                    tone="gain"
+                    title="Escala agressiva"
+                    subtitle="Sobe orçamento quando o ROAS supera a meta."
+                    trigger="ROAS > meta do canal"
+                    action="Aumentar orçamento +20%"
+                    instances={templateInstanceCounts.takeProfit}
+                    canEdit={canEdit}
+                    onApply={() => applyTemplate(() => optimizationProfileDraftTakeProfit(automationChannel))}
+                  />
+                  <AutomationTemplateCard
+                    id="desmame"
+                    tone="neutral"
+                    title="Desmame de verba"
+                    subtitle="Reduz orçamento quando o CPL fica na faixa entre alvo e teto."
+                    trigger="CPL entre alvo e teto"
+                    action="Reduzir orçamento −20%"
+                    instances={templateInstanceCounts.desmame}
+                    canEdit={canEdit}
+                    onApply={() => applyTemplate(() => optimizationProfileDraftDesmame(automationChannel))}
+                  />
                 </div>
-              </div>
+              </section>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="grid h-auto w-full max-w-md grid-cols-2 rounded-xl border border-border/40 bg-muted/30 p-1">
-                  <button
-                    type="button"
-                    className={cn(
-                      "inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm",
-                      automationChannel === "meta"
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                    onClick={() => setAutomationChannel("meta")}
-                  >
-                    Meta Ads
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(
-                      "inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm",
-                      automationChannel === "google"
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                    onClick={() => setAutomationChannel("google")}
-                  >
-                    Google Ads
-                  </button>
-                </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  className="rounded-xl"
-                  disabled={!canEdit}
-                  onClick={() => {
-                    const d = newDraft(automationChannel);
-                    setRules((p) => [...p, d]);
-                    openEditor(d.clientKey);
-                  }}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Nova regra
-                </Button>
-              </div>
-
-              {filteredAutomationRules.length > 0 && (
-                <div className="flex flex-wrap items-center gap-3 text-xs">
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                    {activeCount} ativas
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
-                    {pausedCount} pausadas
-                  </span>
-                </div>
-              )}
-
-              {filteredAutomationRules.length === 0 ? (
-                <Card className="border-dashed border-border/60 bg-muted/10">
-                  <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-                    <Zap className="h-10 w-10 text-muted-foreground/50" />
-                    <p className="text-sm text-muted-foreground">
-                      Nenhuma regra para este canal (regras &quot;todos os canais&quot; aparecem nas duas abas).
+              <section className="space-y-3">
+                <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-0.5">
+                    <h2 className="text-sm font-bold tracking-tight text-foreground">Regras ativas</h2>
+                    <p className="text-xs text-muted-foreground">
+                      Mostra regras do canal selecionado + regras &quot;todos os canais&quot;.
                     </p>
-                    <div className="flex flex-wrap justify-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="rounded-xl"
-                        onClick={() => {
-                          const d = newDraft(automationChannel);
-                          setRules((p) => [...p, d]);
-                          openEditor(d.clientKey);
-                        }}
-                      >
-                        Criar regra
-                      </Button>
-                      {rules.length === 0 ? (
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="inline-flex h-10 rounded-xl border border-border/50 bg-muted/30 p-1">
+                      {(["meta", "google"] as const).map((ch) => {
+                        const meta = CHANNEL_META[ch];
+                        const active = automationChannel === ch;
+                        return (
+                          <button
+                            key={ch}
+                            type="button"
+                            className={cn(
+                              "inline-flex items-center gap-2 rounded-lg px-3 text-xs font-semibold transition sm:text-sm",
+                              active
+                                ? "bg-background text-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground"
+                            )}
+                            onClick={() => setAutomationChannel(ch)}
+                          >
+                            <span className={cn("h-2 w-2 rounded-full", meta.dot)} aria-hidden />
+                            {meta.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="h-10 rounded-xl"
+                      disabled={!canEdit}
+                      onClick={() => {
+                        const d = newDraft(automationChannel);
+                        setRules((p) => [...p, d]);
+                        openEditor(d.clientKey);
+                      }}
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Nova regra
+                    </Button>
+                  </div>
+                </header>
+
+                {filteredAutomationRules.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/[0.08] px-2.5 py-1 font-medium text-emerald-700 dark:text-emerald-300">
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="absolute inset-0 animate-ping rounded-full bg-emerald-500/60" aria-hidden />
+                        <span className="relative rounded-full bg-emerald-500" aria-hidden />
+                      </span>
+                      {activeCount} ativa{activeCount === 1 ? "" : "s"}
+                    </span>
+                    {pausedCount > 0 ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-muted/30 px-2.5 py-1 font-medium text-muted-foreground">
+                        <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50" aria-hidden />
+                        {pausedCount} pausada{pausedCount === 1 ? "" : "s"}
+                      </span>
+                    ) : null}
+                  </div>
+                )}
+
+                {filteredAutomationRules.length === 0 ? (
+                  <Card className="border-dashed border-border/60 bg-muted/10">
+                    <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground/60">
+                        <Sliders className="h-5 w-5" aria-hidden />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-foreground">Nenhuma regra neste canal</p>
+                        <p className="max-w-md text-xs text-muted-foreground">
+                          Crie uma regra do zero, use um dos templates acima, ou carregue modelos sugeridos.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap justify-center gap-2">
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
                           className="rounded-xl"
-                          onClick={() => setRules(buildDefaultAutomationDrafts())}
+                          disabled={!canEdit}
+                          onClick={() => {
+                            const d = newDraft(automationChannel);
+                            setRules((p) => [...p, d]);
+                            openEditor(d.clientKey);
+                          }}
                         >
-                          Carregar modelos sugeridos
+                          <Plus className="mr-2 h-3.5 w-3.5" />
+                          Criar regra
                         </Button>
-                      ) : null}
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-3">
-                  {filteredAutomationRules.map((r) => (
-                    <AutomationRuleSummaryCard
-                      key={r.clientKey}
-                      rule={r}
-                      canEdit={canEdit}
-                      savingToggle={togglingKey === r.clientKey}
-                      onToggleActive={(v) => void handleToggleRuleActive(r, v)}
-                      onEdit={() => openEditor(r.clientKey)}
-                      onDelete={() => {
-                        if (window.confirm("Remover esta automação?")) removeRule(r.clientKey);
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
+                        {rules.length === 0 ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="rounded-xl"
+                            disabled={!canEdit}
+                            onClick={() => setRules(buildDefaultAutomationDrafts())}
+                          >
+                            <Sparkles className="mr-2 h-3.5 w-3.5" />
+                            Carregar modelos sugeridos
+                          </Button>
+                        ) : null}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="space-y-3">
+                    {filteredAutomationRules.map((r) => (
+                      <AutomationRuleSummaryCard
+                        key={r.clientKey}
+                        rule={r}
+                        canEdit={canEdit}
+                        savingToggle={togglingKey === r.clientKey}
+                        onToggleActive={(v) => void handleToggleRuleActive(r, v)}
+                        onEdit={() => openEditor(r.clientKey)}
+                        onDelete={() => {
+                          if (window.confirm("Remover esta automação?")) removeRule(r.clientKey);
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
 
               <div className="sticky bottom-0 z-10 -mx-1 border-t border-border/40 bg-background/95 px-1 py-3 backdrop-blur-sm">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-xs text-muted-foreground">
-                    {rules.length} regra{rules.length !== 1 ? "s" : ""} · Salve para aplicar alterações
+                    {rules.length} regra{rules.length === 1 ? "" : "s"} no total · salve para aplicar alterações
                   </p>
                   <Button
                     type="button"
@@ -831,21 +925,31 @@ export function MetasAlertasPage() {
         </TabsContent>
 
         {/* ── Histórico ── */}
-        <TabsContent value="historico" className="mt-6 space-y-4">
+        <TabsContent value="historico" className="mt-6 space-y-4 outline-none">
           {!performanceAlerts ? (
             <Card className="border-border/50">
-              <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                Histórico de execuções não está disponível no plano atual.
+              <CardContent className="flex flex-col items-center gap-3 py-12 text-center text-sm text-muted-foreground">
+                <History className="h-10 w-10 text-muted-foreground/40" aria-hidden />
+                <p className="max-w-md">
+                  O histórico de execuções é liberado quando o motor de automação está habilitado no plano.
+                </p>
               </CardContent>
             </Card>
           ) : (
             <>
-              <div className="flex flex-col gap-3 rounded-xl border border-border/40 bg-muted/15 px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-                <p className="min-w-0 flex-1">
-                  <ScrollText className="mr-2 inline h-4 w-4 align-text-bottom text-primary" />
-                  <strong className="text-foreground">Transparência:</strong> histórico completo dos registros do motor
-                  (pausa, ativar, escala, notificação). O canal é inferido pela regra quando possível.
-                </p>
+              <div className="flex flex-col gap-3 rounded-xl border border-border/50 bg-muted/15 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary">
+                    <History className="h-4 w-4" aria-hidden />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-foreground">Transparência total</p>
+                    <p className="text-xs text-muted-foreground">
+                      Registros completos de pausas, ativações, ajustes de orçamento e notificações executadas pelo
+                      motor.
+                    </p>
+                  </div>
+                </div>
                 <Button
                   type="button"
                   variant="outline"

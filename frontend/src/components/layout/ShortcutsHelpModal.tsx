@@ -30,6 +30,10 @@ export function ShortcutsHelpModal() {
             <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">?</kbd> — Esta ajuda
           </li>
           <li>
+            <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">Ctrl</kbd>+
+            <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">K</kbd> — Busca rápida global
+          </li>
+          <li>
             <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">/</kbd> — Focar busca (quando existir)
           </li>
           <li>

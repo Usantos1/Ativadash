@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useNavigate, Outlet, useLocation } from "react-router-dom";
 import {
   firstAllowedPathForPlanAndNav,
@@ -8,7 +8,6 @@ import {
   OrganizationPlanFeaturesProvider,
   useOrganizationPlanFeatures,
 } from "@/components/layout/organization-plan-features-context";
-import { Sidebar } from "@/components/layout/Sidebar";
 import { AppTopbar } from "@/components/layout/AppTopbar";
 import { ImpersonationBanner } from "@/components/layout/ImpersonationBanner";
 import { AppShell } from "@/components/shell/AppShell";
@@ -19,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { AnalyticsShell } from "@/components/analytics/AnalyticsShell";
 import { useGlobalHotkeys } from "@/hooks/useGlobalHotkeys";
 import { ShortcutsHelpModal } from "@/components/layout/ShortcutsHelpModal";
+import { GlobalCommandPalette } from "@/components/layout/GlobalCommandPalette";
 import {
   resolveAppNavMode,
   isPathAllowedForAgencyBranch,
@@ -32,9 +32,7 @@ import {
 } from "@/lib/navigation-mode";
 
 function MainLayoutInner() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const orgPlanFeatures = useOrganizationPlanFeatures();
-  const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const accessToken = useAuthStore((s) => s.accessToken);
   const user = useAuthStore((s) => s.user);
   const memberships = useAuthStore((s) => s.memberships);
@@ -139,36 +137,14 @@ function MainLayoutInner() {
     if (next !== path) navigate(next, { replace: true });
   }, [accessToken, location.pathname, navigate, user, memberships, orgPlanFeatures]);
 
-  useEffect(() => {
-    if (!sidebarOpen) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [sidebarOpen]);
-
   return (
     <AppShell>
       <ImpersonationBanner />
       <ShortcutsHelpModal />
-      <Sidebar
-        mobileOpen={sidebarOpen}
-        onMobileClose={() => setSidebarOpen(false)}
-      />
-      <main
-        className={cn(
-          /* Sem w-full: 100% + margin-left da sidebar estoura a viewport (scroll horizontal) */
-          "min-h-dvh min-w-0 max-w-full overflow-x-hidden transition-[margin] duration-200",
-          sidebarCollapsed ? "md:ml-14" : "md:ml-[228px]"
-        )}
-      >
-        <AppTopbar
-          sidebarCollapsed={sidebarCollapsed}
-          onMobileOpen={() => setSidebarOpen(true)}
-          onLogout={handleLogout}
-        />
-        <div className="min-w-0 max-w-full px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[calc(1rem+3rem+env(safe-area-inset-top,0px))] sm:px-5 md:px-8 md:pb-6 md:pt-[calc(1.5rem+3rem+env(safe-area-inset-top,0px))]">
+      <GlobalCommandPalette />
+      <main className={cn("min-h-dvh min-w-0 max-w-full overflow-x-hidden")}>
+        <AppTopbar onLogout={handleLogout} />
+        <div className="min-w-0 max-w-full px-[2vw] pb-[max(1rem,env(safe-area-inset-bottom))] pt-[calc(1rem+4.5rem+env(safe-area-inset-top,0px))] md:pb-6 md:pt-[calc(1.5rem+4.5rem+env(safe-area-inset-top,0px))]">
           <AnalyticsShell>
             <Outlet />
           </AnalyticsShell>

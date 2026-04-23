@@ -9,7 +9,7 @@ function isTypingTarget(el: EventTarget | null): boolean {
 }
 
 /**
- * Atalhos: G+D dashboard, G+P marketing, G+C clientes, ? ajuda, / foco busca (dispatch evento).
+ * Atalhos: G+D dashboard, G+P marketing, G+C clientes, Ctrl+K busca global, ? ajuda, / foco busca contextual.
  * Escape em modais é tratado pelo Radix.
  */
 export function useGlobalHotkeys() {
@@ -19,6 +19,11 @@ export function useGlobalHotkeys() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) {
+        if ((e.key === "k" || e.key === "K") && !isTypingTarget(e.target)) {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent("ativadash:toggle-command-palette"));
+          return;
+        }
         if ((e.key === "s" || e.key === "S") && !isTypingTarget(e.target)) {
           e.preventDefault();
           window.dispatchEvent(new CustomEvent("ativadash:save-active-form"));

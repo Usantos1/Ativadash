@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { eachDayOfInterval, format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ArrowRight, BarChart3, RefreshCw } from "lucide-react";
+import { BarChart3, RefreshCw } from "lucide-react";
 import { formatSpend, formatNumber } from "@/lib/metrics-format";
 import { downloadPainelAdsReportPdf, type PainelAdsKpiRow } from "@/lib/export-pdf";
 import { downloadCsv } from "@/lib/export-csv";
@@ -12,7 +12,6 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { useUIStore } from "@/stores/ui-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { useMarketingMetrics } from "@/hooks/useMarketingMetrics";
 import type { MarketingDashboardPerfRow, MarketingDashboardSummary } from "@/lib/marketing-dashboard-api";
@@ -129,7 +128,6 @@ type GoogleTableLevel = "campaign" | "adgroup" | "ad";
 
 export function DashboardSingleClient() {
   const navigate = useNavigate();
-  const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const wsName = useAuthStore((s) => s.user?.organization?.name?.trim()) ?? "Dashboard";
 
   const [dashboardSummaryForInsights, setDashboardSummaryForInsights] = useState<
@@ -227,7 +225,7 @@ export function DashboardSingleClient() {
 
   const [metaLevel, setMetaLevel] = useState<MetaLevel>("campaign");
   const [googleTableLevel, setGoogleTableLevel] = useState<GoogleTableLevel>("campaign");
-  const [perfPlatform, setPerfPlatform] = useState<"meta" | "google">("meta");
+  const [perfPlatform, setPerfPlatform] = useState<"all" | "meta" | "google">("all");
   const [chartSeries, setChartSeries] = useState<"spend" | "leads" | "ctr" | "cpl">("spend");
   const [marketingSettings, setMarketingSettings] = useState<MarketingSettingsDto | null>(null);
   const [googleAdGroupRows, setGoogleAdGroupRows] = useState<GoogleAdsAdGroupRow[]>([]);
@@ -695,12 +693,7 @@ export function DashboardSingleClient() {
 
   return (
     <TooltipProvider delayDuration={180}>
-      <div
-        className={cn(
-          "w-full space-y-6 pb-24 lg:pb-6",
-          sidebarCollapsed ? "max-w-none" : "mx-auto max-w-[1680px]"
-        )}
-      >
+      <div className={cn("w-full min-w-0 max-w-full space-y-6 pb-24 lg:pb-6")}>
         <DashboardHeader
           dateRange={dateRange}
           dateRangeLabel={dateRangeLabel}
@@ -962,13 +955,13 @@ export function DashboardSingleClient() {
                     </div>
                   ) : null}
                   <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
-                    <DashboardFunnelRatesWidget model={metaFunnelCaptacao} platform="meta" className="min-h-0" />
-                    <DashboardFunnelRatesWidget model={metaFunnelMonetizacao} platform="meta" className="min-h-0" />
+                    <DashboardFunnelRatesWidget model={metaFunnelCaptacao} platform="meta" spend={metaSpend} className="min-h-0" />
+                    <DashboardFunnelRatesWidget model={metaFunnelMonetizacao} platform="meta" spend={metaSpend} className="min-h-0" />
                   </div>
                   {hasGoogle ? (
                     <div className="grid gap-4 lg:grid-cols-1">
                       {googleFunnelModel ? (
-                        <DashboardFunnelRatesWidget model={googleFunnelModel} platform="google" className="min-h-0" />
+                        <DashboardFunnelRatesWidget model={googleFunnelModel} platform="google" spend={googleSpendBrl} className="min-h-0" />
                       ) : metricsLoading ? (
                         <div className="flex min-h-[200px] flex-col gap-3 rounded-xl border border-border/50 bg-card/80 p-5 shadow-[var(--shadow-surface)]">
                           <div className="flex items-center gap-2 border-b border-border/35 pb-3">
@@ -1072,7 +1065,7 @@ export function DashboardSingleClient() {
               {funnelVariant !== "hybrid" ? (
                 <div className={cn("grid gap-5", hasGoogle ? "lg:grid-cols-2 lg:items-stretch" : "")}>
                   {metaFunnelModel ? (
-                    <DashboardFunnelRatesWidget model={metaFunnelModel} platform="meta" className="min-h-0" />
+                    <DashboardFunnelRatesWidget model={metaFunnelModel} platform="meta" spend={metaSpend} className="min-h-0" />
                   ) : (
                     <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-border/50 bg-card/80 p-5 text-sm text-muted-foreground shadow-[var(--shadow-surface)]">
                       Gargalos Meta indisponíveis no momento.
@@ -1080,7 +1073,7 @@ export function DashboardSingleClient() {
                   )}
                   {hasGoogle ? (
                     googleFunnelModel ? (
-                      <DashboardFunnelRatesWidget model={googleFunnelModel} platform="google" className="min-h-0" />
+                      <DashboardFunnelRatesWidget model={googleFunnelModel} platform="google" spend={googleSpendBrl} className="min-h-0" />
                     ) : metricsLoading ? (
                       <div className="flex min-h-[200px] flex-col gap-3 rounded-xl border border-border/50 bg-card/80 p-5 shadow-[var(--shadow-surface)]">
                         <div className="flex items-center gap-2 border-b border-border/35 pb-3">
@@ -1187,10 +1180,13 @@ export function DashboardSingleClient() {
               ) : (
                 <Tabs
                   value={perfPlatform}
-                  onValueChange={(v) => setPerfPlatform(v as "meta" | "google")}
+                  onValueChange={(v) => setPerfPlatform(v as "all" | "meta" | "google")}
                   className="w-full"
                 >
                   <TabsList className="h-10 w-full justify-start gap-1 rounded-xl bg-muted/40 p-1 sm:w-auto">
+                    <TabsTrigger value="all" className="rounded-lg text-xs sm:text-sm">
+                      Todos
+                    </TabsTrigger>
                     <TabsTrigger value="meta" className="rounded-lg text-xs sm:text-sm">
                       Meta Ads
                     </TabsTrigger>
@@ -1198,6 +1194,56 @@ export function DashboardSingleClient() {
                       Google Ads
                     </TabsTrigger>
                   </TabsList>
+                  <TabsContent value="all" className="mt-4 space-y-6 outline-none">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-[#1877F2]" aria-hidden />
+                        <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-[#1877F2]">
+                          Meta Ads · Campanhas
+                        </h3>
+                      </div>
+                      <DashboardPerformanceTable
+                        rows={perfRows.campaign}
+                        labelEmpty="Nenhuma campanha Meta no período."
+                        nameHeader="Campanha"
+                        businessGoalMode={goalCtx.businessGoalMode}
+                        levelLabel="Campanhas Meta"
+                        filterResetKey="all-meta-campaign"
+                      />
+                    </div>
+                    {hasGoogle ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-[#34A853]" aria-hidden />
+                          <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-[#34A853]">
+                            Google Ads · Campanhas
+                          </h3>
+                        </div>
+                        {googleBlockError ? (
+                          <div className="rounded-xl border border-destructive/20 bg-destructive/[0.04] px-4 py-8 text-center text-sm text-destructive">
+                            {googleBlockError}
+                          </div>
+                        ) : hasGoogle && metricsLoading && !googleOk ? (
+                          <div className="h-48 animate-pulse rounded-xl bg-muted/30" />
+                        ) : (
+                          <DashboardPerformanceTable
+                            rows={googlePerfCampaigns}
+                            labelEmpty={
+                              googleNotConnected
+                                ? "Conecte o Google Ads em Integrações."
+                                : googleEmptyPeriod
+                                  ? "Sem campanhas Google com dados no período."
+                                  : "Nenhuma campanha Google no período."
+                            }
+                            nameHeader="Campanha"
+                            levelLabel="Campanhas Google"
+                            filterResetKey="all-google-campaign"
+                            businessGoalMode={goalCtx.businessGoalMode}
+                          />
+                        )}
+                      </div>
+                    ) : null}
+                  </TabsContent>
                   <TabsContent value="meta" className="mt-4 outline-none">
                     <Tabs value={metaLevel} onValueChange={(v) => setMetaLevel(v as MetaLevel)} className="w-full">
                       <TabsList className="mb-4 h-10 w-full justify-start rounded-xl bg-muted/30 p-1 sm:w-auto">
@@ -1341,65 +1387,6 @@ export function DashboardSingleClient() {
               )}
             </section>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/30 bg-muted/[0.08] px-4 py-3">
-              <span className="text-xs text-muted-foreground">Análise detalhada</span>
-              <Button variant="ghost" size="sm" className="h-8 rounded-lg text-foreground" asChild>
-                <Link to="/marketing" className="gap-1.5">
-                  Marketing
-                  <ArrowRight className="h-3.5 w-3.5" aria-hidden />
-                </Link>
-              </Button>
-            </div>
-
-            <section className="space-y-3 rounded-xl border border-border/25 bg-muted/[0.06] p-4">
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Integrações
-                </h2>
-                {blocks.integration.refreshing ? (
-                  <span className="flex items-center gap-1 text-[10px] font-semibold text-primary">
-                    <RefreshCw className="h-3 w-3 animate-spin" aria-hidden />
-                    Atualizando
-                  </span>
-                ) : null}
-              </div>
-              {blocks.integration.error ? (
-                <p className="text-xs text-amber-700 dark:text-amber-300">{blocks.integration.error}</p>
-              ) : null}
-              <ul className="space-y-2">
-                <li className="flex items-center justify-between gap-2 rounded-lg border border-border/35 bg-background/40 px-3 py-2">
-                  <span className="text-sm text-foreground">Meta Ads</span>
-                  <span className="text-xs font-medium tabular-nums text-muted-foreground">
-                    {metaOk ? "OK" : hasMeta ? "…" : "—"}
-                  </span>
-                </li>
-                <li className="flex items-center justify-between gap-2 rounded-lg border border-border/35 bg-background/40 px-3 py-2">
-                  <span className="text-sm text-foreground">Google Ads</span>
-                  <span className="text-xs font-medium text-muted-foreground">
-                    {googlePending
-                      ? "Config."
-                      : googleOk
-                        ? "OK"
-                        : hasGoogle
-                          ? "Pendente"
-                          : "—"}
-                  </span>
-                </li>
-              </ul>
-              <Link
-                to="/marketing/integracoes"
-                className="inline-block text-[11px] font-medium text-primary underline-offset-2 hover:underline"
-              >
-                Gerir integrações
-              </Link>
-              {displayUpdatedAt ? (
-                <p className="text-[10px] tabular-nums text-muted-foreground">
-                  Meta ·{" "}
-                  {displayUpdatedAt.toLocaleDateString("pt-BR")}{" "}
-                  {displayUpdatedAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                </p>
-              ) : null}
-            </section>
           </div>
         ) : (
           <div className="rounded-2xl border border-border/55 bg-card p-6 text-sm text-muted-foreground" role="status">

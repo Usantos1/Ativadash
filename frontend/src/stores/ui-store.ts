@@ -4,9 +4,6 @@ import { persist } from "zustand/middleware";
 export type Theme = "light" | "dark";
 
 interface UIState {
-  sidebarCollapsed: boolean;
-  setSidebarCollapsed: (collapsed: boolean) => void;
-  toggleSidebarCollapsed: () => void;
   theme: Theme;
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
@@ -21,9 +18,6 @@ function applyTheme(theme: Theme) {
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
-      sidebarCollapsed: false,
-      setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
-      toggleSidebarCollapsed: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       theme: "light",
       setTheme: (theme) => {
         applyTheme(theme);
