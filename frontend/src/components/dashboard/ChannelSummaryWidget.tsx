@@ -147,8 +147,8 @@ export function ChannelSummaryWidget({
               <GoogleAdsMark className="h-5 w-5" />
             )}
           </div>
-          <div className="min-w-0 space-y-1">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               <h3 className="text-sm font-bold tracking-tight text-foreground">{title}</h3>
               <StatusBadge label={integrationLabel} tone={integrationTone} accent={accent} />
               <ExecutiveBadgePill badge={executiveBadge ?? null} />
@@ -157,21 +157,21 @@ export function ChannelSummaryWidget({
                   {performanceChip}
                 </span>
               ) : null}
+              {accountName || accountId ? (
+                <span
+                  className="flex min-w-0 items-center gap-1 truncate text-[11px] leading-tight text-muted-foreground"
+                  title={[accountName, accountId].filter(Boolean).join(" · ")}
+                >
+                  {accountName ? (
+                    <span className="truncate font-medium text-foreground/80">{accountName}</span>
+                  ) : null}
+                  {accountName && accountId ? <span className="opacity-50">·</span> : null}
+                  {accountId ? (
+                    <span className="truncate font-mono text-[10.5px] tabular-nums opacity-80">{accountId}</span>
+                  ) : null}
+                </span>
+              ) : null}
             </div>
-            {accountName || accountId ? (
-              <p
-                className="truncate text-[11px] leading-tight text-muted-foreground"
-                title={[accountName, accountId].filter(Boolean).join(" · ")}
-              >
-                {accountName ? (
-                  <span className="font-medium text-foreground/80">{accountName}</span>
-                ) : null}
-                {accountName && accountId ? <span className="mx-1 opacity-50">·</span> : null}
-                {accountId ? (
-                  <span className="font-mono text-[10.5px] tabular-nums opacity-80">{accountId}</span>
-                ) : null}
-              </p>
-            ) : null}
           </div>
         </div>
         <div className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
