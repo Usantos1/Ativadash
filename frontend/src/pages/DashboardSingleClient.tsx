@@ -1211,7 +1211,7 @@ export function DashboardSingleClient() {
 
             <section className="space-y-3">
               <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Distribuição e CTR
+                Distribuição por plataforma
               </h2>
               <DashboardPlatformDiagnostics dash={dash} />
             </section>
