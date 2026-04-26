@@ -61,6 +61,8 @@
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    /* Evita rolagem horizontal acidental em qualquer rota (defensivo) */
+    overflow-x: hidden;
   }
   * {
     @apply border-border;
@@ -69,9 +71,65 @@
     font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
+    overflow-x: hidden;
+    /* Bloqueia "pull-to-refresh" no Android arrastando dentro do app */
+    overscroll-behavior-y: contain;
   }
   body:not(.dark) {
     background-color: #f1f3f6;
+  }
+
+  /* iOS: campos com font-size < 16px provocam zoom automático ao focar.
+     Em telas até 480px forçamos 16px nos inputs para evitar isso. */
+  @media (max-width: 480px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
+
+  /* Imagens e mídia respeitam o container por padrão (mobile-safe) */
+  img,
+  video,
+  svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Quebra palavras longas (URLs/IDs) para nunca estourar a viewport */
+  p,
+  li,
+  span,
+  td,
+  th,
+  dd,
+  dt {
+    overflow-wrap: anywhere;
+  }
+}
+
+@layer utilities {
+  /* Container que rola horizontalmente quando o conteúdo passa da viewport.
+     Útil para tabelas largas em mobile sem causar scroll horizontal global. */
+  .mobile-scroll-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Alvo mínimo de toque recomendado pela Apple/Android (44px) */
+  .tap-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Esconde scrollbar mantendo o scroll funcional (chips horizontais) */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }
 

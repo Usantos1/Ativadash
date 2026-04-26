@@ -78,7 +78,11 @@ export function AppTopbar({ onLogout }: { onLogout: () => void }) {
                 className="flex shrink-0 items-center px-1 py-0.5 transition-opacity hover:opacity-90"
                 aria-label="Ativa Dash"
               >
-                <img src="/logo-ativa-dash.png" alt="Ativa Dash" className="h-12 w-auto max-w-[170px] object-contain" />
+                <img
+                  src="/logo-ativa-dash.png"
+                  alt="Ativa Dash"
+                  className="h-9 w-auto max-w-[130px] object-contain sm:h-12 sm:max-w-[170px]"
+                />
               </Link>
 
               <div className="hidden min-w-0 items-center gap-2 lg:flex">
