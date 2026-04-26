@@ -202,7 +202,10 @@ export function ResetPassword() {
     >
       {ToastViewport}
       <div className="absolute inset-0 bg-slate-950/30 dark:bg-slate-950/60" aria-hidden="true" />
-      <div className="absolute right-4 top-4 z-20 rounded-full bg-white/90 shadow-lg backdrop-blur dark:bg-slate-900/90">
+      <div
+        className="absolute right-4 z-20 rounded-full bg-white/90 shadow-lg backdrop-blur dark:bg-slate-900/90"
+        style={{ top: "max(1rem, env(safe-area-inset-top))" }}
+      >
         <PageThemeToggle />
       </div>
 
@@ -296,7 +299,7 @@ export function ResetPassword() {
                     required
                     minLength={6}
                     autoComplete="new-password"
-                    className="h-[40px] rounded-full border-slate-200 bg-white px-4 pr-11 text-sm text-slate-900 shadow-none hover:border-primary focus-visible:border-primary focus-visible:ring-0 focus-visible:ring-offset-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    className="h-12 rounded-full border-slate-200 bg-white px-4 pr-12 text-sm text-slate-900 shadow-none hover:border-primary focus-visible:border-primary focus-visible:ring-0 focus-visible:ring-offset-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 sm:h-[40px] sm:pr-11"
                   />
                   <button
                     type="button"
@@ -328,7 +331,7 @@ export function ResetPassword() {
                     required
                     minLength={6}
                     autoComplete="new-password"
-                    className="h-[40px] rounded-full border-slate-200 bg-white px-4 pr-11 text-sm text-slate-900 shadow-none hover:border-primary focus-visible:border-primary focus-visible:ring-0 focus-visible:ring-offset-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    className="h-12 rounded-full border-slate-200 bg-white px-4 pr-12 text-sm text-slate-900 shadow-none hover:border-primary focus-visible:border-primary focus-visible:ring-0 focus-visible:ring-offset-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 sm:h-[40px] sm:pr-11"
                   />
                   <button
                     type="button"
@@ -347,7 +350,7 @@ export function ResetPassword() {
 
               <Button
                 type="submit"
-                className="h-[36px] w-full rounded-full text-sm font-semibold shadow-none"
+                className="h-12 w-full rounded-full text-sm font-semibold shadow-none sm:h-[36px]"
                 disabled={!canSubmit}
               >
                 {submitting ? (
@@ -372,7 +375,7 @@ export function ResetPassword() {
         </section>
       </main>
 
-      <footer className="relative z-10 pb-4 text-center text-[11px] text-white/65">
+      <footer className="relative z-10 pb-[max(1rem,env(safe-area-inset-bottom))] text-center text-[11px] text-white/65">
         <p>
           © {currentYear} {BRAND_NAME}. Todos os direitos reservados.
         </p>
@@ -382,14 +385,15 @@ export function ResetPassword() {
         href={SUPPORT_WHATSAPP_URL}
         target="_blank"
         rel="noreferrer"
-        className="fixed bottom-5 right-5 z-20 flex items-end gap-2"
+        className="fixed right-4 z-20 flex items-end gap-2 sm:right-5"
+        style={{ bottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
         aria-label="Abrir suporte no WhatsApp"
       >
-        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#25D366] shadow-xl transition-transform hover:scale-105">
+        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#25D366] shadow-xl transition-transform hover:scale-105 sm:h-10 sm:w-10">
           <img
             src="/integrations/whatsapp.svg"
             alt=""
-            className="h-6 w-6 object-contain brightness-0 invert"
+            className="h-7 w-7 object-contain brightness-0 invert sm:h-6 sm:w-6"
             loading="lazy"
           />
         </span>

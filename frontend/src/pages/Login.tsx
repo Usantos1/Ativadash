@@ -224,7 +224,10 @@ export function LoginPage({
       {ToastViewport}
       <div className="absolute inset-0 bg-slate-950/30 dark:bg-slate-950/60" aria-hidden="true" />
       {themeToggle ? (
-        <div className="absolute right-4 top-4 z-20 rounded-full bg-white/90 shadow-lg backdrop-blur dark:bg-slate-900/90">
+        <div
+          className="absolute right-4 z-20 rounded-full bg-white/90 shadow-lg backdrop-blur dark:bg-slate-900/90"
+          style={{ top: "max(1rem, env(safe-area-inset-top))" }}
+        >
           {themeToggle}
         </div>
       ) : null}
@@ -251,12 +254,13 @@ export function LoginPage({
                 <Input
                   id="signin-email"
                   type="email"
+                  inputMode="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={loading}
                   required
                   autoComplete="email"
-                  className="h-[40px] rounded-full border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-none hover:border-primary focus-visible:border-primary focus-visible:ring-0 focus-visible:ring-offset-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className="h-12 rounded-full border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-none hover:border-primary focus-visible:border-primary focus-visible:ring-0 focus-visible:ring-offset-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 sm:h-[40px]"
                 />
               </div>
               <div className="group relative pt-2">
@@ -275,7 +279,7 @@ export function LoginPage({
                     disabled={loading}
                     required
                     autoComplete="current-password"
-                    className="h-[40px] rounded-full border-slate-200 bg-white px-4 pr-11 text-sm text-slate-900 shadow-none hover:border-primary focus-visible:border-primary focus-visible:ring-0 focus-visible:ring-offset-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    className="h-12 rounded-full border-slate-200 bg-white px-4 pr-12 text-sm text-slate-900 shadow-none hover:border-primary focus-visible:border-primary focus-visible:ring-0 focus-visible:ring-offset-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 sm:h-[40px] sm:pr-11"
                   />
                   <button
                     type="button"
@@ -323,7 +327,7 @@ export function LoginPage({
               </div>
               <Button
                 type="submit"
-                className="h-[34px] w-full rounded-full text-sm font-semibold shadow-none"
+                className="h-12 w-full rounded-full text-sm font-semibold shadow-none sm:h-[34px]"
                 disabled={loading || lockSecondsLeft > 0}
               >
                 {loading ? (
@@ -356,17 +360,18 @@ export function LoginPage({
                 <Input
                   id="reset-email"
                   type="email"
+                  inputMode="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={loading}
                   required
                   autoComplete="email"
-                  className="h-[40px] rounded-full border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-none hover:border-primary focus-visible:border-primary focus-visible:ring-0 focus-visible:ring-offset-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className="h-12 rounded-full border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-none hover:border-primary focus-visible:border-primary focus-visible:ring-0 focus-visible:ring-offset-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 sm:h-[40px]"
                 />
               </div>
               <Button
                 type="submit"
-                className="h-[34px] w-full rounded-full text-sm font-semibold shadow-none"
+                className="h-12 w-full rounded-full text-sm font-semibold shadow-none sm:h-[34px]"
                 disabled={loading}
               >
                 {loading ? (
@@ -389,7 +394,7 @@ export function LoginPage({
           )}
         </section>
       </main>
-      <footer className="relative z-10 pb-4 text-center text-[11px] text-white/65">
+      <footer className="relative z-10 pb-[max(1rem,env(safe-area-inset-bottom))] text-center text-[11px] text-white/65">
         <div className="mb-1 flex justify-center gap-4">
           <button
             type="button"
@@ -414,7 +419,8 @@ export function LoginPage({
         href={SUPPORT_WHATSAPP_URL}
         target="_blank"
         rel="noreferrer"
-        className="fixed bottom-5 right-5 z-20 flex items-end gap-2"
+        className="fixed right-4 z-20 flex items-end gap-2 sm:right-5"
+        style={{ bottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
         aria-label="Abrir suporte no WhatsApp"
       >
         <span
@@ -426,11 +432,11 @@ export function LoginPage({
         >
           Como podemos ajudar?
         </span>
-        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#25D366] shadow-xl transition-transform hover:scale-105">
+        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#25D366] shadow-xl transition-transform hover:scale-105 sm:h-10 sm:w-10">
           <img
             src={WHATSAPP_ICON_URL}
             alt=""
-            className="h-6 w-6 object-contain brightness-0 invert"
+            className="h-7 w-7 object-contain brightness-0 invert sm:h-6 sm:w-6"
             loading="lazy"
           />
         </span>

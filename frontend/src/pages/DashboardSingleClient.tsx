@@ -808,7 +808,7 @@ export function DashboardSingleClient() {
             </Button>
           </div>
         ) : metaOk && summary && dash ? (
-          <div className="space-y-10">
+          <div className="space-y-6 lg:space-y-10">
             {anyRefreshing ? (
               <div
                 className="flex items-center gap-2 rounded-full border border-primary/15 bg-primary/[0.04] px-4 py-2 text-xs font-medium text-primary"

@@ -54,7 +54,7 @@ export function MarketingToolbar({
     <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
       <div className="flex flex-wrap items-center gap-3">
         <Select value={selectedProjectId} onValueChange={onProjectChange}>
-          <SelectTrigger className="w-[240px]">
+          <SelectTrigger className="w-full sm:w-[240px]">
             <SelectValue placeholder="Lançamento" />
           </SelectTrigger>
           <SelectContent>
@@ -100,7 +100,7 @@ export function MarketingToolbar({
           </div>
         )}
         <Select value={selectedPeriod} onValueChange={onPeriodChange}>
-          <SelectTrigger className="w-[140px]">
+          <SelectTrigger className="w-full sm:w-[140px]">
             <SelectValue placeholder="Período" />
           </SelectTrigger>
           <SelectContent>
@@ -113,7 +113,7 @@ export function MarketingToolbar({
         </Select>
         {onCompareChange && (
           <Select value={comparePeriod ?? "none"} onValueChange={onCompareChange}>
-            <SelectTrigger className="w-[160px]">
+            <SelectTrigger className="w-full sm:w-[160px]">
               <SelectValue placeholder="Comparar com" />
             </SelectTrigger>
             <SelectContent>
