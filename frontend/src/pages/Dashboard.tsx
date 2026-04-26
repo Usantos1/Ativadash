@@ -6,7 +6,7 @@ import { resolveSidebarNavVariant } from "@/lib/navigation-mode";
 import { AgencyPortfolioDashboard } from "@/components/dashboard/AgencyPortfolioDashboard";
 import { DashboardSingleClient } from "@/pages/DashboardSingleClient";
 import { switchWorkspaceOrganization } from "@/lib/organization-api";
-import { DASHBOARD_HOME_PATH } from "@/lib/dashboard-path";
+import { DASHBOARD_HOME_PATH, dashboardWorkspacePath } from "@/lib/dashboard-path";
 import type { MembershipSummary, OrganizationSummary } from "@/stores/auth-store";
 
 function resolveOrganizationIdForSlug(
@@ -80,6 +80,11 @@ function useDashboardWorkspaceSlugSync() {
             managedOrganizations: res.managedOrganizations ?? [],
           }
         );
+        // Após sincronizar a sessão com o slug da URL, força um reload completo
+        // para que todos os widgets, gráficos e queries sejam remontados com os
+        // dados do novo workspace (evita componentes com estado/cache obsoleto).
+        const nextSlug = res.user.organization?.slug?.trim() || wanted;
+        window.location.assign(dashboardWorkspacePath(nextSlug));
       } catch {
         if (!cancelled) navigate(DASHBOARD_HOME_PATH, { replace: true });
       } finally {

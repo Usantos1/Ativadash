@@ -1,7 +1,6 @@
 import { useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Building2, Check, ChevronsUpDown, Loader2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import { useAuthStore, type OrganizationSummary } from "@/stores/auth-store";
 import { switchWorkspaceOrganization } from "@/lib/organization-api";
 import { executiveGreetingLine } from "@/lib/display-name";
@@ -80,7 +79,6 @@ export function OrganizationSwitcher(props?: {
   contextFace?: { primary: string; secondary: string };
 }) {
   const { contextFace } = props ?? {};
-  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const memberships = useAuthStore((s) => s.memberships);
   const managed = useAuthStore((s) => s.managedOrganizations);
@@ -117,10 +115,12 @@ export function OrganizationSwitcher(props?: {
         }
       );
       const nextSlug = res.user.organization?.slug?.trim() || slug.trim() || organizationId;
-      navigate(dashboardWorkspacePath(nextSlug), { replace: true });
+      // Força reload completo para que toda a página (widgets, gráficos, queries)
+      // seja remontada com os dados do novo workspace, em vez de uma simples
+      // navegação SPA que poderia deixar componentes com estado obsoleto.
+      window.location.assign(dashboardWorkspacePath(nextSlug));
     } catch {
       /* api.ts pode redirecionar 401 */
-    } finally {
       setLoading(false);
     }
   }
