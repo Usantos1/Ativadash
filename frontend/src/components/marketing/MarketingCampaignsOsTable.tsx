@@ -789,50 +789,91 @@ export function MarketingCampaignsOsTable({
           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {(
-            [
-              ["all", "Todas"],
-              ["active", "Ativas"],
-              ["paused", "Pausadas"],
-            ] as const
-          ).map(([id, label]) => (
-            <Button
-              key={id}
-              type="button"
-              size="sm"
-              variant={statusFilter === id ? "default" : "outline"}
-              className="h-8 rounded-full px-3 text-xs font-semibold"
-              disabled={id !== "all" && !hasDeliveryStatus}
-              title={
-                id !== "all" && !hasDeliveryStatus
-                  ? "Nenhuma linha trouxe status ACTIVE/PAUSED da integração neste recorte (comum na Meta). Use Todas e filtre por métricas."
-                  : undefined
-              }
-              onClick={() => setStatusFilter(id)}
-            >
-              {label}
-            </Button>
-          ))}
-          {(
-            [
-              ["all", "Todas"],
-              ["with_activity", "Com gasto ou lead"],
-              ["with_conversion", "Só com conversão"],
-              ["no_conversion", "Gasto sem conversão"],
-            ] as const
-          ).map(([id, label]) => (
-            <Button
-              key={id}
-              type="button"
-              size="sm"
-              variant={resultFilter === id ? "default" : "outline"}
-              className="h-8 rounded-full px-3 text-xs font-semibold"
-              onClick={() => setResultFilter(id)}
-            >
-              {label}
-            </Button>
-          ))}
+        <div className="mt-4 flex flex-col gap-3 border-t border-border/40 pt-3 lg:flex-row lg:flex-wrap lg:items-start lg:gap-x-6 lg:gap-y-3">
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Status</span>
+            <div className="flex flex-wrap gap-1.5">
+              {(
+                [
+                  ["all", "Todas"],
+                  ["active", "Ativas"],
+                  ["paused", "Pausadas"],
+                ] as const
+              ).map(([id, label]) => (
+                <Button
+                  key={id}
+                  type="button"
+                  size="sm"
+                  variant={statusFilter === id ? "default" : "outline"}
+                  className="h-8 rounded-full px-3 text-xs font-semibold"
+                  disabled={id !== "all" && !hasDeliveryStatus}
+                  title={
+                    id !== "all" && !hasDeliveryStatus
+                      ? "Nenhuma linha trouxe status ACTIVE/PAUSED da integração neste recorte (comum na Meta). Use Todas e filtre por métricas."
+                      : undefined
+                  }
+                  onClick={() => setStatusFilter(id)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <div className="hidden self-stretch border-l border-border/40 lg:block" aria-hidden />
+
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Resultado</span>
+            <div className="flex flex-wrap gap-1.5">
+              {(
+                [
+                  ["all", "Todos"],
+                  ["with_activity", "Com gasto ou lead"],
+                  ["with_conversion", "Só com conversão"],
+                  ["no_conversion", "Gasto sem conversão"],
+                ] as const
+              ).map(([id, label]) => (
+                <Button
+                  key={id}
+                  type="button"
+                  size="sm"
+                  variant={resultFilter === id ? "default" : "outline"}
+                  className="h-8 rounded-full px-3 text-xs font-semibold"
+                  onClick={() => setResultFilter(id)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <div className="hidden self-stretch border-l border-border/40 lg:block" aria-hidden />
+
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Ordenar por</span>
+            <div className="flex flex-wrap gap-1.5">
+              {(
+                [
+                  ["spend", "Investimento"],
+                  ["cpl", "CPL"],
+                  ["leads", goalMode === "SALES" ? "Compras" : "Leads"],
+                  ["ctr", "CTR"],
+                  ["revenue", "Receita"],
+                ] as const
+              ).map(([k, lab]) => (
+                <Button
+                  key={k}
+                  type="button"
+                  size="sm"
+                  variant={sortKey === k ? "default" : "outline"}
+                  className="h-8 rounded-full px-3 text-xs font-semibold"
+                  onClick={() => setSortKey(k)}
+                >
+                  {lab}
+                </Button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {!hasDeliveryStatus ? (
@@ -844,30 +885,6 @@ export function MarketingCampaignsOsTable({
             inteligente — ou confira pausas no gerenciador.
           </p>
         ) : null}
-
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/40 pt-3">
-          <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Ordenar:</span>
-          {(
-            [
-              ["spend", "Investimento"],
-              ["cpl", "CPL"],
-              ["leads", goalMode === "SALES" ? "Compras" : "Leads"],
-              ["ctr", "CTR"],
-              ["revenue", "Receita"],
-            ] as const
-          ).map(([k, lab]) => (
-            <Button
-              key={k}
-              type="button"
-              size="sm"
-              variant={sortKey === k ? "default" : "outline"}
-              className="h-8 rounded-md px-2.5 text-xs font-semibold"
-              onClick={() => setSortKey(k)}
-            >
-              {lab}
-            </Button>
-          ))}
-        </div>
 
         {canMutateCampaigns ? (
           <div className="mt-4 flex flex-col gap-2 rounded-xl border border-primary/20 bg-primary/[0.04] p-3 sm:flex-row sm:flex-wrap sm:items-center">
