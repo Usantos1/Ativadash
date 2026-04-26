@@ -8,6 +8,7 @@ import type { DateFilterApplyPayload } from "@/components/marketing/MarketingDat
 import type { MetricsDateRange } from "@/lib/integrations-api";
 import type { MarketingPresetId } from "@/lib/marketing-date-presets";
 import { cn } from "@/lib/utils";
+import { marketingToolbarMetasClassName, marketingToolbarOutlineClassName } from "@/lib/marketing-ui";
 import type { BusinessGoalMode } from "@/lib/business-goal-mode";
 
 function goalLabel(mode: BusinessGoalMode): string {
@@ -67,16 +68,16 @@ export function DashboardHeader({
   const [pdfBusy, setPdfBusy] = useState(false);
 
   return (
-    <div className="relative z-20 flex flex-wrap items-center justify-center gap-2 border-b border-border/25 pb-4">
+    <div className="relative z-20 flex flex-wrap items-center justify-center gap-2 border-b border-border/60 pb-4">
       <Button
         type="button"
         variant="outline"
         size="sm"
-        className="h-9 gap-2 rounded-xl border-border/40 bg-background/50"
+        className={cn("h-9 gap-2 rounded-full px-4", marketingToolbarOutlineClassName)}
         onClick={() => setPickerOpen(true)}
       >
-        <CalendarRange className="h-3.5 w-3.5 opacity-70" aria-hidden />
-        <span className="max-w-[240px] truncate font-medium">{dateRangeLabel}</span>
+        <CalendarRange className="h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden />
+        <span className="max-w-[240px] truncate font-semibold text-foreground">{dateRangeLabel}</span>
       </Button>
       <MarketingDateRangeDialog
         open={pickerOpen}
@@ -89,7 +90,7 @@ export function DashboardHeader({
       />
       <span
         className={cn(
-          "inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+          "inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
           goalColor(goalMode)
         )}
         title="Objetivo da conta"
@@ -100,7 +101,7 @@ export function DashboardHeader({
           <Button
             variant="outline"
             size="sm"
-            className="h-9 rounded-xl border-border/40"
+            className={cn("h-9 rounded-full px-4", marketingToolbarOutlineClassName)}
             disabled={refreshDisabled}
             onClick={() => onRefresh()}
           >
@@ -114,9 +115,9 @@ export function DashboardHeader({
         {hasData ? (
           <>
             <Button
-              variant="outline"
               size="sm"
-              className="h-9 rounded-xl border-border/40"
+              variant="default"
+              className="h-9 rounded-full px-4 font-semibold shadow-md"
               onClick={() => setShareOpen(true)}
             >
               <Share2 className="mr-1.5 h-3.5 w-3.5" aria-hidden />
@@ -134,7 +135,7 @@ export function DashboardHeader({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-9 rounded-xl border-border/40"
+                className={cn("h-9 rounded-full px-4", marketingToolbarOutlineClassName)}
                 disabled={pdfBusy}
                 onClick={() => {
                   setPdfBusy(true);
@@ -151,7 +152,7 @@ export function DashboardHeader({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-9 rounded-xl border-border/40"
+                className={cn("h-9 rounded-full px-4", marketingToolbarOutlineClassName)}
                 onClick={onExportXls}
               >
                 <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" aria-hidden />
@@ -160,7 +161,7 @@ export function DashboardHeader({
             ) : null}
           </>
         ) : null}
-      <Button variant="ghost" size="sm" className="h-9 rounded-xl text-muted-foreground" asChild>
+      <Button variant="outline" size="sm" className={cn("h-9 rounded-full px-4", marketingToolbarMetasClassName)} asChild>
         <Link to="/ads/metas-alertas">Automação e Metas</Link>
       </Button>
     </div>

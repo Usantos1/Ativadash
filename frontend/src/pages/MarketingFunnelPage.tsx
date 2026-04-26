@@ -31,6 +31,11 @@ import { MarketingCampaignsOsTable } from "@/components/marketing/MarketingCampa
 import { PageHeaderPremium, KpiCardPremium, DataTablePremium, StatusBadge, AnalyticsSection } from "@/components/premium";
 import { formatNumber, formatSpend } from "@/lib/metrics-format";
 import { cn } from "@/lib/utils";
+import {
+  marketingToolbarDateButtonClassName,
+  marketingToolbarMetasClassName,
+  marketingToolbarOutlineClassName,
+} from "@/lib/marketing-ui";
 import { useMarketingFilteredAggregates } from "@/hooks/useMarketingFilteredAggregates";
 import { buildCombinedCampaignOsRows } from "@/lib/ads-os-rows";
 import { deriveChannelPerformanceSignals } from "@/lib/channel-performance-compare";
@@ -762,12 +767,12 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                   variant="outline"
                   size="sm"
                   className={cn(
-                    "h-9 rounded-lg border-border/70 bg-background/80 shadow-sm",
-                    isNonDefaultPeriod(presetId) && "border-amber-500/45 bg-amber-500/[0.07] ring-1 ring-amber-500/20"
+                    "h-9 rounded-full px-4",
+                    marketingToolbarDateButtonClassName(isNonDefaultPeriod(presetId))
                   )}
                   onClick={() => setPickerOpen(true)}
                 >
-                  <CalendarRange className="mr-1.5 h-3.5 w-3.5 opacity-70" />
+                  <CalendarRange className="mr-1.5 h-3.5 w-3.5 shrink-0 text-foreground" />
                   {dateRangeLabel}
                   {isNonDefaultPeriod(presetId) ? (
                     <span className="ml-2 rounded-full bg-amber-500/25 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-950 dark:text-amber-100">
@@ -788,7 +793,7 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-9 rounded-lg border-border/70 bg-background/80 shadow-sm"
+                    className={cn("h-9 rounded-full px-4", marketingToolbarOutlineClassName)}
                     disabled={metricsLoading || metaMetricsLoading}
                     onClick={() => refreshAll()}
                   >
@@ -801,8 +806,8 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                 {!isClientPortalUser ? (
                   <Button
                     size="sm"
-                    className="h-9 rounded-lg shadow-sm"
-                    variant="secondary"
+                    className="h-9 rounded-full px-4 font-semibold shadow-md"
+                    variant="default"
                     type="button"
                     onClick={() => setShareOpen(true)}
                   >
@@ -821,7 +826,12 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                   />
                 ) : null}
                 {!isClientPortalUser ? (
-                  <Button variant="default" size="sm" className="h-9 rounded-lg shadow-sm" asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn("h-9 rounded-full px-4", marketingToolbarMetasClassName)}
+                    asChild
+                  >
                     <Link to="/ads/metas-alertas">Automação e Metas</Link>
                   </Button>
                 ) : null}
@@ -1003,7 +1013,7 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                       Kiwify e outras plataformas aqui, conecte o checkout quando a integração estiver disponível em{" "}
                       <span className="font-medium text-foreground">Integrações · Pagamentos e checkout</span>.
                     </p>
-                    <Button className="mt-2 w-fit rounded-xl" asChild>
+                    <Button className="mt-2 w-fit rounded-full px-4" asChild>
                       <Link to="/marketing/integracoes#integracoes-checkout">Ir para checkout</Link>
                     </Button>
                   </div>
@@ -1019,7 +1029,7 @@ export function MarketingFunnelPage({ variant }: { variant: FunnelVariant }) {
                     A integração de checkout está ativa, mas não há receita atribuída neste intervalo de datas. Ajuste o
                     período ou confira se os eventos estão chegando corretamente.
                   </p>
-                  <Button variant="outline" size="sm" className="rounded-xl" asChild>
+                  <Button variant="outline" size="sm" className="rounded-full px-4" asChild>
                     <Link to="/marketing/integracoes#integracoes-checkout">Revisar integrações</Link>
                   </Button>
                 </div>

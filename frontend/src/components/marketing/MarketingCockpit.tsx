@@ -275,15 +275,15 @@ export function MarketingFunnelStrip(props: { steps: FunnelStripStep[]; worstKey
           <div
             key={s.key}
             className={cn(
-              "min-w-[5.5rem] flex-1 rounded-xl border-2 px-3 py-2.5 sm:min-w-[7rem]",
+              "min-w-[5.5rem] flex-1 rounded-xl border-2 px-3 py-2.5 shadow-sm sm:min-w-[7rem]",
               worst
                 ? "border-rose-500/60 bg-rose-500/[0.14]"
-                : "border-border/50 bg-muted/30"
+                : "border-border bg-card"
             )}
           >
-            <p className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground">{s.title}</p>
-            <p className="mt-0.5 text-lg font-black tabular-nums">{formatNumber(Math.round(s.volume))}</p>
-            <p className="text-xs font-bold tabular-nums text-foreground/90">
+            <p className="text-[9px] font-extrabold uppercase tracking-wide text-foreground/85">{s.title}</p>
+            <p className="mt-0.5 text-lg font-black tabular-nums text-foreground">{formatNumber(Math.round(s.volume))}</p>
+            <p className="text-xs font-bold tabular-nums text-foreground">
               {s.ratePct != null ? `${s.ratePct.toFixed(1)}%` : "—"}
             </p>
             {worst ? (

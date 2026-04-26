@@ -24,6 +24,11 @@ import {
 } from "@/components/marketing/MarketingCockpit";
 import { AppMainRouteBody } from "@/components/layout/AppMainRouteBody";
 import { cn } from "@/lib/utils";
+import {
+  marketingToolbarDateButtonClassName,
+  marketingToolbarMetasClassName,
+  marketingToolbarOutlineClassName,
+} from "@/lib/marketing-ui";
 import { formatSpend, formatNumber } from "@/lib/metrics-format";
 import type {
   GoogleAdsAdGroupRow,
@@ -782,12 +787,12 @@ export function Marketing() {
                   variant="outline"
                   size="sm"
                   className={cn(
-                    "h-9 rounded-lg border-border/70 bg-background/80 shadow-sm",
-                    isNonDefaultPeriod(presetId) && "border-amber-500/45 bg-amber-500/[0.07] ring-1 ring-amber-500/20"
+                    "h-9 rounded-full px-4",
+                    marketingToolbarDateButtonClassName(isNonDefaultPeriod(presetId))
                   )}
                   onClick={() => setPickerOpen(true)}
                 >
-                  <CalendarRange className="mr-1.5 h-3.5 w-3.5 opacity-70" />
+                  <CalendarRange className="mr-1.5 h-3.5 w-3.5 shrink-0 text-foreground" />
                   {dateRangeLabel}
                   {isNonDefaultPeriod(presetId) ? (
                     <span className="ml-2 rounded-full bg-amber-500/25 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-950 dark:text-amber-100">
@@ -807,7 +812,7 @@ export function Marketing() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 rounded-lg border-border/70 bg-background/80 shadow-sm"
+                  className={cn("h-9 rounded-full px-4", marketingToolbarOutlineClassName)}
                   disabled={metricsLoading || metaMetricsLoading}
                   onClick={() => refreshAll()}
                 >
@@ -818,8 +823,8 @@ export function Marketing() {
                 </Button>
                 <Button
                   size="sm"
-                  className="h-9 rounded-lg shadow-sm"
-                  variant="secondary"
+                  className="h-9 rounded-full px-4 font-semibold shadow-md"
+                  variant="default"
                   type="button"
                   onClick={() => setShareOpen(true)}
                 >
@@ -838,7 +843,7 @@ export function Marketing() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-9 rounded-lg border-border/70 bg-background/80 shadow-sm"
+                  className={cn("h-9 rounded-full px-4", marketingToolbarOutlineClassName)}
                   disabled={!dataHealthy || pdfBusy}
                   onClick={() => {
                     setPdfBusy(true);
@@ -976,7 +981,7 @@ export function Marketing() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-9 rounded-lg border-border/70 bg-background/80 shadow-sm"
+                  className={cn("h-9 rounded-full px-4", marketingToolbarOutlineClassName)}
                   onClick={() => {
                     const to = window.prompt("E-mail do destinatário");
                     if (!to?.trim()) return;
@@ -990,7 +995,12 @@ export function Marketing() {
                   <Mail className="mr-1.5 h-3.5 w-3.5" />
                   Enviar
                 </Button>
-                <Button variant="default" size="sm" className="h-9 rounded-lg shadow-sm" asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={cn("h-9 rounded-full px-4", marketingToolbarMetasClassName)}
+                  asChild
+                >
                   <Link to="/ads/metas-alertas">Automação e Metas</Link>
                 </Button>
               </div>

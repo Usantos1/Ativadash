@@ -8,6 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { marketingToolbarOutlineClassName } from "@/lib/marketing-ui";
 import type { Project } from "@/types";
 
 export type SegmentFilter = "geral" | "frio" | "quente";
@@ -70,7 +71,7 @@ export function MarketingToolbar({
           </span>
         )}
         {onSegmentChange && (
-          <div className="flex rounded-md border border-input bg-background p-0.5">
+          <div className="flex rounded-full border border-input bg-background p-0.5">
             {(
               [
                 { value: "geral" as const, label: "Geral", icon: null },
@@ -85,7 +86,7 @@ export function MarketingToolbar({
                   type="button"
                   onClick={() => onSegmentChange(s.value)}
                   className={cn(
-                    "flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors",
+                    "flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium transition-colors",
                     segment === s.value
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -134,25 +135,25 @@ export function MarketingToolbar({
           </span>
         )}
         {onRefresh && (
-          <Button variant="outline" size="sm" onClick={onRefresh}>
+          <Button variant="outline" size="sm" className={cn(marketingToolbarOutlineClassName)} onClick={onRefresh}>
             <RefreshCw className="h-4 w-4" />
             Atualizar
           </Button>
         )}
         {onEdit && (
-          <Button variant="outline" size="sm" onClick={onEdit}>
+          <Button variant="outline" size="sm" className={cn(marketingToolbarOutlineClassName)} onClick={onEdit}>
             <Pencil className="h-4 w-4" />
             Editar
           </Button>
         )}
         {onShare && (
-          <Button size="sm" onClick={onShare} className="bg-primary hover:bg-primary/90">
+          <Button size="sm" onClick={onShare} className="font-semibold shadow-md" variant="default">
             <Share2 className="h-4 w-4" />
             Compartilhar
           </Button>
         )}
         {onConfigure && (
-          <Button variant="outline" size="sm" onClick={onConfigure}>
+          <Button variant="outline" size="sm" className={cn(marketingToolbarOutlineClassName)} onClick={onConfigure}>
             <Settings className="h-4 w-4" />
             Configurar métricas
           </Button>
