@@ -97,12 +97,11 @@
     height: auto;
   }
 
-  /* Quebra palavras longas (URLs/IDs) para nunca estourar a viewport */
+  /* Quebra palavras longas (URLs/IDs) para nunca estourar a viewport,
+     mas SEM atingir celulas de tabela (numeros/moedas devem permanecer
+     intactos) nem spans, que sao reutilizados em badges/chips/valores. */
   p,
   li,
-  span,
-  td,
-  th,
   dd,
   dt {
     overflow-wrap: anywhere;

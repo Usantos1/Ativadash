@@ -60,7 +60,9 @@ export function DashboardMetricTile({ m }: { m: DashboardChannelMetric }) {
         <HealthDot health={m.health} />
       </div>
       <div className="mt-1.5 flex items-center gap-1.5">
-        <p className="truncate text-lg font-extrabold tabular-nums tracking-tight text-foreground sm:text-xl">
+        {/* Nao truncamos o valor — preferimos quebrar a quantidade de colunas (gerenciado no
+            container) a esconder dado financeiro sob reticencias. */}
+        <p className="text-base font-extrabold tabular-nums tracking-tight text-foreground sm:text-xl">
           {m.value}
         </p>
         <TrendIcon trend={m.trend} deltaInvert={m.deltaInvert} />
@@ -95,14 +97,22 @@ function Block({
 }
 
 export function ChannelPerformanceBody({ layout }: { layout: ChannelPerformanceLayout }) {
+  // Em mobile (<sm) sempre comecamos com 2 colunas para evitar truncamento de
+  // rotulos longos (INVESTIMENTO, CONV. CLIQUE → RESULTADO) e valores monetarios
+  // (R$ 1.159,26). A partir de sm:640px abrimos para 3-4 colunas conforme o
+  // numero de metricas em cada bloco.
   const perfCols =
     layout.performance.length >= 4
       ? "grid-cols-2 sm:grid-cols-4"
       : layout.performance.length === 3
-        ? "grid-cols-3"
+        ? "grid-cols-2 sm:grid-cols-3"
         : "grid-cols-2";
   const convCols =
-    layout.conversion.length >= 3 ? "grid-cols-3" : layout.conversion.length === 2 ? "grid-cols-2" : "grid-cols-1";
+    layout.conversion.length >= 3
+      ? "grid-cols-2 sm:grid-cols-3"
+      : layout.conversion.length === 2
+        ? "grid-cols-2"
+        : "grid-cols-1";
 
   return (
     <div className="space-y-2.5 pt-1">

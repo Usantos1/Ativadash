@@ -46,6 +46,10 @@ export function DataTablePremium({
               "[&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20 [&_thead_th]:bg-card/95 [&_thead_th]:backdrop-blur-sm [&_thead_th]:shadow-[0_1px_0_hsl(var(--border)/0.5)]",
             "[&_th]:whitespace-nowrap [&_th]:px-3 [&_th]:py-3.5 [&_th]:text-left [&_th]:text-[11px] [&_th]:font-bold [&_th]:uppercase [&_th]:tracking-wide [&_th]:text-muted-foreground",
             "[&_td]:px-3 [&_td]:py-2.5 [&_td]:align-top [&_td]:text-left",
+            // Celulas alinhadas a direita sao numericas (moeda, metricas) — nao podem
+            // ser quebradas em mobile (era o que gerava "R$ 25,/04"). Em vez disso
+            // forcamos o scroll horizontal do shell quando a viewport e estreita.
+            "[&_td.text-right]:whitespace-nowrap",
             className
           )}
         >

@@ -77,8 +77,10 @@ function OrgFace({
 export function OrganizationSwitcher(props?: {
   /** Quando definido (ex.: rota Marketing), substitui nome+subtítulo padrão e evita redundância com o AppBar. */
   contextFace?: { primary: string; secondary: string };
+  /** Modo compacto: somente ícone + chevron (usado em mobile para caber no AppTopbar). */
+  compact?: boolean;
 }) {
-  const { contextFace } = props ?? {};
+  const { contextFace, compact = false } = props ?? {};
   const user = useAuthStore((s) => s.user);
   const memberships = useAuthStore((s) => s.memberships);
   const managed = useAuthStore((s) => s.managedOrganizations);
@@ -126,6 +128,18 @@ export function OrganizationSwitcher(props?: {
   }
 
   if (!canSwitch) {
+    if (compact) {
+      return (
+        <div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/50 bg-background/80 text-muted-foreground shadow-sm"
+          title={displayName}
+          role="status"
+          aria-label={`Organização ativa: ${displayName}`}
+        >
+          <Building2 className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+        </div>
+      );
+    }
     return (
       <div
         className={cn(shellBase, "cursor-default")}
@@ -141,17 +155,36 @@ export function OrganizationSwitcher(props?: {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
-        <button
-          type="button"
-          className={cn(
-            shellInteractive,
-            "w-full max-w-[min(100%,280px)] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          )}
-          disabled={loading}
-          aria-label="Trocar organização"
-        >
-          <OrgFace name={facePrimary} subtitleLine={faceSecondary} loading={loading} showChevron={!loading} />
-        </button>
+        {compact ? (
+          <button
+            type="button"
+            className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/50 bg-background/80 text-foreground shadow-sm transition-colors hover:bg-accent disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            disabled={loading}
+            aria-label={`Trocar workspace · atual: ${displayName}`}
+            title={displayName}
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <Building2 className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+            )}
+            <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-[10px] font-bold leading-none text-primary-foreground">
+              {options.length > 9 ? "9+" : options.length}
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={cn(
+              shellInteractive,
+              "w-full max-w-[min(100%,280px)] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            )}
+            disabled={loading}
+            aria-label="Trocar organização"
+          >
+            <OrgFace name={facePrimary} subtitleLine={faceSecondary} loading={loading} showChevron={!loading} />
+          </button>
+        )}
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content

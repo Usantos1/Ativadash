@@ -210,7 +210,13 @@ export function AppTopbar({ onLogout }: { onLogout: () => void }) {
             />
           </div>
 
-          <div className="ml-auto flex shrink-0 items-center pl-1">
+          {/* Trocador de workspace em modo COMPACTO — visivel apenas em mobile/tablet
+              (oculto a partir de lg, onde a versao expandida acima ja aparece). */}
+          <div className="flex shrink-0 items-center lg:hidden">
+            <WorkspaceSwitcher compact />
+          </div>
+
+          <div className="flex shrink-0 items-center pl-1">
             <TopbarActions onLogout={onLogout} />
           </div>
         </div>
