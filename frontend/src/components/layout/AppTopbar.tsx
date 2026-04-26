@@ -85,6 +85,13 @@ export function AppTopbar({ onLogout }: { onLogout: () => void }) {
                 />
               </Link>
 
+              {/* Trocador de workspace em modo COMPACTO — visivel apenas em mobile/tablet,
+                  posicionado logo ao lado do logo para ficar sempre acessivel. Em lg+ a
+                  versao expandida abaixo (antes de TopbarActions) toma o lugar. */}
+              <div className="flex shrink-0 items-center lg:hidden">
+                <WorkspaceSwitcher compact />
+              </div>
+
               <div className="hidden min-w-0 items-center gap-2 lg:flex">
                 {primaryItems.map((item) => {
                   const Icon = item.icon;
@@ -208,12 +215,6 @@ export function AppTopbar({ onLogout }: { onLogout: () => void }) {
                 secondary: "Workspace ativo",
               }}
             />
-          </div>
-
-          {/* Trocador de workspace em modo COMPACTO — visivel apenas em mobile/tablet
-              (oculto a partir de lg, onde a versao expandida acima ja aparece). */}
-          <div className="flex shrink-0 items-center lg:hidden">
-            <WorkspaceSwitcher compact />
           </div>
 
           <div className="flex shrink-0 items-center pl-1">
