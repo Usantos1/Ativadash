@@ -78,7 +78,7 @@ function dateToIso(dateStr: string): string {
 }
 
 const selectClass = cn(
-  "flex h-9 min-w-[200px] max-w-full rounded-lg border border-input bg-background px-3 text-sm shadow-sm",
+  "flex h-9 w-full max-w-full rounded-lg border border-input bg-background px-3 text-sm shadow-sm sm:min-w-[200px] sm:w-auto",
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 );
 
@@ -269,11 +269,11 @@ export function RevendaAuditPage() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">De</Label>
-                <input type="date" className={cn(selectClass, "w-[160px]")} value={govDraft.from} onChange={(e) => setGovDraft((d) => ({ ...d, from: e.target.value }))} />
+                <input type="date" className={cn(selectClass, "w-full sm:w-[160px]")} value={govDraft.from} onChange={(e) => setGovDraft((d) => ({ ...d, from: e.target.value }))} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Até</Label>
-                <input type="date" className={cn(selectClass, "w-[160px]")} value={govDraft.to} onChange={(e) => setGovDraft((d) => ({ ...d, to: e.target.value }))} />
+                <input type="date" className={cn(selectClass, "w-full sm:w-[160px]")} value={govDraft.to} onChange={(e) => setGovDraft((d) => ({ ...d, to: e.target.value }))} />
               </div>
               <div className="flex items-end">
                 <Button type="button" size="sm" variant="secondary" onClick={() => setGovApplied({ ...govDraft })}>Aplicar</Button>
@@ -372,11 +372,11 @@ export function RevendaAuditPage() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">De</Label>
-                <input type="date" className={cn(selectClass, "w-[160px]")} value={netDraft.from} onChange={(e) => setNetDraft((d) => ({ ...d, from: e.target.value }))} />
+                <input type="date" className={cn(selectClass, "w-full sm:w-[160px]")} value={netDraft.from} onChange={(e) => setNetDraft((d) => ({ ...d, from: e.target.value }))} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Até</Label>
-                <input type="date" className={cn(selectClass, "w-[160px]")} value={netDraft.to} onChange={(e) => setNetDraft((d) => ({ ...d, to: e.target.value }))} />
+                <input type="date" className={cn(selectClass, "w-full sm:w-[160px]")} value={netDraft.to} onChange={(e) => setNetDraft((d) => ({ ...d, to: e.target.value }))} />
               </div>
               <div className="flex items-end">
                 <Button type="button" size="sm" variant="secondary" onClick={() => setNetApplied({ ...netDraft })}>Aplicar</Button>
