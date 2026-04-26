@@ -96,7 +96,7 @@ export function isAgencyClientPortalUser(
 
 export function isPathAllowedForAgencyClientPortal(pathname: string): boolean {
   const p = pathname.replace(/\/$/, "") || "/";
-  if (p === "/" || p === "/dashboard") return true;
+  if (p === "/" || p === "/dashboard" || p.startsWith("/dashboard/")) return true;
   if (p === "/marketing" || p === "/marketing/captacao" || p === "/marketing/conversao" || p === "/marketing/receita")
     return true;
   if (p === "/perfil") return true;
@@ -130,7 +130,7 @@ export function canAccessAdminPage(
 /** Agência filial: só estes prefixos de path são permitidos (além de /login etc.). */
 export function isPathAllowedForAgencyBranch(pathname: string): boolean {
   const p = pathname.replace(/\/$/, "") || "/";
-  if (p === "/" || p === "/dashboard") return true;
+  if (p === "/" || p === "/dashboard" || p.startsWith("/dashboard/")) return true;
   if (p === "/clientes") return true;
   if (p.startsWith("/marketing/integracoes")) return true;
   if (p === "/ads/metas-alertas" || p === "/ads/metas-operacao") return true;

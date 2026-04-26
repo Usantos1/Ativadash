@@ -16,7 +16,7 @@ import {
 export function isSidebarPathEnabledByPlan(to: string, f: EnabledFeatures): boolean {
   const path = (to.split("?")[0] ?? to).replace(/\/$/, "") || "/";
 
-  if (path === "/dashboard") return f.marketingDashboard;
+  if (path === "/dashboard" || path.startsWith("/dashboard/")) return f.marketingDashboard;
 
   if (path === "/marketing") return f.marketing && f.marketingDashboard;
 

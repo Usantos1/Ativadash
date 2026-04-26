@@ -19,7 +19,7 @@ export function SavedViewBar({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-1.5 rounded-xl border border-border/45 bg-muted/20 p-1.5 shadow-inner",
+        "flex flex-wrap items-center gap-1.5 rounded-full border border-border/45 bg-muted/20 p-1.5 shadow-inner",
         className
       )}
       role="tablist"
@@ -36,7 +36,7 @@ export function SavedViewBar({
             variant={active ? "default" : "ghost"}
             size="sm"
             className={cn(
-              "h-8 rounded-lg px-3 text-xs font-semibold",
+              "h-8 rounded-full px-3 text-xs font-semibold",
               !active && "text-muted-foreground hover:text-foreground"
             )}
             onClick={() => onSelect?.(v.id)}

@@ -13,6 +13,7 @@ import {
   type AgencyPortfolioChildRow,
 } from "@/lib/organization-api";
 import { useAuthStore } from "@/stores/auth-store";
+import { dashboardWorkspacePath } from "@/lib/dashboard-path";
 
 function formatBrl(n: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
@@ -192,7 +193,8 @@ export function AgencyPortfolioDashboard() {
           managedOrganizations: res.managedOrganizations ?? [],
         }
       );
-      navigate("/dashboard", { replace: true });
+      const slug = res.user.organization?.slug?.trim() || res.user.organizationId;
+      navigate(dashboardWorkspacePath(slug), { replace: true });
     } catch {
       setError("Não foi possível entrar neste cliente. Verifique permissões.");
     } finally {

@@ -7,7 +7,7 @@ export type TopbarCrumb = { label: string; href?: string };
 
 export function resolveTopbarCrumbs(pathname: string): TopbarCrumb[] {
   const p = pathname.replace(/\/$/, "") || "/";
-  if (p === "/" || p === "/dashboard") return [];
+  if (p === "/" || p === "/dashboard" || p.startsWith("/dashboard/")) return [];
 
   if (p === "/marketing") return [{ label: "Painel ADS" }];
   if (p === "/marketing/captacao") {

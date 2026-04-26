@@ -39,7 +39,7 @@ export function EmptyStateCard({
         {children}
         <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
           {actionLabel && onAction ? (
-            <Button className="rounded-xl shadow-sm" onClick={onAction}>
+            <Button className="rounded-full px-4 shadow-sm" onClick={onAction}>
               {actionLabel}
             </Button>
           ) : null}

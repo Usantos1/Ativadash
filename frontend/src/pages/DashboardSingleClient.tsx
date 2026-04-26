@@ -803,7 +803,7 @@ export function DashboardSingleClient() {
           <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-[var(--shadow-surface)]" role="alert">
             <p className="text-sm font-semibold">Painel Meta</p>
             <p className="mt-2 text-sm text-muted-foreground">{dash.message}</p>
-            <Button variant="outline" size="sm" className="mt-4 rounded-lg" onClick={() => void loadDashboard(true)}>
+            <Button variant="outline" size="sm" className="mt-4 rounded-full px-4" onClick={() => void loadDashboard(true)}>
               Tentar novamente
             </Button>
           </div>
@@ -811,7 +811,7 @@ export function DashboardSingleClient() {
           <div className="space-y-10">
             {anyRefreshing ? (
               <div
-                className="flex items-center gap-2 rounded-xl border border-primary/15 bg-primary/[0.04] px-3 py-2 text-xs font-medium text-primary"
+                className="flex items-center gap-2 rounded-full border border-primary/15 bg-primary/[0.04] px-4 py-2 text-xs font-medium text-primary"
                 role="status"
               >
                 <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />

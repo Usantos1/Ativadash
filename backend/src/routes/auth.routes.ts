@@ -32,6 +32,8 @@ router.post("/register", sensitiveLimiter, authController.register);
 router.get("/invite-preview", authController.invitePreview);
 router.post("/register-with-invite", sensitiveLimiter, authController.registerWithInvite);
 router.post("/forgot-password", sensitiveLimiter, authController.forgotPassword);
+router.get("/reset-password/validate", sensitiveLimiter, authController.validateResetToken);
+router.post("/reset-password", sensitiveLimiter, authController.resetPassword);
 router.post("/refresh", sensitiveLimiter, authController.refresh);
 router.get("/me", authMiddleware, requireJwtOrganizationAccess, authController.me);
 router.get("/me/context", authMiddleware, requireJwtOrganizationAccess, authController.meContext);

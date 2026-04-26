@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatPageTitle, usePageTitle } from "@/hooks/usePageTitle";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useNavigate } from "react-router-dom";
+import { dashboardWorkspacePath } from "@/lib/dashboard-path";
 import {
   AlertTriangle,
   Building2,
@@ -188,7 +189,7 @@ export function ClientsPage() {
     summary.childSlotsCap > 0 &&
     summary.childSlotsUsed >= summary.childSlotsCap;
 
-  async function impersonateClient(organizationId: string, thenPath = "/dashboard") {
+  async function impersonateClient(organizationId: string, thenPath?: string) {
     setSwitchingId(organizationId);
     setError(null);
     try {
@@ -202,7 +203,12 @@ export function ClientsPage() {
           managedOrganizations: res.managedOrganizations ?? [],
         }
       );
-      navigate(thenPath, { replace: true });
+      const next =
+        thenPath ??
+        dashboardWorkspacePath(
+          res.user.organization?.slug?.trim() || res.user.organizationId
+        );
+      navigate(next, { replace: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Não foi possível acessar como admin.");
     } finally {

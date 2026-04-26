@@ -104,6 +104,21 @@ export const env = {
    * executa uma passagem do motor (útil com cron externo sem worker embutido).
    */
   AUTOMATION_INTERNAL_SECRET: (process.env.AUTOMATION_INTERNAL_SECRET ?? "").trim(),
+  /**
+   * SMTP — usado pelo envio transacional (recuperação de senha, etc.).
+   * Hostinger: 465/SSL ou 587/STARTTLS.
+   */
+  SMTP_HOST: (process.env.SMTP_HOST ?? "").trim(),
+  SMTP_PORT: parsePositiveInt(process.env.SMTP_PORT, 465),
+  /** true = SSL (porta 465); false = STARTTLS (porta 587). */
+  SMTP_SECURE: parseEnvBooleanTrue(process.env.SMTP_SECURE ?? "true"),
+  SMTP_USER: (process.env.SMTP_USER ?? "").trim(),
+  SMTP_PASS: process.env.SMTP_PASS ?? "",
+  SMTP_FROM_NAME: (process.env.SMTP_FROM_NAME ?? "Ativa Dash").trim(),
+  /** Endereço usado em `From:`; cai para SMTP_USER se vazio. */
+  SMTP_FROM_EMAIL: (process.env.SMTP_FROM_EMAIL ?? process.env.SMTP_USER ?? "").trim(),
+  /** Tempo de validade do link de redefinição de senha. */
+  PASSWORD_RESET_TTL_MIN: parsePositiveInt(process.env.PASSWORD_RESET_TTL_MIN, 60),
 };
 
 if (

@@ -16,7 +16,7 @@ export function ActionToolbar({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-2 rounded-xl border border-border/50 bg-card/90 px-3 py-2 shadow-sm backdrop-blur-sm dark:bg-card/80",
+        "flex flex-wrap items-center gap-2 rounded-full border border-border/50 bg-card/90 px-4 py-2 shadow-sm backdrop-blur-sm dark:bg-card/80",
         dense && "py-1.5",
         sticky && "sticky top-[calc(4.5rem+env(safe-area-inset-top,0px))] z-20",
         className

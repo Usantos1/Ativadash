@@ -6,17 +6,19 @@ import { useAuthStore, type OrganizationSummary } from "@/stores/auth-store";
 import { switchWorkspaceOrganization } from "@/lib/organization-api";
 import { executiveGreetingLine } from "@/lib/display-name";
 import { cn } from "@/lib/utils";
+import { dashboardWorkspacePath } from "@/lib/dashboard-path";
 
 function collectOptions(
   currentId: string,
   memberships: { organizationId: string; organization: OrganizationSummary; role: string }[] | null,
   managed: OrganizationSummary[] | null
-): { id: string; label: string; subtitle?: string }[] {
-  const map = new Map<string, { id: string; label: string; subtitle?: string }>();
+): { id: string; label: string; subtitle?: string; slug: string }[] {
+  const map = new Map<string, { id: string; label: string; subtitle?: string; slug: string }>();
   for (const m of memberships ?? []) {
     map.set(m.organizationId, {
       id: m.organizationId,
       label: m.organization.name,
+      slug: m.organization.slug?.trim() || m.organizationId,
       subtitle: m.organizationId === currentId ? "Membro · " + m.role : m.role,
     });
   }
@@ -25,6 +27,7 @@ function collectOptions(
       map.set(o.id, {
         id: o.id,
         label: o.name,
+        slug: o.slug?.trim() || o.id,
         subtitle: "Filial da matriz · operar como esta empresa",
       });
     }
@@ -33,7 +36,7 @@ function collectOptions(
 }
 
 const shellBase = cn(
-  "flex h-9 max-w-full min-w-0 items-center gap-2 rounded-lg border border-border/50 bg-background/80 px-1.5 py-1 pr-2 shadow-sm"
+  "flex h-9 max-w-full min-w-0 items-center gap-2 rounded-full border border-border/50 bg-background/80 px-1.5 py-1 pr-2 shadow-sm"
 );
 
 const shellInteractive = cn(
@@ -96,7 +99,7 @@ export function OrganizationSwitcher(props?: {
     ? "Acesso como administrador"
     : (contextFace?.secondary ?? executiveGreetingLine(user));
 
-  async function onSelect(organizationId: string) {
+  async function onSelect(organizationId: string, slug: string) {
     if (organizationId === currentOrgId || loading || isImpersonating) return;
     setLoading(true);
     try {
@@ -113,7 +116,8 @@ export function OrganizationSwitcher(props?: {
           managedOrganizations: res.managedOrganizations ?? [],
         }
       );
-      navigate("/dashboard", { replace: true });
+      const nextSlug = res.user.organization?.slug?.trim() || slug.trim() || organizationId;
+      navigate(dashboardWorkspacePath(nextSlug), { replace: true });
     } catch {
       /* api.ts pode redirecionar 401 */
     } finally {
@@ -169,7 +173,7 @@ export function OrganizationSwitcher(props?: {
                 "flex cursor-pointer flex-col gap-0.5 rounded-lg px-2 py-2 outline-none focus:bg-accent focus:text-accent-foreground",
                 opt.id === currentOrgId && "bg-muted/50"
               )}
-              onSelect={() => onSelect(opt.id)}
+              onSelect={() => onSelect(opt.id, opt.slug)}
             >
               <span className="flex items-center gap-2 text-sm font-medium">
                 {opt.id === currentOrgId ? (

@@ -1,9 +1,10 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Login } from "@/pages/Login";
 import { Register } from "@/pages/Register";
 import { ForgotPassword } from "@/pages/ForgotPassword";
+import { ResetPassword } from "@/pages/ResetPassword";
 import { Dashboard } from "@/pages/Dashboard";
 import { Marketing } from "@/pages/Marketing";
 import { IntegrationsHubPage } from "@/pages/integrations/IntegrationsHubPage";
@@ -55,6 +56,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/share/d/:token" element={<PublicDashboardSharePage />} />
         <Route path="/s/:token" element={<PublicDashboardSharePage />} />
         <Route path="/" element={<PublicSiteLayout />}>
@@ -65,7 +67,10 @@ export default function App() {
           <Route path="produto" element={<MarketingSiteHomeRedirect />} />
         </Route>
         <Route element={<ProtectedLayout />}>
-          <Route path="dashboard" element={<Dashboard />} />
+          <Route path="dashboard" element={<Outlet />}>
+            <Route index element={<Dashboard />} />
+            <Route path=":workspaceSlug" element={<Dashboard />} />
+          </Route>
           <Route path="marketing" element={<Marketing />} />
           <Route path="marketing/captacao" element={<MarketingFunnelPage variant="captacao" />} />
           <Route path="marketing/conversao" element={<MarketingFunnelPage variant="conversao" />} />

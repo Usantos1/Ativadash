@@ -18,12 +18,18 @@ import {
   registerWithInviteSchema,
   acceptInviteTokenSchema,
   changePasswordSchema,
+  resetPasswordSchema,
 } from "../validators/auth.validator.js";
 import {
   getInvitationPreviewByToken,
   acceptInvitationNewUser,
   acceptInvitationExistingUser,
 } from "../services/invitations.service.js";
+import {
+  requestPasswordReset,
+  lookupPasswordResetToken,
+  confirmPasswordReset,
+} from "../services/password-reset.service.js";
 import { updateProfileSchema } from "../validators/workspace.validator.js";
 import { respondIfDatabaseUnavailable } from "../utils/prisma-connection-error.js";
 import { appendAuditLog } from "../services/audit-log.service.js";
@@ -72,9 +78,79 @@ export async function forgotPassword(req: Request, res: Response) {
       message: parsed.error.errors[0]?.message ?? "E-mail inválido",
     });
   }
+  /**
+   * Resposta sempre genérica para evitar enumeração de contas.
+   * O envio acontece em background do ponto de vista do cliente.
+   */
+  try {
+    await requestPasswordReset(parsed.data.email, {
+      ip: req.ip,
+      userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : null,
+    });
+  } catch (e) {
+    if (respondIfDatabaseUnavailable(res, e, "POST /api/auth/forgot-password")) return;
+    console.error("[auth] requestPasswordReset falhou:", e);
+  }
   return res.json({
-    message: "Se existir uma conta com esse e-mail, você receberá as instruções.",
+    message: "Se existir uma conta com esse e-mail, você receberá as instruções em alguns instantes.",
   });
+}
+
+/** GET /api/auth/reset-password/validate?token=... — usado pela tela para mostrar para qual conta é. */
+export async function validateResetToken(req: Request, res: Response) {
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  if (!token) {
+    return res.status(400).json({ valid: false, message: "Token obrigatório" });
+  }
+  try {
+    const lookup = await lookupPasswordResetToken(token);
+    if (!lookup) {
+      return res.status(404).json({ valid: false, message: "Token inválido ou expirado" });
+    }
+    const masked = lookup.email.replace(/(^.).+(@.+$)/, (_m, a, b) => `${a}***${b}`);
+    return res.json({ valid: true, email: masked, firstName: lookup.firstName });
+  } catch (e) {
+    if (respondIfDatabaseUnavailable(res, e, "GET /api/auth/reset-password/validate")) return;
+    return res.status(500).json({ valid: false, message: "Erro ao validar token" });
+  }
+}
+
+/** POST /api/auth/reset-password — confirma a redefinição com token + nova senha. */
+export async function resetPassword(req: Request, res: Response) {
+  const parsed = resetPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: parsed.error.errors[0]?.message ?? "Dados inválidos",
+    });
+  }
+  try {
+    const result = await confirmPasswordReset(parsed.data.token, parsed.data.newPassword, {
+      ip: req.ip,
+      userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : null,
+    });
+    await appendAuditLog({
+      actorUserId: result.userId,
+      action: "auth.password_reset_completed",
+      entityType: "User",
+      entityId: result.userId,
+      ip: req.ip,
+      userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : null,
+    });
+    return res.json({ ok: true });
+  } catch (e) {
+    if (respondIfDatabaseUnavailable(res, e, "POST /api/auth/reset-password")) return;
+    const message = e instanceof Error ? e.message : "Erro ao redefinir senha";
+    if (
+      message === "Token inválido ou expirado" ||
+      message === "Nova senha: mínimo 6 caracteres" ||
+      message === "Conta indisponível para redefinição" ||
+      message === "Conta suspensa. Contate o administrador."
+    ) {
+      return res.status(400).json({ message });
+    }
+    console.error("[auth] confirmPasswordReset falhou:", e);
+    return res.status(500).json({ message: "Erro ao redefinir senha" });
+  }
 }
 
 export async function refresh(req: Request, res: Response) {

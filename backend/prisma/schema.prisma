@@ -58,6 +58,7 @@ model User {
 
   memberships Membership[]
   refreshTokens RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
   invitationsSent Invitation[] @relation("InvitationInvitedBy")
   matrixWorkspaceGrants MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantUser")
   assetAccessGrants     AssetAccessGrant[]     @relation("AssetAccessGrantUser")
@@ -71,6 +72,24 @@ model RefreshToken {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   createdAt DateTime @default(now())
+}
+
+/// Token de redefinição de senha (envio por e-mail / SMTP)
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  /// Hash SHA-256 do token enviado ao usuário (nunca guardamos o original em claro)
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  /// Auditoria
+  requestedIp String?
+  requestedUserAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
 }
 
 model Organization {
