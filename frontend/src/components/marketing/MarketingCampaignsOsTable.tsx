@@ -660,17 +660,22 @@ export function MarketingCampaignsOsTable({
     }
   };
 
+  // As 4 primeiras colunas (checkbox, status, acao, nome) ficam congeladas
+  // a esquerda APENAS a partir de lg (>=1024px). Em mobile/tablet elas somam
+  // ~592px e ocupavam a tela toda, escondendo as colunas numericas mesmo
+  // ao rolar para a direita. Em telas estreitas a tabela rola completa,
+  // como uma planilha tradicional.
   const cbSticky =
-    "sticky left-0 z-20 w-10 min-w-[2.5rem] border-r border-border/30 bg-card shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]";
+    "w-10 min-w-[2.5rem] lg:sticky lg:left-0 lg:z-20 lg:border-r lg:border-border/30 lg:bg-card lg:shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]";
   const statusSticky = canMutateCampaigns
-    ? "sticky left-10 z-20 w-36 min-w-[9rem] border-r border-border/40 bg-card shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]"
-    : "sticky left-0 z-20 w-36 min-w-[9rem] border-r border-border/40 bg-card shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]";
+    ? "w-36 min-w-[9rem] lg:sticky lg:left-10 lg:z-20 lg:border-r lg:border-border/40 lg:bg-card lg:shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]"
+    : "w-36 min-w-[9rem] lg:sticky lg:left-0 lg:z-20 lg:border-r lg:border-border/40 lg:bg-card lg:shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]";
   const acaoSticky = canMutateCampaigns
-    ? "sticky left-[11.5rem] z-20 w-[13rem] min-w-[13rem] max-w-[13rem] border-r border-border/40 bg-card shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]"
-    : "sticky left-[9rem] z-20 w-[13rem] min-w-[13rem] max-w-[13rem] border-r border-border/40 bg-card shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]";
+    ? "w-[13rem] min-w-[13rem] max-w-[13rem] lg:sticky lg:left-[11.5rem] lg:z-20 lg:border-r lg:border-border/40 lg:bg-card lg:shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]"
+    : "w-[13rem] min-w-[13rem] max-w-[13rem] lg:sticky lg:left-[9rem] lg:z-20 lg:border-r lg:border-border/40 lg:bg-card lg:shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]";
   const nomeSticky = canMutateCampaigns
-    ? "sticky left-[24.5rem] z-20 min-w-[200px] max-w-[15rem] border-r border-border/40 bg-card shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]"
-    : "sticky left-[22rem] z-20 min-w-[200px] max-w-[15rem] border-r border-border/40 bg-card shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]";
+    ? "min-w-[200px] max-w-[15rem] lg:sticky lg:left-[24.5rem] lg:z-20 lg:border-r lg:border-border/40 lg:bg-card lg:shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]"
+    : "min-w-[200px] max-w-[15rem] lg:sticky lg:left-[22rem] lg:z-20 lg:border-r lg:border-border/40 lg:bg-card lg:shadow-[6px_0_16px_-8px_rgba(0,0,0,0.2)]";
 
   if (!rows.length) {
     return (
