@@ -133,6 +133,51 @@ export function AppTopbar({ onLogout }: { onLogout: () => void }) {
                     collisionPadding={12}
                     className="z-50 max-h-[72vh] w-[min(360px,calc(100vw-2rem))] overflow-y-auto rounded-[28px] border border-border/70 bg-popover p-3 shadow-[0_18px_50px_rgba(16,24,40,0.18)]"
                   >
+                    {/* Primary items (Dashboard, etc) — visiveis no menu APENAS em
+                        mobile/tablet, ja que em lg+ aparecem como botoes fora do menu.
+                        Sem isso, mobile ficava sem como voltar para o Dashboard. */}
+                    {primaryItems.length > 0 ? (
+                      <div className="min-w-0 lg:hidden">
+                        <DropdownMenu.Label className="px-3 pb-2 pt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          Principal
+                        </DropdownMenu.Label>
+                        {primaryItems.map((item) => {
+                          const Icon = item.icon;
+                          const isCurrentPage = isPathActive(pathname, item.to, item.end);
+                          return (
+                            <DropdownMenu.Item
+                              key={item.to}
+                              onSelect={() => navigate(item.to)}
+                              className={cn(
+                                "relative flex cursor-pointer items-start gap-3 rounded-2xl border-l-2 border-l-transparent px-3 py-3.5 outline-none",
+                                "focus:bg-muted/70 data-[highlighted]:border-l-emerald-500 data-[highlighted]:bg-muted/70",
+                                isCurrentPage && "border-l-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/20"
+                              )}
+                            >
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30">
+                                <Icon className="h-4 w-4" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="truncate text-[15px] font-semibold text-foreground">{item.label}</span>
+                                  {isCurrentPage ? (
+                                    <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                                      Página atual
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {item.description ? (
+                                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
+                                    {item.description}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </DropdownMenu.Item>
+                          );
+                        })}
+                        <DropdownMenu.Separator className="my-2 h-px bg-border/60 lg:hidden" />
+                      </div>
+                    ) : null}
                     {groupedMenuItems.map((group, index) => (
                       <div key={group.label} className="min-w-0">
                         {index > 0 ? <DropdownMenu.Separator className="my-2 h-px bg-border/60" /> : null}
