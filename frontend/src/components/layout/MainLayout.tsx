@@ -142,7 +142,7 @@ function MainLayoutInner() {
       <ImpersonationBanner />
       <ShortcutsHelpModal />
       <GlobalCommandPalette />
-      <main className={cn("min-h-dvh min-w-0 max-w-full overflow-x-hidden")}>
+      <main className={cn("min-h-dvh min-w-0 max-w-full")}>
         <AppTopbar onLogout={handleLogout} />
         <div className="min-w-0 max-w-full px-[2vw] pb-[max(1rem,env(safe-area-inset-bottom))] pt-[calc(1rem+4.5rem+env(safe-area-inset-top,0px))] md:pb-6 md:pt-[calc(1.5rem+4.5rem+env(safe-area-inset-top,0px))]">
           <AnalyticsShell>

@@ -61,8 +61,10 @@
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
-    /* Evita rolagem horizontal acidental em qualquer rota (defensivo) */
-    overflow-x: hidden;
+    /* Evita rolagem horizontal acidental em qualquer rota (defensivo).
+       Usamos `clip` (e nao `hidden`) para nao criar scroll container,
+       o que quebra a roda do mouse na area central da pagina. */
+    overflow-x: clip;
   }
   * {
     @apply border-border;
@@ -71,7 +73,7 @@
     font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
-    overflow-x: hidden;
+    overflow-x: clip;
     /* Bloqueia "pull-to-refresh" no Android arrastando dentro do app */
     overscroll-behavior-y: contain;
   }
