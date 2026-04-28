@@ -110,7 +110,8 @@ export function isPathAllowedForAgencyClientPortal(pathname: string): boolean {
  */
 export function canAccessMatrizResellerNav(user: User | null, _memberships: MembershipSummary[] | null): boolean {
   if (!user?.organizationId) return false;
-  return user.platformAdmin === true;
+  if (user.platformAdmin === true) return true;
+  return user.matrizNavEligible === true;
 }
 
 /** Rota `/admin`: só staff global ou admins no modo operacional completo (não filial/cliente). */
