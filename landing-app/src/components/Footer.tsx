@@ -1,4 +1,3 @@
-import { BarChart3 } from "lucide-react";
 import { APP_URL } from "@/lib/env";
 
 const NAV_PRODUTO = [
@@ -20,11 +19,15 @@ export function Footer() {
       <div className="container-page py-10">
         <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <a href="#topo" className="flex items-center gap-2 font-bold text-slate-900">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-700 text-white shadow-soft">
-                <BarChart3 className="h-5 w-5" />
-              </span>
-              <span className="text-lg">Ativa Dash</span>
+            <a href="#topo" className="inline-flex">
+              <img
+                src="/logo-ativa-dash.png"
+                alt="Ativa Dash"
+                className="h-9 w-auto max-h-[40px] max-w-[min(220px,85vw)] object-contain object-left sm:h-10"
+                width={220}
+                height={44}
+                decoding="async"
+              />
             </a>
             <p className="mt-3 max-w-xs text-sm text-slate-600">
               Painel de marketing e performance para agências e clientes finais. Decida com dados, em tempo real.

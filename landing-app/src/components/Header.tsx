@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BarChart3, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { APP_URL } from "@/lib/env";
 
 const NAV = [
@@ -27,11 +27,15 @@ export function Header() {
       } border-b border-slate-200/60`}
     >
       <div className="container-page flex h-16 items-center justify-between gap-4">
-        <a href="#topo" className="flex items-center gap-2 font-bold text-slate-900">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-700 text-white shadow-soft">
-            <BarChart3 className="h-5 w-5" />
-          </span>
-          <span className="text-lg tracking-tight">Ativa Dash</span>
+        <a href="#topo" className="flex items-center gap-2">
+          <img
+            src="/logo-ativa-dash.png"
+            alt="Ativa Dash — Analytics & performance"
+            className="h-9 w-auto max-h-[40px] max-w-[min(220px,70vw)] object-contain object-left sm:h-10 sm:max-h-[44px]"
+            width={220}
+            height={44}
+            decoding="async"
+          />
         </a>
 
         <nav className="hidden items-center gap-1 lg:flex">

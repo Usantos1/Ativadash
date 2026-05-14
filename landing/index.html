@@ -9,6 +9,8 @@
     />
     <meta name="theme-color" content="#5b21b6" />
     <title>Ativa Dash — Painel de marketing e performance</title>
+    <!-- Caminho absoluto: o Nginx tem de servir /logo-ativa-dash.png na raiz do site -->
+    <link rel="preload" href="/logo-ativa-dash.png" as="image" type="image/png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -122,9 +124,13 @@
         padding: 0 clamp(1rem, 4vw, 1.5rem);
       }
       .brand img {
-        height: 2.5rem;
+        height: 3rem;
+        max-height: 52px;
         width: auto;
+        max-width: min(240px, 72vw);
         display: block;
+        object-fit: contain;
+        object-position: left center;
       }
       .nav {
         display: flex;
@@ -832,7 +838,14 @@
     <header>
       <div class="header-inner">
         <a class="brand" href="/" aria-current="page">
-          <img src="logo-ativa-dash.png" alt="Ativa Dash — Analytics &amp; performance" width="180" height="48" />
+          <img
+            src="/logo-ativa-dash.png"
+            alt="Ativa Dash — Analytics &amp; performance"
+            width="240"
+            height="52"
+            fetchpriority="high"
+            decoding="async"
+          />
         </a>
         <nav class="nav" aria-label="Principal">
           <a href="#funcionalidades">Funcionalidades</a>
