@@ -250,6 +250,58 @@ async function searchStream(
     }
   }
 
+  /**
+   * Catálogo: campanhas com `WHERE segments.date BETWEEN ...` só retornam linhas
+   * para campanhas que tiveram métricas no período. Para listar campanhas sem
+   * impressão/clique/custo (ex.: pausadas e nunca veiculadas), buscamos o catálogo
+   * de IDs separadamente e completamos `byCampaign` com zeros.
+   */
+  try {
+    const catalogQuery = `
+      SELECT
+        campaign.id,
+        campaign.name,
+        campaign.status
+      FROM campaign
+      WHERE campaign.status IN ('ENABLED', 'PAUSED')
+    `.trim();
+    const catalogRes = await fetch(
+      `https://googleads.googleapis.com/${API_VERSION}/customers/${cid}/googleAds:searchStream`,
+      {
+        method: "POST",
+        headers: buildGoogleAdsHeaders(accessToken, developerToken, loginCustomerId),
+        body: JSON.stringify({ query: catalogQuery }),
+      }
+    );
+    if (catalogRes.ok) {
+      const catalogRaw = await catalogRes.json();
+      const catalogBatches = Array.isArray(catalogRaw) ? catalogRaw : [catalogRaw];
+      type CatalogRow = { campaign?: { id?: string; name?: string; status?: string } };
+      for (const batch of catalogBatches) {
+        const r = ((batch as { results?: unknown[] }).results ?? []) as CatalogRow[];
+        for (const row of r) {
+          const cIdRaw = row.campaign?.id;
+          const cId = cIdRaw != null ? String(cIdRaw) : undefined;
+          const name = row.campaign?.name ?? "";
+          const key = cId ?? `__name:${name}`;
+          if (byCampaign.has(key)) continue;
+          byCampaign.set(key, {
+            campaignName: name,
+            ...(cId ? { campaignId: cId } : {}),
+            entityStatus: mapGoogleResourceStatus(row.campaign?.status),
+            impressions: 0,
+            clicks: 0,
+            costMicros: 0,
+            conversions: 0,
+            conversionsValue: 0,
+          });
+        }
+      }
+    }
+  } catch {
+    // Falha no catálogo é não-fatal: mantém o que veio com métricas no período.
+  }
+
   const campaigns = Array.from(byCampaign.values()).sort((a, b) => b.costMicros - a.costMicros);
   const summary: GoogleAdsMetricsSummary = campaigns.reduce(
     (acc, r) => ({
