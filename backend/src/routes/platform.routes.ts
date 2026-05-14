@@ -2,6 +2,7 @@ import { Router } from "express";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
 import { platformAdminMiddleware } from "../middlewares/platform-admin.middleware.js";
 import * as platform from "../controllers/platform.controller.js";
+import * as leads from "../controllers/leads.controller.js";
 
 const router = Router();
 
@@ -25,5 +26,10 @@ router.delete("/organizations/:organizationId", platform.organizationDelete);
 router.get("/subscriptions", platform.subscriptionsList);
 router.post("/maintenance/sync-subscriptions", platform.maintenanceSyncSubscriptions);
 router.get("/audit", platform.auditLogsList);
+
+router.get("/leads", leads.listLeadsAdmin);
+router.get("/leads/:id", leads.getLeadAdmin);
+router.patch("/leads/:id", leads.updateLeadAdmin);
+router.delete("/leads/:id", leads.deleteLeadAdmin);
 
 export default router;

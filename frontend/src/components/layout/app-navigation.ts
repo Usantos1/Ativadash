@@ -11,6 +11,7 @@ import {
   Shield,
   Target,
   TrendingUp,
+  UserPlus,
   Users,
   Users2,
 } from "lucide-react";
@@ -141,6 +142,12 @@ export function buildAppNavGroups(
       label: "Admin Ativa Dash",
       icon: Shield,
       description: "Staff Ativa Dash: empresas raiz, catálogo global de planos e assinaturas do produto.",
+    });
+    contaItems.push({
+      to: "/plataforma/leads",
+      label: "Leads",
+      icon: UserPlus,
+      description: "Solicitações da landing page (ativadash.com): qualifique, atribua e mova no funil.",
     });
   }
 

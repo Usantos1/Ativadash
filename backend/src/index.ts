@@ -15,6 +15,7 @@ import resellerRoutes from "./routes/reseller.routes.js";
 import impersonationRoutes from "./routes/impersonation.routes.js";
 import hooksPublicRoutes from "./routes/webhooks-public.routes.js";
 import publicDashboardShareRoutes from "./routes/public-dashboard-share.routes.js";
+import leadsPublicRoutes from "./routes/leads-public.routes.js";
 
 const app = express();
 
@@ -106,6 +107,7 @@ const limiter = rateLimit({
 app.use("/api", limiter);
 
 app.use("/api/public", publicDashboardShareRoutes);
+app.use("/api/leads", leadsPublicRoutes);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/integrations", integrationsRoutes);

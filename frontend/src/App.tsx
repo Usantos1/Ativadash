@@ -33,6 +33,7 @@ import { RevendaAuditPage } from "@/pages/revenda/RevendaAuditPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { AdminSettingsPage } from "@/pages/AdminSettingsPage";
 import { PlatformPage } from "@/pages/PlatformPage";
+import { LeadsPage } from "@/pages/LeadsPage";
 import { PublicDashboardSharePage } from "@/pages/PublicDashboardSharePage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { PublicSiteLayout } from "@/components/marketing-site/PublicSiteLayout";
@@ -111,6 +112,7 @@ export default function App() {
           <Route path="planos" element={<Navigate to="/revenda" replace />} />
           <Route path="admin" element={<AdminPage />} />
           <Route path="plataforma" element={<PlatformPage />} />
+          <Route path="plataforma/leads" element={<LeadsPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

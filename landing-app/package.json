@@ -1,0 +1,29 @@
+{
+  "name": "ativa-dash-landing",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Landing page institucional do Ativa Dash (ativadash.com). Build estático servido pelo Nginx.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "build:prod": "cross-env VITE_API_URL=https://api.ativadash.com VITE_APP_URL=https://app.ativadash.com npm run build",
+    "preview": "vite preview --port 5174"
+  },
+  "dependencies": {
+    "lucide-react": "^0.344.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.55",
+    "@types/react-dom": "^18.2.19",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.17",
+    "cross-env": "^7.0.3",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1",
+    "typescript": "~5.2.2",
+    "vite": "^5.1.0"
+  }
+}

@@ -13,11 +13,15 @@ Plataforma de dashboards de marketing, vendas e integrações para agências e g
 
 ```
 Ativadash/
-├── frontend/    # App React
-├── backend/     # API Express + Prisma (PostgreSQL) — produção
-├── worker/      # Legado (Cloudflare Worker); não usado no deploy atual — ver worker/README.md
-└── package.json # Scripts raiz
+├── frontend/      # App React (app.ativadash.com)
+├── backend/       # API Express + Prisma (PostgreSQL) — produção (api.ativadash.com)
+├── landing-app/   # Landing page institucional (ativadash.com) — Vite + React + Tailwind
+├── landing/       # Pasta servida pelo Nginx em ativadash.com (build do landing-app/ é copiado aqui)
+├── worker/        # Legado (Cloudflare Worker); não usado no deploy atual — ver worker/README.md
+└── package.json   # Scripts raiz
 ```
+
+A LP em `landing-app/` postará leads em `https://api.ativadash.com/api/leads`. Eles aparecem em `app.ativadash.com/plataforma/leads` para os e-mails listados em `PLATFORM_ADMIN_EMAILS`.
 
 ## Desenvolvimento local
 

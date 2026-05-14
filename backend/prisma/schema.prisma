@@ -63,6 +63,7 @@ model User {
   matrixWorkspaceGrants MatrixWorkspaceGrant[] @relation("MatrixWorkspaceGrantUser")
   assetAccessGrants     AssetAccessGrant[]     @relation("AssetAccessGrantUser")
   impersonationSessions ImpersonationSession[] @relation("ImpersonationActor")
+  leadsAssigned         Lead[]                 @relation("LeadAssignedTo")
 }
 
 model RefreshToken {
@@ -887,4 +888,95 @@ model CheckoutProductMapping {
 
   @@unique([organizationId, source, productId])
   @@index([organizationId])
+}
+
+/// Etapas do funil comercial (lead capturado pela LP até venda/perdido)
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  WON
+  LOST
+}
+
+/// Perfil do solicitante na LP — muda a oferta apresentada pela equipe comercial
+enum LeadProfile {
+  AGENCY
+  CLIENT
+  FREELANCER
+  UNKNOWN
+}
+
+/// Faixas de investimento mensal em ADS, usadas para priorização comercial
+enum LeadAdsBudget {
+  UNDER_5K
+  FROM_5K_TO_25K
+  FROM_25K_TO_100K
+  OVER_100K
+  UNKNOWN
+}
+
+/// Lead capturado pelo formulário público da LP (ativadash.com).
+/// Sem `organizationId`: ainda não há tenant associado — só o staff Ativa Dash (platformAdmin)
+/// vê e qualifica em /plataforma/leads.
+model Lead {
+  id                  String        @id @default(cuid())
+
+  /// Identificação básica (todos obrigatórios no form público)
+  fullName            String
+  email               String
+  whatsapp            String
+
+  /// Empresa / site
+  companyName         String?
+  websiteUrl          String?
+
+  /// Qualificação comercial
+  profile             LeadProfile   @default(UNKNOWN)
+  monthlyAdsBudget    LeadAdsBudget @default(UNKNOWN)
+  /// Faturamento mensal aproximado em BRL (auto-relatado)
+  monthlyRevenueBrl   Decimal?      @db.Decimal(14, 2)
+  /// Quantidade de contas de mídia gerenciadas (relevante para agências)
+  managedAccountsCount Int?
+  /// Tamanho do time de marketing/tráfego do solicitante
+  teamSize            Int?
+  /// Canal principal de aquisição: META, GOOGLE, BOTH, NONE, OTHER
+  primaryChannel      String?
+  /// Mensagem livre: "o que quer organizar/melhorar"
+  goal                String?       @db.Text
+
+  /// Tracking de origem
+  utmSource           String?
+  utmMedium           String?
+  utmCampaign         String?
+  utmTerm             String?
+  utmContent          String?
+  referrer            String?       @db.Text
+  pageUrl             String?       @db.Text
+
+  /// Auditoria de submissão
+  ipAddress           String?
+  userAgent           String?       @db.Text
+
+  /// Workflow comercial (apenas staff edita)
+  status              LeadStatus    @default(NEW)
+  assignedToUserId    String?
+  assignedToUser      User?         @relation("LeadAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  notes               String?       @db.Text
+
+  /// Timeline do funil
+  contactedAt         DateTime?
+  qualifiedAt         DateTime?
+  wonAt               DateTime?
+  lostAt              DateTime?
+  lostReason          String?       @db.Text
+
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@index([status, createdAt])
+  @@index([assignedToUserId])
+  @@index([email])
+  @@index([whatsapp])
+  @@index([createdAt])
 }
