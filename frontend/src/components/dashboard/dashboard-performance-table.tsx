@@ -15,6 +15,7 @@ import {
 import {
   applyPerfTablePipeline,
   buildPerfHighlights,
+  rowHasDelivery,
   type PerfDeliveryFilter,
   type PerfHighlightFlags,
   type PerfSortKey,
@@ -247,9 +248,30 @@ export function DashboardPerformanceTable({
       </p>
 
       {!filteredSorted.length ? (
-        <div className="rounded-xl border border-border/55 bg-muted/[0.08] px-4 py-10 text-center text-sm text-muted-foreground">
-          Nenhuma linha corresponde aos filtros. Ajuste status, entrega ou busca.
-        </div>
+        (() => {
+          const noDeliveryRows = deliveryFilter === "with" && rows.some((r) => !rowHasDelivery(r));
+          return (
+            <div className="rounded-xl border border-border/55 bg-muted/[0.08] px-4 py-10 text-center text-sm text-muted-foreground">
+              {noDeliveryRows ? (
+                <>
+                  <p>
+                    {rows.length === 1 ? "Há 1 linha sem entrega" : `Há ${rows.length} linhas sem entrega`} no período (sem
+                    impressões, cliques ou investimento).
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-3 inline-flex items-center gap-1 rounded-full border border-border/70 bg-background px-3 py-1 text-xs font-semibold text-foreground hover:bg-muted/40"
+                    onClick={() => setDeliveryFilter("all")}
+                  >
+                    Ver todas mesmo assim
+                  </button>
+                </>
+              ) : (
+                "Nenhuma linha corresponde aos filtros. Ajuste status, entrega ou busca."
+              )}
+            </div>
+          );
+        })()
       ) : (
         <>
           <DataTablePremium

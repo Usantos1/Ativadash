@@ -291,7 +291,9 @@ export function DashboardSingleClient() {
   }, [dash]);
 
   useEffect(() => {
-    const googleConnected = dash?.ok && dash.integrationStatus.googleAds.connected;
+    const googleConnected = dash?.ok
+      ? dash.integrationStatus.googleAds.connected
+      : hasGoogle;
     if (!googleConnected) {
       setGoogleAccountInfo(null);
       return;
@@ -312,7 +314,7 @@ export function DashboardSingleClient() {
     return () => {
       cancelled = true;
     };
-  }, [dash]);
+  }, [dash, hasGoogle]);
 
   useEffect(() => {
     if (!hasGoogle || metrics?.ok !== true) {
