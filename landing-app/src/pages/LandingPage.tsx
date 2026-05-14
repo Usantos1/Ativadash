@@ -8,10 +8,12 @@ import { Differentials } from "@/components/Differentials";
 import { ContactSection } from "@/components/ContactSection";
 import { FAQ } from "@/components/FAQ";
 import { Footer } from "@/components/Footer";
+import { LeadFormModal } from "@/components/LeadFormModal";
+import { LeadModalProvider } from "@/components/LeadModalContext";
 
 export function LandingPage() {
   return (
-    <>
+    <LeadModalProvider>
       <Header />
       <main>
         <Hero />
@@ -24,6 +26,7 @@ export function LandingPage() {
         <FAQ />
       </main>
       <Footer />
-    </>
+      <LeadFormModal />
+    </LeadModalProvider>
   );
 }

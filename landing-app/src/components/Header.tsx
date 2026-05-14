@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Menu, X } from "lucide-react";
 import { APP_URL } from "@/lib/env";
+import { useLeadModal } from "./LeadModalContext";
 
 const NAV = [
   { href: "#recursos", label: "Recursos" },
@@ -12,6 +13,7 @@ const NAV = [
 export function Header() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const { open: openModal } = useLeadModal();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -27,7 +29,7 @@ export function Header() {
       } border-b border-slate-200/60`}
     >
       <div className="container-page flex h-16 items-center justify-between gap-4">
-        <a href="#topo" className="flex items-center gap-2">
+        <a href="#topo" className="flex items-center">
           <img
             src="/logo-ativa-dash.png"
             alt="Ativa Dash — Analytics & performance"
@@ -54,9 +56,9 @@ export function Header() {
           <a href={`${APP_URL}/login`} className="btn-ghost">
             Entrar
           </a>
-          <a href="#contato" className="btn-primary">
+          <button type="button" onClick={openModal} className="btn-primary">
             Solicitar acesso
-          </a>
+          </button>
         </div>
 
         <button
@@ -87,9 +89,16 @@ export function Header() {
               <a href={`${APP_URL}/login`} onClick={() => setOpen(false)} className="btn-outline justify-center">
                 Entrar
               </a>
-              <a href="#contato" onClick={() => setOpen(false)} className="btn-primary justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  openModal();
+                }}
+                className="btn-primary justify-center"
+              >
                 Solicitar acesso
-              </a>
+              </button>
             </div>
           </nav>
         </div>

@@ -2,25 +2,11 @@ import { TrendingUp, MousePointerClick, DollarSign, Target } from "lucide-react"
 
 /**
  * Mockup CSS/SVG do dashboard real (executivo de marketing). Sem imagem externa
- * para garantir LCP rápido e zero peso de assets.
+ * para garantir LCP rápido e zero peso de assets. Usado dentro de <MockupFrame />.
  */
 export function DashboardMockup() {
   return (
-    <div className="relative animate-fade-up rounded-3xl border border-slate-200/70 bg-white/95 p-3 shadow-glow backdrop-blur" style={{ animationDelay: "180ms" }}>
-      {/* Top bar simulando o app */}
-      <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-2">
-        <div className="flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full bg-rose-400" aria-hidden />
-          <span className="h-2.5 w-2.5 rounded-full bg-amber-400" aria-hidden />
-          <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" aria-hidden />
-        </div>
-        <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
-          app.ativadash.com/dashboard
-        </span>
-        <span />
-      </div>
-
-      <div className="grid grid-cols-12 gap-3 p-3">
+    <div className="grid grid-cols-12 gap-3 p-3">
         {/* KPI cards */}
         <KPICard icon={DollarSign} label="Investimento" value="R$ 187.4k" delta="+12,4%" tone="brand" />
         <KPICard icon={MousePointerClick} label="Cliques" value="48.962" delta="+8,1%" tone="sky" />
@@ -50,7 +36,6 @@ export function DashboardMockup() {
           <ChannelRow color="bg-blue-500" name="Meta Ads" spend="R$ 96.2k" share="51%" />
           <ChannelRow color="bg-amber-500" name="Google Ads" spend="R$ 91.2k" share="49%" />
         </div>
-      </div>
     </div>
   );
 }

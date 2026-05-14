@@ -33,7 +33,7 @@ O `deploy.sh` da raiz instala dependências, builda e copia `landing-app/dist/*`
 
 ## Estrutura
 
-- `src/components/` — Header, Hero, Features, HowItWorks, ForWhom, Differentials, FAQ, ContactSection, LeadForm, Footer.
+- `src/components/` — Header, Hero, Features, HowItWorks, ForWhom, Differentials, FAQ, ContactSection, LeadFormModal, Footer.
 - `src/lib/api.ts` — submissão do form (`POST /api/leads`) com honeypot e UTMs.
 - `src/lib/utm.ts` — leitura de UTMs e referrer.
 - `public/` — `favicon.svg`, `robots.txt`, `sitemap.xml`.

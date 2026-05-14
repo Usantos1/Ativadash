@@ -1,8 +1,11 @@
 import { ArrowRight, ShieldCheck, Sparkles, Zap } from "lucide-react";
 import { APP_URL } from "@/lib/env";
 import { DashboardMockup } from "./DashboardMockup";
+import { MockupFrame } from "./MockupFrame";
+import { useLeadModal } from "./LeadModalContext";
 
 export function Hero() {
+  const { open: openModal } = useLeadModal();
   return (
     <section id="topo" className="relative overflow-hidden">
       <div className="absolute inset-0 bg-grid opacity-50" aria-hidden />
@@ -34,10 +37,10 @@ export function Hero() {
               className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center animate-fade-up"
               style={{ animationDelay: "180ms" }}
             >
-              <a href="#contato" className="btn-primary text-base">
+              <button type="button" onClick={openModal} className="btn-primary text-base">
                 Solicitar acesso
                 <ArrowRight className="h-4 w-4" />
-              </a>
+              </button>
               <a href={`${APP_URL}/login`} className="btn-outline text-base">
                 Já tenho conta — entrar
               </a>
@@ -64,7 +67,9 @@ export function Hero() {
 
           <div className="relative lg:col-span-6">
             <div className="absolute -inset-6 -z-10 rounded-3xl bg-gradient-to-br from-brand-300/40 via-brand-200/30 to-transparent blur-2xl" aria-hidden />
-            <DashboardMockup />
+            <MockupFrame url="app.ativadash.com/dashboard" className="animate-fade-up" >
+              <DashboardMockup />
+            </MockupFrame>
           </div>
         </div>
       </div>
