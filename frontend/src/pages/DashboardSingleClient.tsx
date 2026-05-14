@@ -228,6 +228,15 @@ export function DashboardSingleClient() {
   const [metaLevel, setMetaLevel] = useState<MetaLevel>("campaign");
   const [googleTableLevel, setGoogleTableLevel] = useState<GoogleTableLevel>("campaign");
   const [perfPlatform, setPerfPlatform] = useState<"all" | "meta" | "google">("all");
+
+  useEffect(() => {
+    if (!hasMeta && perfPlatform === "meta") {
+      setPerfPlatform(hasGoogle ? "google" : "all");
+    }
+    if (!hasGoogle && perfPlatform === "google") {
+      setPerfPlatform(hasMeta ? "meta" : "all");
+    }
+  }, [hasMeta, hasGoogle, perfPlatform]);
   const [chartSeries, setChartSeries] = useState<"spend" | "leads" | "ctr" | "cpl">("spend");
   const [marketingSettings, setMarketingSettings] = useState<MarketingSettingsDto | null>(null);
   const [googleAdGroupRows, setGoogleAdGroupRows] = useState<GoogleAdsAdGroupRow[]>([]);
@@ -413,10 +422,13 @@ export function DashboardSingleClient() {
 
   const displayUpdatedAt = dashUpdatedAt ?? null;
 
-  const googlePending =
-    metaOk &&
-    (dash.integrationStatus.googleAds.status === "api_not_ready" ||
-      dash.integrationStatus.googleAds.status === "pending_configuration");
+  const googlePending = Boolean(
+    dash?.ok &&
+      (dash.integrationStatus.googleAds.status === "api_not_ready" ||
+        dash.integrationStatus.googleAds.status === "pending_configuration")
+  );
+  const googleAdsStatusForHint: "api_not_ready" | "pending_configuration" | "connected" | "not_connected" =
+    dash?.ok ? dash.integrationStatus.googleAds.status : "not_connected";
 
   const cmpMetaSummary: MetaAdsMetricsSummary | null =
     cmpMetaMetrics?.ok === true ? cmpMetaMetrics.summary : null;
@@ -475,7 +487,11 @@ export function DashboardSingleClient() {
     metaSpend <= 0 && summary !== null && summary.impressions <= 0 && summary.clicks <= 0;
 
   const googleWidgetLoading = hasGoogle && metricsLoading && !googleOk;
-  const googleStatus = metaOk && dash.ok ? dash.integrationStatus.googleAds.status : "not_connected";
+  const googleStatus = dash?.ok
+    ? dash.integrationStatus.googleAds.status
+    : hasGoogle
+      ? "connected"
+      : "not_connected";
   const googleNotConnected = hasGoogle && googleStatus === "not_connected";
   const googleBlockError =
     !googleWidgetLoading && metricsError && hasGoogle && !googleNotConnected ? metricsError : null;
@@ -599,7 +615,7 @@ export function DashboardSingleClient() {
   ]);
 
   const consolidatedSummaryItems = useMemo(() => {
-    if (!summary) return [];
+    if (!summary && !googleOk) return [];
     return buildConsolidatedAccountKpis(
       goalCtx.businessGoalMode,
       summary,
@@ -613,6 +629,7 @@ export function DashboardSingleClient() {
     );
   }, [
     summary,
+    googleOk,
     goalCtx.businessGoalMode,
     goalCtx.primaryConversionLabel,
     metrics,
@@ -774,8 +791,8 @@ export function DashboardSingleClient() {
             <div className="lg:col-span-2">
               <EmptyState
                 icon={BarChart3}
-                title="Conecte a Meta Ads"
-                description="Conecte em Integrações para ver o painel executivo."
+                title="Conecte um canal"
+                description="Conecte Meta Ads ou Google Ads em Integrações para ver o painel executivo."
                 actionLabel="Integrações"
                 onAction={() => navigate("/marketing/integracoes")}
                 className="min-h-[260px] rounded-2xl border-border/55 bg-card shadow-[var(--shadow-surface)]"
@@ -799,7 +816,7 @@ export function DashboardSingleClient() {
           </div>
         ) : showFullSkeleton ? (
           <DashboardSkeleton />
-        ) : hasMeta && dash && !dash.ok ? (
+        ) : hasMeta && dash && !dash.ok && !googleOk ? (
           <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-[var(--shadow-surface)]" role="alert">
             <p className="text-sm font-semibold">Painel Meta</p>
             <p className="mt-2 text-sm text-muted-foreground">{dash.message}</p>
@@ -807,7 +824,7 @@ export function DashboardSingleClient() {
               Tentar novamente
             </Button>
           </div>
-        ) : metaOk && summary && dash ? (
+        ) : (metaOk && summary && dash) || googleOk ? (
           <div className="space-y-6 lg:space-y-10">
             {anyRefreshing ? (
               <div
@@ -818,7 +835,7 @@ export function DashboardSingleClient() {
                 Atualizando dados do painel…
               </div>
             ) : null}
-            {summary.reconciliation && !summary.reconciliation.spendMatchesSummary ? (
+            {summary?.reconciliation && !summary.reconciliation.spendMatchesSummary ? (
               <p className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
                 Aviso: divergência de gasto resumo vs. série — verifique logs do servidor se persistir.
               </p>
@@ -839,49 +856,51 @@ export function DashboardSingleClient() {
               <div
                 className={cn(
                   "grid items-stretch gap-4",
-                  hasGoogle ? "lg:grid-cols-2" : "grid-cols-1"
+                  hasMeta && hasGoogle ? "lg:grid-cols-2" : "grid-cols-1"
                 )}
               >
-                <ChannelWidget
-                  channel="meta"
-                  accent="purple"
-                  businessGoalMode={goalCtx.businessGoalMode}
-                  title="Meta Ads"
-                  syncAt={displayUpdatedAt}
-                  accountInfo={metaAccountInfo}
-                  integrationLabel={
-                    dash.integrationStatus.metaAds.connected
-                      ? dash.integrationStatus.metaAds.healthy
-                        ? "Conectado"
-                        : "Integração instável"
-                      : "Não conectado"
-                  }
-                  integrationTone={
-                    dash.integrationStatus.metaAds.connected
-                      ? dash.integrationStatus.metaAds.healthy
-                        ? "success"
-                        : "warning"
-                      : "muted"
-                  }
-                  performanceChip={metaPerfChip}
-                  executiveBadge={
-                    !metaWidgetLoading &&
-                    !metaEmptyPeriod &&
-                    metaChannelLayout &&
-                    dash.integrationStatus.metaAds.connected
-                      ? metaExecutiveBadge
-                      : null
-                  }
-                  layout={
-                    metaWidgetLoading || metaEmptyPeriod || !metaChannelLayout ? undefined : metaChannelLayout
-                  }
-                  loading={metaWidgetLoading}
-                  errorMessage={null}
-                  notConnected={!dash.integrationStatus.metaAds.connected}
-                  emptyMessage={
-                    !metaWidgetLoading && metaEmptyPeriod ? "Sem dados no período para a Meta neste recorte." : null
-                  }
-                />
+                {hasMeta && dash?.ok ? (
+                  <ChannelWidget
+                    channel="meta"
+                    accent="purple"
+                    businessGoalMode={goalCtx.businessGoalMode}
+                    title="Meta Ads"
+                    syncAt={displayUpdatedAt}
+                    accountInfo={metaAccountInfo}
+                    integrationLabel={
+                      dash.integrationStatus.metaAds.connected
+                        ? dash.integrationStatus.metaAds.healthy
+                          ? "Conectado"
+                          : "Integração instável"
+                        : "Não conectado"
+                    }
+                    integrationTone={
+                      dash.integrationStatus.metaAds.connected
+                        ? dash.integrationStatus.metaAds.healthy
+                          ? "success"
+                          : "warning"
+                        : "muted"
+                    }
+                    performanceChip={metaPerfChip}
+                    executiveBadge={
+                      !metaWidgetLoading &&
+                      !metaEmptyPeriod &&
+                      metaChannelLayout &&
+                      dash.integrationStatus.metaAds.connected
+                        ? metaExecutiveBadge
+                        : null
+                    }
+                    layout={
+                      metaWidgetLoading || metaEmptyPeriod || !metaChannelLayout ? undefined : metaChannelLayout
+                    }
+                    loading={metaWidgetLoading}
+                    errorMessage={null}
+                    notConnected={!dash.integrationStatus.metaAds.connected}
+                    emptyMessage={
+                      !metaWidgetLoading && metaEmptyPeriod ? "Sem dados no período para a Meta neste recorte." : null
+                    }
+                  />
+                ) : null}
 
                 {hasGoogle ? (
                   <ChannelWidget
@@ -933,7 +952,7 @@ export function DashboardSingleClient() {
                             ? "Sem dados no período para o Google neste recorte."
                             : !googleWidgetLoading && !googleOk
                               ? googlePending
-                                ? googleAdsPendingHint(dash.integrationStatus.googleAds.status)
+                                ? googleAdsPendingHint(googleAdsStatusForHint)
                                 : "Aguardando métricas do Google Ads."
                               : null
                     }
@@ -1007,7 +1026,7 @@ export function DashboardSingleClient() {
                             {metricsError
                               ? `Google Ads: ${metricsError}`
                               : googlePending
-                                ? googleAdsPendingHint(dash.integrationStatus.googleAds.status)
+                                ? googleAdsPendingHint(googleAdsStatusForHint)
                                 : "Conecte o Google Ads para ver o funil desta rede."}
                           </p>
                         </div>
@@ -1041,7 +1060,7 @@ export function DashboardSingleClient() {
                             {metricsError
                               ? `Google Ads: ${metricsError}`
                               : googlePending
-                                ? googleAdsPendingHint(dash.integrationStatus.googleAds.status)
+                                ? googleAdsPendingHint(googleAdsStatusForHint)
                                 : "Conecte o Google Ads ou aguarde a API para ver taxas desta rede."}
                           </p>
                         </div>
@@ -1052,21 +1071,28 @@ export function DashboardSingleClient() {
               ) : null}
 
               {funnelVariant !== "hybrid" ? (
-                <div className="grid gap-5 lg:grid-cols-2 lg:items-stretch">
-                  {metaFunnelModel ? (
-                    <ExecutiveFunnel
-                      model={metaFunnelModel}
-                      summary={summary}
-                      spend={metaSpend}
-                      platform="meta"
-                      companionRatesPanel
-                      className="h-full min-h-0"
-                    />
-                  ) : (
-                    <div className="flex min-h-[280px] items-center justify-center rounded-xl border border-border/50 bg-card/80 p-6 text-center text-sm text-muted-foreground shadow-[var(--shadow-surface)]">
-                      Funil Meta indisponível no momento.
-                    </div>
+                <div
+                  className={cn(
+                    "grid gap-5 lg:items-stretch",
+                    hasMeta && hasGoogle ? "lg:grid-cols-2" : ""
                   )}
+                >
+                  {hasMeta ? (
+                    metaFunnelModel ? (
+                      <ExecutiveFunnel
+                        model={metaFunnelModel}
+                        summary={summary}
+                        spend={metaSpend}
+                        platform="meta"
+                        companionRatesPanel
+                        className="h-full min-h-0"
+                      />
+                    ) : (
+                      <div className="flex min-h-[280px] items-center justify-center rounded-xl border border-border/50 bg-card/80 p-6 text-center text-sm text-muted-foreground shadow-[var(--shadow-surface)]">
+                        Funil Meta indisponível no momento.
+                      </div>
+                    )
+                  ) : null}
                   <div className="min-h-0">
                     {hasGoogle ? (
                       googleFunnelModel ? (
@@ -1102,7 +1128,7 @@ export function DashboardSingleClient() {
                             {metricsError
                               ? `Google Ads: ${metricsError}`
                               : googlePending
-                                ? googleAdsPendingHint(dash.integrationStatus.googleAds.status)
+                                ? googleAdsPendingHint(googleAdsStatusForHint)
                                 : "Conecte o Google Ads em Integrações ou aguarde a API para ver o funil desta rede."}
                           </p>
                         </div>
@@ -1123,14 +1149,16 @@ export function DashboardSingleClient() {
               ) : null}
 
               {funnelVariant !== "hybrid" ? (
-                <div className={cn("grid gap-5", hasGoogle ? "lg:grid-cols-2 lg:items-stretch" : "")}>
-                  {metaFunnelModel ? (
-                    <DashboardFunnelRatesWidget model={metaFunnelModel} platform="meta" spend={metaSpend} className="min-h-0" />
-                  ) : (
-                    <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-border/50 bg-card/80 p-5 text-sm text-muted-foreground shadow-[var(--shadow-surface)]">
-                      Gargalos Meta indisponíveis no momento.
-                    </div>
-                  )}
+                <div className={cn("grid gap-5", hasMeta && hasGoogle ? "lg:grid-cols-2 lg:items-stretch" : "")}>
+                  {hasMeta ? (
+                    metaFunnelModel ? (
+                      <DashboardFunnelRatesWidget model={metaFunnelModel} platform="meta" spend={metaSpend} className="min-h-0" />
+                    ) : (
+                      <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-border/50 bg-card/80 p-5 text-sm text-muted-foreground shadow-[var(--shadow-surface)]">
+                        Gargalos Meta indisponíveis no momento.
+                      </div>
+                    )
+                  ) : null}
                   {hasGoogle ? (
                     googleFunnelModel ? (
                       <DashboardFunnelRatesWidget model={googleFunnelModel} platform="google" spend={googleSpendBrl} className="min-h-0" />
@@ -1153,7 +1181,7 @@ export function DashboardSingleClient() {
                           {metricsError
                             ? `Google Ads: ${metricsError}`
                             : googlePending
-                              ? googleAdsPendingHint(dash.integrationStatus.googleAds.status)
+                              ? googleAdsPendingHint(googleAdsStatusForHint)
                               : "Conecte o Google Ads ou aguarde a API para ver taxas desta rede."}
                         </p>
                       </div>
@@ -1164,11 +1192,13 @@ export function DashboardSingleClient() {
             </div>
             </section>
 
-            <DashboardAttributionPanel
-              summary={summary}
-              revenueMuted={revenueMuted}
-              derived={summary.derived}
-            />
+            {summary ? (
+              <DashboardAttributionPanel
+                summary={summary}
+                revenueMuted={revenueMuted}
+                derived={summary.derived}
+              />
+            ) : null}
 
             <section className="space-y-3">
               <div className="flex items-center justify-between gap-2">
@@ -1182,17 +1212,19 @@ export function DashboardSingleClient() {
                   </span>
                 ) : null}
               </div>
-              <div className={cn("grid gap-4", hasGoogle ? "xl:grid-cols-2" : "")}>
-                <DashboardDailyChartSection
-                  title={`${currentDailySeriesTitle} · Meta Ads`}
-                  chartData={metaChartData}
-                  loading={Boolean(blocks.timeseries.loading && slice.timeseries === undefined)}
-                  errorText={blocks.timeseries.error}
-                  businessGoalMode={goalCtx.businessGoalMode}
-                  chartSeries={chartSeries}
-                  onSeriesChange={setChartSeries}
-                  emptyText="Sem dados da Meta Ads no período selecionado."
-                />
+              <div className={cn("grid gap-4", hasMeta && hasGoogle ? "xl:grid-cols-2" : "")}>
+                {hasMeta ? (
+                  <DashboardDailyChartSection
+                    title={`${currentDailySeriesTitle} · Meta Ads`}
+                    chartData={metaChartData}
+                    loading={Boolean(blocks.timeseries.loading && slice.timeseries === undefined)}
+                    errorText={blocks.timeseries.error}
+                    businessGoalMode={goalCtx.businessGoalMode}
+                    chartSeries={chartSeries}
+                    onSeriesChange={setChartSeries}
+                    emptyText="Sem dados da Meta Ads no período selecionado."
+                  />
+                ) : null}
                 {hasGoogle ? (
                   <DashboardDailyChartSection
                     title={`${currentDailySeriesTitle} · Google Ads`}
@@ -1209,12 +1241,14 @@ export function DashboardSingleClient() {
               </div>
             </section>
 
-            <section className="space-y-3">
-              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Distribuição por plataforma
-              </h2>
-              <DashboardPlatformDiagnostics dash={dash} />
-            </section>
+            {dash?.ok ? (
+              <section className="space-y-3">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Distribuição por plataforma
+                </h2>
+                <DashboardPlatformDiagnostics dash={dash} />
+              </section>
+            ) : null}
 
             <section className="space-y-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1247,7 +1281,7 @@ export function DashboardSingleClient() {
                     <TabsTrigger value="all" className="rounded-lg text-xs sm:text-sm">
                       Todos
                     </TabsTrigger>
-                    <TabsTrigger value="meta" className="rounded-lg text-xs sm:text-sm">
+                    <TabsTrigger value="meta" className="rounded-lg text-xs sm:text-sm" disabled={!hasMeta}>
                       Meta Ads
                     </TabsTrigger>
                     <TabsTrigger value="google" className="rounded-lg text-xs sm:text-sm" disabled={!hasGoogle}>
@@ -1255,22 +1289,24 @@ export function DashboardSingleClient() {
                     </TabsTrigger>
                   </TabsList>
                   <TabsContent value="all" className="mt-4 space-y-6 outline-none">
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 shrink-0 rounded-full bg-[#1877F2]" aria-hidden />
-                        <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-[#1877F2]">
-                          Meta Ads · Campanhas
-                        </h3>
+                    {hasMeta ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-[#1877F2]" aria-hidden />
+                          <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-[#1877F2]">
+                            Meta Ads · Campanhas
+                          </h3>
+                        </div>
+                        <DashboardPerformanceTable
+                          rows={perfRows.campaign}
+                          labelEmpty="Nenhuma campanha Meta no período."
+                          nameHeader="Campanha"
+                          businessGoalMode={goalCtx.businessGoalMode}
+                          levelLabel="Campanhas Meta"
+                          filterResetKey="all-meta-campaign"
+                        />
                       </div>
-                      <DashboardPerformanceTable
-                        rows={perfRows.campaign}
-                        labelEmpty="Nenhuma campanha Meta no período."
-                        nameHeader="Campanha"
-                        businessGoalMode={goalCtx.businessGoalMode}
-                        levelLabel="Campanhas Meta"
-                        filterResetKey="all-meta-campaign"
-                      />
-                    </div>
+                    ) : null}
                     {hasGoogle ? (
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
@@ -1450,7 +1486,7 @@ export function DashboardSingleClient() {
           </div>
         ) : (
           <div className="rounded-2xl border border-border/55 bg-card p-6 text-sm text-muted-foreground" role="status">
-            Conecte a Meta Ads para ver o painel.
+            Conecte Meta Ads ou Google Ads em Integrações para ver o painel.
           </div>
         )}
       </div>
