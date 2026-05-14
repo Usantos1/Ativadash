@@ -1,15 +1,15 @@
 import { Header } from "@/components/Header";
 import { Hero } from "@/components/Hero";
 import { TrustedBy } from "@/components/TrustedBy";
-import { Features } from "@/components/Features";
+import { ProductTour } from "@/components/ProductTour";
 import { HowItWorks } from "@/components/HowItWorks";
 import { ForWhom } from "@/components/ForWhom";
 import { Differentials } from "@/components/Differentials";
 import { ContactSection } from "@/components/ContactSection";
 import { FAQ } from "@/components/FAQ";
 import { Footer } from "@/components/Footer";
-import { LeadFormModal } from "@/components/LeadFormModal";
 import { LeadModalProvider } from "@/components/LeadModalContext";
+import { LeadFormModal } from "@/components/LeadFormModal";
 
 export function LandingPage() {
   return (
@@ -18,7 +18,7 @@ export function LandingPage() {
       <main>
         <Hero />
         <TrustedBy />
-        <Features />
+        <ProductTour />
         <HowItWorks />
         <ForWhom />
         <Differentials />
